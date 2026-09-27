@@ -50,3 +50,29 @@ Phase 1: search engine as plain Python scripts in `retrieval/`, run from the ter
 - For core pieces (chunker, rank fusion, reranking, Merkle tree, cache invalidation, evaluation), explain the approach and trade-offs in plain terms before implementing, so I can explain them in interviews
 - After each change, tell me which tests to run and suggest a commit message
 - Update the "Current phase" section when a phase is complete
+
+## Roadmap
+1. Search engine as Python scripts
+2. Evaluation
+3. Flask API
+4. Node API and MongoDB
+5. React frontend
+6. Incremental re-indexing
+7. Docker, CI/CD, deployment
+8. Polish
+
+## Commands
+- Activate environment: `source retrieval/.venv/bin/activate`
+- Run tests: `pytest retrieval/tests`
+
+## Environment variables
+- `GEMINI_API_KEY`
+- `MONGODB_URI`
+
+## Paths
+- Cloned repositories go in `data/repos/`, which is gitignored
+- Demo repository: pallets/flask
+
+## Out of scope
+- Languages other than Python until Phase 8
+- Pull request review, IDE extensions, cross-repo search
