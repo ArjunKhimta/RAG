@@ -5,3 +5,6 @@ node_modules/
 __pycache__/
 data/repos/
 .DS_Store
+.pytest_cache/
+.ruff_cache/
+*.egg-info/

@@ -2,6 +2,11 @@
 
 ## What this project is
 A full-stack code search engine. Users sign in with GitHub, import a repository, and ask questions in plain English. Answers cite exact files and line numbers. Python repositories only for now.
+## Goals
+- Portfolio project for SWE and AI engineering roles; every design decision must be explainable in an interview
+- Every feature must show up as a measured result in the evaluation table (accuracy, faithfulness, or latency)
+- Prefer simple, well-understood solutions over clever ones
+
 
 ## Architecture
 - `web/` React (Vite) frontend, deployed on Vercel
@@ -28,11 +33,12 @@ A full-stack code search engine. Users sign in with GitHub, import a repository,
 
 ## Current phase
 Phase 1: search engine as plain Python scripts in `retrieval/`, run from the terminal. No web layer yet.
-
+Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test.
+Next: Tree-sitter chunker in `src/retrieval/`, moving Parser setup out of the smoke test into one shared place.
 ## Rules
 - Never execute code from cloned repositories; only read it
 - Never read, print, or edit `.env` files; reference variables by name only
-- Never hard-code keys or secrets
+- Never hard-code keys or secrets; every printed string goes through `redaction.py`
 - Evaluation numbers must come from real runs; never estimate, invent, or fill in results
 - Only accept GitHub URLs and enforce a maximum repo size
 - Respect free-tier limits: Render 512 MB RAM, Atlas 512 MB storage, Gemini free-tier rate limits
@@ -43,33 +49,46 @@ Phase 1: search engine as plain Python scripts in `retrieval/`, run from the ter
 - No inline comments; code should explain itself through naming and small functions
 - Type hints in Python
 - Tests with pytest for `retrieval/` and `eval/`, and Jest for `api/`
+- Line numbers shown to users are 1-indexed; Tree-sitter rows are 0-indexed, so convert in one place
+
 
 ## How to work with me
 - Propose a plan before writing code for any non-trivial task, and wait for my approval
 - One feature per task; keep changes small and reviewable
 - For core pieces (chunker, rank fusion, reranking, Merkle tree, cache invalidation, evaluation), explain the approach and trade-offs in plain terms before implementing, so I can explain them in interviews
 - After each change, tell me which tests to run and suggest a commit message
-- Update the "Current phase" section when a phase is complete
+- Never add "Generated with Claude Code", "Co-Authored-By: Claude", or any similar attribution to commits or pull requests
+- Update the "Current phase" section when a task or phase is complete
+- Flag any deviation from an approved plan instead of changing course silently
 
 ## Roadmap
 1. Search engine as Python scripts
 2. Evaluation
 3. Flask API
 4. Node API and MongoDB
-5. React frontend
+5. React frontend, including an auto-generated repo overview page with a Mermaid architecture diagram
 6. Incremental re-indexing
 7. Docker, CI/CD, deployment
 8. Polish
-
+## Later, if time allows
+- Agentic search fallback using grep and file-read tools when retrieval confidence is low
+- MCP server exposing search to Claude Code and Cursor
+- Repo map of key files and functions, ranked by how often they are referenced
 ## Commands
+- Python: 3.12 specifically (Homebrew, `/opt/homebrew/bin/python3.12`), for wheel coverage on ML dependencies
 - Activate environment: `source retrieval/.venv/bin/activate`
-- Run tests: `pytest retrieval/tests`
+- Unit tests (offline, no credentials): `pytest retrieval/tests`
+- Integration tests (real services): `pytest retrieval/tests -m integration`
+- Lint: `ruff check retrieval`
+- Connection check: `python retrieval/scripts/check_connections.py`
 
 ## Environment variables
 - `GEMINI_API_KEY`
 - `MONGODB_URI`
-
+- Add new names here as each phase needs them
 ## Paths
+- Package: src-layout at `retrieval/src/retrieval/`, imported as `retrieval`
+- Tests: `retrieval/tests/`; scripts: `retrieval/scripts/`
 - Cloned repositories go in `data/repos/`, which is gitignored
 - Demo repository: pallets/flask
 

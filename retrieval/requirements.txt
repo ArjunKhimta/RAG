@@ -1,0 +1,5 @@
+google-genai==2.25.0
+pymongo==4.18.2
+python-dotenv==1.2.3
+tree-sitter==0.26.0
+tree-sitter-python==0.25.0
