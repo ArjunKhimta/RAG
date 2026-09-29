@@ -34,7 +34,8 @@ A full-stack code search engine. Users sign in with GitHub, import a repository,
 ## Current phase
 Phase 1: search engine as plain Python scripts in `retrieval/`, run from the terminal. No web layer yet.
 Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test, shared parser (`parsing.py`), Tree-sitter chunker (`chunker.py`), GitHub URL validation and shallow cloning of public, openly licensed, size-checked repositories with git isolated from personal settings (`github_urls.py`, `licenses.py`, `repository_cloner.py`).
-Next: repository walker (`.py` files, 300 KB file cap, symlinks skipped, `is_test_file` flag on chunks) and `scripts/chunk_repository.py` printing chunk-size statistics.
+Also done: repository walker with `is_test_file` flag (`repository_walker.py`), chunk statistics (`chunk_statistics.py`, `scripts/chunk_repository.py`). Flask 3.1.3: 83 files, 1,009 chunks (475 source, 534 test), 11 definitions split, none over 4,000 characters.
+Next: scan chunks for secrets and redact them before embedding; then embeddings (batches, content-hash cache, MongoDB Atlas).
 ## Rules
 - Never execute code from cloned repositories; only read it
 - Never read, print, or edit `.env` files; reference variables by name only

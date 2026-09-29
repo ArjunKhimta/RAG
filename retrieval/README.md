@@ -34,8 +34,11 @@ src/retrieval/
     github_urls.py         accepts only https://github.com/<owner>/<repo> URLs
     licenses.py            allowed licenses: OSI-approved SPDX IDs plus CC0-1.0
     repository_cloner.py   public, licensed, size-checked shallow clones into data/repos/
+    repository_walker.py   finds Python files in a checkout and chunks them, flagging test files
+    chunk_statistics.py    chunk counts, size percentiles, and split counts
 scripts/
     check_connections.py   command line entry point for those checks
+    chunk_repository.py    clones a repository at a version and prints chunk statistics
 tests/
 ```
 
@@ -50,6 +53,16 @@ when both succeed, 1 otherwise. Credentials never appear in the output: every de
 through `redaction.redact`, which removes registered secret values and strips `user:password@`
 out of any URI. This matters because driver and HTTP errors routinely quote the connection URI
 or the API key back at you.
+
+## Chunking a repository
+
+```bash
+python retrieval/scripts/chunk_repository.py https://github.com/pallets/flask --version 3.1.3
+```
+
+Clones into `data/repos/pallets/flask/3.1.3/` (or reuses that clone), chunks every Python file,
+and prints file and chunk counts split by source and test code, chunk-size percentiles, split
+definitions, the largest chunks, and the time each stage took. Nothing is written to MongoDB.
 
 ## Tests
 

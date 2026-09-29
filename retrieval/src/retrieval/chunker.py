@@ -61,6 +61,7 @@ class CodeChunk:
 
     `start_line` and `end_line` are 1-indexed and inclusive. `signature` is set only on the second
     and later parts of a split definition, whose text does not include the definition's header.
+    `is_test_file` is set by the repository walker, which knows the file's place in the repository.
     """
 
     file_path: str
@@ -74,6 +75,7 @@ class CodeChunk:
     signature: str | None = None
     part_number: int = 1
     part_count: int = 1
+    is_test_file: bool = False
 
 
 @dataclass(frozen=True)
