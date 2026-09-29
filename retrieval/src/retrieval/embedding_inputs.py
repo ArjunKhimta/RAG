@@ -1,4 +1,5 @@
-"""The exact text sent to the embedding model for a chunk, its cache key, and a token estimate.
+"""The exact text sent to the embedding model for a chunk or question, its cache key, and a
+token estimate.
 
 The input is a short header naming the file and the definition, then the chunk's text. The header
 puts the location and name into the vector, so a question about Flask's dispatching can match a
@@ -7,6 +8,10 @@ signature, which their own text lacks.
 
 The cache key is a SHA-256 hash of the model, dimensions, task type, and input text. Changing any
 of them, including the header format, produces a different key, so a stale vector is never reused.
+Chunks and questions share the recipe; their task types differ, so their keys never collide.
+
+A question is cleaned by collapsing runs of whitespace into single spaces and nothing more. Case is
+kept, because `Flask` and `flask`, or `URL` and `url`, can name different things in code.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ import json
 import math
 
 from retrieval.chunker import ChunkKind, CodeChunk
-from retrieval.embedders import DocumentEmbedder
+from retrieval.embedders import EmbeddingIdentity
 
 ASCII_CHARACTERS_PER_TOKEN = 3
 
@@ -37,7 +42,11 @@ def build_embedding_input(chunk: CodeChunk) -> str:
     return "\n".join([*header_lines, chunk.text])
 
 
-def compute_embedding_key(embedder: DocumentEmbedder, input_text: str) -> str:
+def normalize_question(question: str) -> str:
+    return " ".join(question.split())
+
+
+def compute_embedding_key(embedder: EmbeddingIdentity, input_text: str) -> str:
     """Hash everything that determines the vector; JSON keeps the four parts unambiguous."""
     key_parts = [embedder.model_id, embedder.dimensions, embedder.task_type, input_text]
     serialized_parts = json.dumps(key_parts, ensure_ascii=False)

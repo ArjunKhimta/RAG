@@ -50,6 +50,8 @@ DEFAULT_SEARCH_LIMIT = 10
 
 MAX_SEARCH_LIMIT = 100
 
+QUERY_EMBEDDING_TTL_SECONDS = 30 * 24 * 60 * 60
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""

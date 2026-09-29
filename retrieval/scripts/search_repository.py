@@ -9,10 +9,11 @@ Options: `--limit N` (default 10), `--exclude-tests` to leave out chunks from te
 `--exact` to compare the query with every chunk instead of searching approximately.
 
 Refuses to search a version that has not finished indexing or was embedded with a different
-model. Each search spends one embedding request from the daily quota. Prints the license, then
-each result's score, file, 1-indexed line range, name, and one line of code, then the time for each
-stage. Exits 0 on success and 1 on any refusal or failure. Every printed line passes through the
-redaction module.
+model. Question embeddings are cached in MongoDB, so only a question not asked before spends an
+embedding request from the daily quota. Prints the license, whether the question's embedding came
+from the cache, each result's score, file, 1-indexed line range, name, and one line of code, then
+the time for each stage. Exits 0 on success and 1 on any refusal or failure. Every printed line
+passes through the redaction module.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from retrieval.config import (
     load_environment,
 )
 from retrieval.embedders import EmbeddingRequestError, GeminiQueryEmbedder
+from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
 from retrieval.redaction import redact
 from retrieval.vector_search import (
     SearchOptions,
@@ -64,7 +66,11 @@ def main() -> int:
         database = mongo_client[MONGODB_DATABASE]
         store = MongoChunkStore(database)
         chunks_collection = database[CHUNKS_COLLECTION]
-        embedder = GeminiQueryEmbedder(build_gemini_client())
+        query_embedding_store = MongoQueryEmbeddingStore(database)
+        query_embedding_store.ensure_indexes()
+        embedder = CachingQueryEmbedder(
+            GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
+        )
         repository_record = store.find_repository_record(arguments.repository, arguments.version)
         require_searchable_version(
             repository_record, arguments.repository, arguments.version, embedder
@@ -95,6 +101,7 @@ def main() -> int:
         f"({commit_id}, {repository_record['license_spdx_id']})",
         f"Question    {arguments.question}",
         f"Search      {_describe_search(options)}",
+        f"Embedding   {_describe_cache_use(embedder)}",
         "",
         *_result_lines(results),
         "",
@@ -150,6 +157,12 @@ def _describe_search(options: SearchOptions) -> str:
         method = f"vector, approximate ({options.candidate_count} candidates)"
     tests = "test files excluded" if options.exclude_tests else "test files included"
     return f"{method}, top {options.limit}, {tests}"
+
+
+def _describe_cache_use(embedder: CachingQueryEmbedder) -> str:
+    if embedder.hit_count:
+        return "question embedding from the cache (0 requests)"
+    return "question embedded and cached (1 request)"
 
 
 def _result_lines(results: list[SearchResult]) -> list[str]:

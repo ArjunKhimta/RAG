@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from retrieval.chunker import ChunkKind, CodeChunk
-from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
+from retrieval.embedding_inputs import (
+    build_embedding_input,
+    compute_embedding_key,
+    estimate_tokens,
+    normalize_question,
+)
 
 METHOD_CHUNK = CodeChunk(
     file_path="src/flask/app.py",
@@ -78,6 +83,14 @@ def test_the_key_changes_when_the_model_dimensions_task_or_text_change():
 
     assert base_key not in changed_keys
     assert len(set(changed_keys)) == len(changed_keys)
+
+
+def test_a_question_has_whitespace_runs_collapsed_and_ends_trimmed():
+    assert normalize_question("  How are\n\troutes   registered? ") == "How are routes registered?"
+
+
+def test_a_question_keeps_its_case_and_punctuation():
+    assert normalize_question("What does Flask.run() do?") == "What does Flask.run() do?"
 
 
 def test_token_estimates_are_pessimistic_for_ascii_and_other_scripts():

@@ -69,11 +69,15 @@ class EmbeddingRequestError(RuntimeError):
         return self.status_code in RETRYABLE_STATUS_CODES and not self.is_daily_quota_exhausted
 
 
-class DocumentEmbedder(Protocol):
+class EmbeddingIdentity(Protocol):
+    """Everything besides the input text that determines a vector, and so belongs in a cache key."""
+
     model_id: str
     dimensions: int
     task_type: str
 
+
+class DocumentEmbedder(EmbeddingIdentity, Protocol):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Return one unit-length vector per text, in order."""
         ...
@@ -83,11 +87,7 @@ class DocumentEmbedder(Protocol):
         ...
 
 
-class QueryEmbedder(Protocol):
-    model_id: str
-    dimensions: int
-    task_type: str
-
+class QueryEmbedder(EmbeddingIdentity, Protocol):
     def embed_query(self, question: str) -> list[float]:
         """Return one unit-length vector for a search question."""
         ...
