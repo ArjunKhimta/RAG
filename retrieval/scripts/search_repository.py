@@ -1,19 +1,23 @@
-"""Search an indexed repository version with a plain-English question, using vector search.
+"""Search an indexed repository version by vector search or by BM25 keyword search.
 
 Run from the repository root with the virtual environment active:
 
     python retrieval/scripts/search_repository.py "How are URL rules registered?" \
         --repository pallets/flask --version 3.1.3
 
-Options: `--limit N` (default 10), `--exclude-tests` to leave out chunks from test files, and
-`--exact` to compare the query with every chunk instead of searching approximately.
+    python retrieval/scripts/search_repository.py add_url_rule --mode keyword \
+        --repository pallets/flask --version 3.1.3
 
-Refuses to search a version that has not finished indexing or was embedded with a different
-model. Question embeddings are cached in MongoDB, so only a question not asked before spends an
-embedding request from the daily quota. Prints the license, whether the question's embedding came
-from the cache, each result's score, file, 1-indexed line range, name, and one line of code, then
-the time for each stage. Exits 0 on success and 1 on any refusal or failure. Every printed line
-passes through the redaction module.
+Options: `--mode vector` (default) or `--mode keyword`, `--limit N` (default 10), and
+`--exclude-tests` to leave out chunks from test files. `--exact`, for vector mode only, compares
+the question with every chunk instead of searching approximately.
+
+Refuses to search a version that has not finished indexing, and in vector mode one that was
+embedded with a different model. Question embeddings are cached in MongoDB, so only a question
+not asked before spends an embedding request from the daily quota; keyword mode spends none.
+Prints the license, the search used, each result's score, file, 1-indexed line range, name, and one
+line of code, then the time for each stage. Exits 0 on success and 1 on any refusal or failure.
+Every printed line passes through the redaction module.
 """
 
 from __future__ import annotations
@@ -21,29 +25,35 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import dataclass
+from typing import Any
 
+from pymongo.collection import Collection
+from pymongo.database import Database
 from pymongo.errors import PyMongoError
 
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
     DEFAULT_SEARCH_LIMIT,
+    KEYWORD_INDEX_NAME,
     MAX_SEARCH_LIMIT,
     MONGODB_DATABASE,
+    VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
 )
 from retrieval.embedders import EmbeddingRequestError, GeminiQueryEmbedder
+from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
 from retrieval.redaction import redact
-from retrieval.vector_search import (
-    SearchOptions,
-    SearchRefusedError,
-    SearchResult,
-    require_queryable_index,
-    require_searchable_version,
-    search_chunks,
-)
+from retrieval.search_indexes import require_queryable_index
+from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
+from retrieval.vector_search import SearchOptions, require_searchable_version, search_chunks
+
+VECTOR_MODE = "vector"
+
+KEYWORD_MODE = "keyword"
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -54,36 +64,30 @@ MAX_CODE_LINE_LENGTH = 100
 LABEL_WIDTH = 28
 
 
+@dataclass(frozen=True)
+class SearchRun:
+    description: str
+    results: list[SearchResult]
+    timings: dict[str, float]
+    embedding_status: str | None = None
+
+
 def main() -> int:
     arguments = _parse_arguments()
-    options = SearchOptions(
-        limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
-    )
     load_environment()
-    timings: dict[str, float] = {}
     try:
         mongo_client = build_mongo_client()
         database = mongo_client[MONGODB_DATABASE]
-        store = MongoChunkStore(database)
         chunks_collection = database[CHUNKS_COLLECTION]
-        query_embedding_store = MongoQueryEmbeddingStore(database)
-        query_embedding_store.ensure_indexes()
-        embedder = CachingQueryEmbedder(
-            GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
-        )
+        store = MongoChunkStore(database)
         repository_record = store.find_repository_record(arguments.repository, arguments.version)
-        require_searchable_version(
-            repository_record, arguments.repository, arguments.version, embedder
-        )
-        require_queryable_index(chunks_collection)
-        stage_started = time.perf_counter()
-        query_vector = embedder.embed_query(arguments.question)
-        timings["embed query"] = _milliseconds_since(stage_started)
-        stage_started = time.perf_counter()
-        results = search_chunks(
-            chunks_collection, query_vector, arguments.repository, arguments.version, options
-        )
-        timings["vector search"] = _milliseconds_since(stage_started)
+        require_indexed_version(repository_record, arguments.repository, arguments.version)
+        if arguments.mode == VECTOR_MODE:
+            search_run = _run_vector_search(
+                arguments, database, chunks_collection, repository_record
+            )
+        else:
+            search_run = _run_keyword_search(arguments, chunks_collection)
     except SearchRefusedError as error:
         _print(f"Refused: {error}")
         return 1
@@ -96,28 +100,95 @@ def main() -> int:
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
     commit_id = repository_record["commit_id"][:COMMIT_ID_DISPLAY_LENGTH]
-    report_lines = [
+    header_lines = [
         f"Repository  {arguments.repository} at {arguments.version} "
         f"({commit_id}, {repository_record['license_spdx_id']})",
-        f"Question    {arguments.question}",
-        f"Search      {_describe_search(options)}",
-        f"Embedding   {_describe_cache_use(embedder)}",
+        f"Query       {arguments.query}",
+        f"Search      {search_run.description}",
+    ]
+    if search_run.embedding_status is not None:
+        header_lines.append(f"Embedding   {search_run.embedding_status}")
+    timing_lines = [
+        _row(stage, f"{milliseconds:.0f} ms") for stage, milliseconds in search_run.timings.items()
+    ]
+    report_lines = [
+        *header_lines,
         "",
-        *_result_lines(results),
+        *_result_lines(search_run.results),
         "",
         "Timing",
-        *[_row(stage, f"{milliseconds:.0f} ms") for stage, milliseconds in timings.items()],
+        *timing_lines,
     ]
     for line in report_lines:
         _print(line)
     return 0
 
 
+def _run_vector_search(
+    arguments: argparse.Namespace,
+    database: Database,
+    chunks_collection: Collection,
+    repository_record: dict[str, Any],
+) -> SearchRun:
+    options = SearchOptions(
+        limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
+    )
+    query_embedding_store = MongoQueryEmbeddingStore(database)
+    query_embedding_store.ensure_indexes()
+    embedder = CachingQueryEmbedder(
+        GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
+    )
+    require_searchable_version(repository_record, arguments.repository, arguments.version, embedder)
+    require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
+    timings: dict[str, float] = {}
+    stage_started = time.perf_counter()
+    query_vector = embedder.embed_query(arguments.query)
+    timings["embed query"] = _milliseconds_since(stage_started)
+    stage_started = time.perf_counter()
+    results = search_chunks(
+        chunks_collection, query_vector, arguments.repository, arguments.version, options
+    )
+    timings["vector search"] = _milliseconds_since(stage_started)
+    if options.exact:
+        method = "vector, exact"
+    else:
+        method = f"vector, approximate ({options.candidate_count} candidates)"
+    return SearchRun(
+        description=_describe_search(method, options.limit, options.exclude_tests),
+        results=results,
+        timings=timings,
+        embedding_status=_describe_cache_use(embedder),
+    )
+
+
+def _run_keyword_search(arguments: argparse.Namespace, chunks_collection: Collection) -> SearchRun:
+    options = KeywordSearchOptions(limit=arguments.limit, exclude_tests=arguments.exclude_tests)
+    require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
+    stage_started = time.perf_counter()
+    results = search_chunks_by_keywords(
+        chunks_collection, arguments.query, arguments.repository, arguments.version, options
+    )
+    timings = {"keyword search": _milliseconds_since(stage_started)}
+    return SearchRun(
+        description=_describe_search("keyword, BM25", options.limit, options.exclude_tests),
+        results=results,
+        timings=timings,
+    )
+
+
 def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("question", type=_non_blank_question, help="plain-English question")
+    parser.add_argument(
+        "query", type=_non_blank_query, help="plain-English question, or keywords such as a name"
+    )
     parser.add_argument("--repository", required=True, help="<owner>/<repo>, as indexed")
     parser.add_argument("--version", required=True, help="the indexed tag, branch, or commit ID")
+    parser.add_argument(
+        "--mode",
+        choices=[VECTOR_MODE, KEYWORD_MODE],
+        default=VECTOR_MODE,
+        help=f"search method (default {VECTOR_MODE})",
+    )
     parser.add_argument(
         "--limit",
         type=_search_limit,
@@ -128,16 +199,21 @@ def _parse_arguments() -> argparse.Namespace:
         "--exclude-tests", action="store_true", help="leave out chunks from test files"
     )
     parser.add_argument(
-        "--exact", action="store_true", help="compare with every chunk instead of approximately"
+        "--exact",
+        action="store_true",
+        help="vector mode only: compare with every chunk instead of approximately",
     )
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if arguments.exact and arguments.mode != VECTOR_MODE:
+        parser.error("--exact applies only to --mode vector")
+    return arguments
 
 
-def _non_blank_question(value: str) -> str:
-    question = value.strip()
-    if not question:
-        raise argparse.ArgumentTypeError("the question must not be blank")
-    return question
+def _non_blank_query(value: str) -> str:
+    query = value.strip()
+    if not query:
+        raise argparse.ArgumentTypeError("the query must not be blank")
+    return query
 
 
 def _search_limit(value: str) -> int:
@@ -150,13 +226,9 @@ def _search_limit(value: str) -> int:
     return limit
 
 
-def _describe_search(options: SearchOptions) -> str:
-    if options.exact:
-        method = "vector, exact"
-    else:
-        method = f"vector, approximate ({options.candidate_count} candidates)"
-    tests = "test files excluded" if options.exclude_tests else "test files included"
-    return f"{method}, top {options.limit}, {tests}"
+def _describe_search(method: str, limit: int, exclude_tests: bool) -> str:
+    tests = "test files excluded" if exclude_tests else "test files included"
+    return f"{method}, top {limit}, {tests}"
 
 
 def _describe_cache_use(embedder: CachingQueryEmbedder) -> str:

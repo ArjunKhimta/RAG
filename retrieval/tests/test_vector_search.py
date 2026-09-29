@@ -5,16 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from retrieval.config import MAX_SEARCH_LIMIT, VECTOR_INDEX_NAME
+from retrieval.search_results import SearchRefusedError
 from retrieval.vector_search import (
     SearchOptions,
-    SearchRefusedError,
-    VectorIndexChange,
     build_vector_search_pipeline,
-    ensure_vector_index,
-    require_queryable_index,
     require_searchable_version,
     search_chunks,
-    vector_index_definition,
 )
 
 QUERY_VECTOR = [0.6, 0.8]
@@ -46,21 +42,9 @@ RESULT_DOCUMENT = {
 
 
 class FakeChunksCollection:
-    def __init__(self, search_indexes=None, documents=None):
-        self.search_indexes = search_indexes or []
+    def __init__(self, documents=None):
         self.documents = documents or []
-        self.created_models = []
-        self.updated_definitions = []
         self.pipelines = []
-
-    def list_search_indexes(self, name):
-        return [index for index in self.search_indexes if index["name"] == name]
-
-    def create_search_index(self, model):
-        self.created_models.append(model)
-
-    def update_search_index(self, name, definition):
-        self.updated_definitions.append((name, definition))
 
     def aggregate(self, pipeline):
         self.pipelines.append(pipeline)
@@ -70,81 +54,6 @@ class FakeChunksCollection:
 def _search_stage(options: SearchOptions) -> dict:
     pipeline = build_vector_search_pipeline(QUERY_VECTOR, "pallets/flask", "3.1.3", options)
     return pipeline[0]["$vectorSearch"]
-
-
-def test_the_index_covers_the_embedding_with_dot_product_and_declares_the_filter_fields():
-    definition = vector_index_definition(768)
-
-    vector_field, *filter_fields = definition["fields"]
-    assert vector_field == {
-        "type": "vector",
-        "path": "embedding",
-        "numDimensions": 768,
-        "similarity": "dotProduct",
-    }
-    assert [field["path"] for field in filter_fields] == ["repository", "version", "is_test_file"]
-    assert all(field["type"] == "filter" for field in filter_fields)
-
-
-def test_a_missing_index_is_created_as_a_vector_search_index():
-    collection = FakeChunksCollection()
-
-    change = ensure_vector_index(collection, 768)
-
-    created_document = collection.created_models[0].document
-    assert change == VectorIndexChange.CREATED
-    assert created_document["name"] == VECTOR_INDEX_NAME
-    assert created_document["type"] == "vectorSearch"
-    assert created_document["definition"] == vector_index_definition(768)
-
-
-def test_an_index_with_the_same_fields_is_left_alone_despite_atlas_defaults():
-    stored_definition = vector_index_definition(768)
-    stored_definition["fields"][0]["quantization"] = "none"
-    collection = FakeChunksCollection(
-        search_indexes=[{"name": VECTOR_INDEX_NAME, "latestDefinition": stored_definition}]
-    )
-
-    change = ensure_vector_index(collection, 768)
-
-    assert change == VectorIndexChange.UNCHANGED
-    assert collection.created_models == []
-    assert collection.updated_definitions == []
-
-
-def test_an_index_with_different_dimensions_is_updated():
-    collection = FakeChunksCollection(
-        search_indexes=[
-            {"name": VECTOR_INDEX_NAME, "latestDefinition": vector_index_definition(3072)}
-        ]
-    )
-
-    change = ensure_vector_index(collection, 768)
-
-    assert change == VectorIndexChange.UPDATED
-    assert collection.updated_definitions == [(VECTOR_INDEX_NAME, vector_index_definition(768))]
-
-
-def test_searching_is_refused_without_an_index():
-    with pytest.raises(SearchRefusedError, match="does not exist"):
-        require_queryable_index(FakeChunksCollection())
-
-
-def test_searching_is_refused_while_the_index_is_building():
-    collection = FakeChunksCollection(
-        search_indexes=[{"name": VECTOR_INDEX_NAME, "queryable": False, "status": "PENDING"}]
-    )
-
-    with pytest.raises(SearchRefusedError, match="still building"):
-        require_queryable_index(collection)
-
-
-def test_a_queryable_index_is_accepted():
-    collection = FakeChunksCollection(
-        search_indexes=[{"name": VECTOR_INDEX_NAME, "queryable": True, "status": "READY"}]
-    )
-
-    require_queryable_index(collection)
 
 
 def test_searching_is_refused_until_the_version_has_finished_indexing():
