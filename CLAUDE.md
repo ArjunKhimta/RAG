@@ -36,7 +36,8 @@ Phase 1: search engine as plain Python scripts in `retrieval/`, run from the ter
 Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test, shared parser (`parsing.py`), Tree-sitter chunker (`chunker.py`), GitHub URL validation and shallow cloning of public, openly licensed, size-checked repositories with git isolated from personal settings (`github_urls.py`, `licenses.py`, `repository_cloner.py`).
 Also done: repository walker with `is_test_file` flag (`repository_walker.py`), chunk statistics (`chunk_statistics.py`, `scripts/chunk_repository.py`). Flask 3.1.3: 83 files, 1,009 chunks (475 source, 534 test), 11 definitions split, none over 4,000 characters.
 Also done: secret scanning with `detect-secrets`, redacting only inside strings and comments before chunking, failing closed on unscannable files (`secret_scanning.py`). Flask 3.1.3: 11 findings in 6 files, chunk structure unchanged.
-Next: embeddings (batches, content-hash cache, MongoDB Atlas).
+In progress: embeddings. Code done (`embedding_inputs.py`, `embedders.py`, `rate_limiter.py`, `chunk_store.py`, `indexer.py`, `scripts/index_repository.py`): gemini-embedding-001 at 768 dimensions, normalized, content-hash cache in the `chunks` collection, binary float32 vectors. Flask 3.1.3: 831 of 1,009 chunks stored before the daily quota ran out; re-run the script after the reset to embed the remaining ~170 inputs from the cache, then confirm a second run makes 0 requests.
+Next: vector search (Atlas vector index on `chunks.embedding`, query with `CODE_RETRIEVAL_QUERY`).
 ## Rules
 - Never execute code from cloned repositories; only read it
 - Never read, print, or edit `.env` files; reference variables by name only
@@ -44,6 +45,7 @@ Next: embeddings (batches, content-hash cache, MongoDB Atlas).
 - Evaluation numbers must come from real runs; never estimate, invent, or fill in results
 - Only accept GitHub URLs and enforce a maximum repo size
 - Respect free-tier limits: Render 512 MB RAM, Atlas 512 MB storage, Gemini free-tier rate limits
+- Gemini embedding free tier counts every text in a batch as one request: 100 per minute, 1,000 per day, 30,000 tokens per minute; daily limits reset at midnight Pacific time
 - Development machine is an M2 MacBook Air with 8 GB RAM and limited disk space; prefer lightweight local models and avoid large downloads without asking
 - Index public repositories only; clone without a GitHub token and check the API's private field
 - Accept only repositories with a recognised open-source license; show the license with every answer

@@ -37,9 +37,15 @@ src/retrieval/
     repository_walker.py   finds Python files in a checkout and chunks them, flagging test files
     chunk_statistics.py    chunk counts, size percentiles, and split counts
     secret_scanning.py     finds secrets and redacts them inside strings and comments
+    embedding_inputs.py    the text embedded for each chunk, its cache key, a token estimate
+    embedders.py           embedder interface and the Gemini implementation
+    rate_limiter.py        sliding-window limit on requests and tokens per minute
+    chunk_store.py         chunks and repository versions in MongoDB, vectors as binary float32
+    indexer.py             embeds with caching, batching, retries; writes each batch to Atlas
 scripts/
     check_connections.py   command line entry point for those checks
     chunk_repository.py    clones a repository at a version and prints chunk statistics
+    index_repository.py    clones, chunks, embeds, and stores a repository version in Atlas
 tests/
 ```
 
@@ -70,6 +76,19 @@ MongoDB.
 Redaction only ever changes string contents and comments, never code, and never adds or removes
 a line, so chunk boundaries and line numbers are the same as without it. A file that cannot be
 scanned reliably is skipped rather than indexed unscanned.
+
+## Indexing a repository
+
+```bash
+python retrieval/scripts/index_repository.py https://github.com/pallets/flask --version 3.1.3
+```
+
+Embeds every chunk with `gemini-embedding-001` (768 dimensions, normalized) and stores it in the
+`code_search` database. Embeddings are cached by a hash of the model, dimensions, task type, and
+input text, using the `chunks` collection itself as the cache, so a second run for the same
+version makes no embedding requests. Requests stay under the free-tier limits in `config.py`
+(100 requests and 30,000 tokens per minute, from the AI Studio dashboard). The 1,000 requests
+per day are not tracked across runs; hitting them stops the run, and the cache keeps its progress.
 
 ## Tests
 

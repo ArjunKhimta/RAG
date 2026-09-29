@@ -30,6 +30,18 @@ GEMINI_API_KEY_VARIABLE = "GEMINI_API_KEY"
 
 GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
 
+EMBEDDING_DIMENSIONS = 768
+
+EMBEDDING_INPUT_TOKEN_LIMIT = 2048
+
+EMBEDDING_BATCH_SIZE = 100
+
+EMBEDDING_REQUESTS_PER_MINUTE = 100
+
+EMBEDDING_TOKENS_PER_MINUTE = 30_000
+
+MONGODB_DATABASE = "code_search"
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""

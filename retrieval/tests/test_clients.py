@@ -48,7 +48,7 @@ def test_mongo_client_fails_fast_instead_of_using_the_driver_default(monkeypatch
     configured_timeout = client.keyword_arguments["serverSelectionTimeoutMS"]
 
     assert configured_timeout == clients.SERVER_SELECTION_TIMEOUT_MS
-    assert clients.SERVER_SELECTION_TIMEOUT_MS == 5000
+    assert clients.SERVER_SELECTION_TIMEOUT_MS == 20000
 
 
 def test_mongo_client_raises_when_the_uri_is_missing(monkeypatch):

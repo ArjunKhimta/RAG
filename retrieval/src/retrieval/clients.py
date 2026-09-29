@@ -11,14 +11,15 @@ from retrieval.config import (
     get_required_env,
 )
 
-SERVER_SELECTION_TIMEOUT_MS = 5000
+SERVER_SELECTION_TIMEOUT_MS = 20000
 
 
 def build_mongo_client() -> MongoClient:
-    """Return a MongoDB client that gives up quickly when the cluster is unreachable.
+    """Return a MongoDB client that gives up within twenty seconds when the cluster is unreachable.
 
     The driver default is thirty seconds, which turns a typo in the connection URI into a long
-    unexplained pause. Five seconds is enough for an Atlas handshake over a normal connection.
+    unexplained pause. Five seconds was too short: a free-tier Atlas cluster took about eleven
+    seconds to answer after being idle.
     """
     connection_uri = get_required_env(MONGODB_URI_VARIABLE)
     return MongoClient(connection_uri, serverSelectionTimeoutMS=SERVER_SELECTION_TIMEOUT_MS)
