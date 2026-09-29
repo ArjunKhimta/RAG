@@ -1,4 +1,4 @@
-"""Search an indexed repository version by vector search or by BM25 keyword search.
+"""Search an indexed repository version by vector, BM25 keyword, or hybrid search.
 
 Run from the repository root with the virtual environment active:
 
@@ -8,16 +8,17 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/search_repository.py add_url_rule --mode keyword \
         --repository pallets/flask --version 3.1.3
 
-Options: `--mode vector` (default) or `--mode keyword`, `--limit N` (default 10), and
-`--exclude-tests` to leave out chunks from test files. `--exact`, for vector mode only, compares
-the question with every chunk instead of searching approximately.
+Options: `--mode vector` (default), `--mode keyword`, or `--mode hybrid`, which fuses both result
+lists with Reciprocal Rank Fusion and shows each result's rank in each list. `--limit N` (default
+10), and `--exclude-tests` to leave out chunks from test files. `--exact`, for vector and hybrid
+modes, compares the question with every chunk instead of searching approximately.
 
-Refuses to search a version that has not finished indexing, and in vector mode one that was
-embedded with a different model. Question embeddings are cached in MongoDB, so only a question
-not asked before spends an embedding request from the daily quota; keyword mode spends none.
-Prints the license, the search used, each result's score, file, 1-indexed line range, name, and one
-line of code, then the time for each stage. Exits 0 on success and 1 on any refusal or failure.
-Every printed line passes through the redaction module.
+Refuses to search a version that has not finished indexing, and in vector and hybrid modes one
+that was embedded with a different model. Question embeddings are cached in MongoDB, so only a
+question not asked before spends an embedding request from the daily quota; keyword mode spends
+none. Prints the license, the search used, each result's score, file, 1-indexed line range, name,
+and one line of code, then the time for each stage. Exits 0 on success and 1 on any refusal or
+failure. Every printed line passes through the redaction module.
 """
 
 from __future__ import annotations
@@ -44,8 +45,10 @@ from retrieval.config import (
     load_environment,
 )
 from retrieval.embedders import EmbeddingRequestError, GeminiQueryEmbedder
+from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.rank_fusion import FusedResult
 from retrieval.redaction import redact
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
@@ -54,6 +57,8 @@ from retrieval.vector_search import SearchOptions, require_searchable_version, s
 VECTOR_MODE = "vector"
 
 KEYWORD_MODE = "keyword"
+
+HYBRID_MODE = "hybrid"
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -65,9 +70,16 @@ LABEL_WIDTH = 28
 
 
 @dataclass(frozen=True)
+class DisplayedResult:
+    score: float
+    result: SearchResult
+    rank_note: str | None = None
+
+
+@dataclass(frozen=True)
 class SearchRun:
     description: str
-    results: list[SearchResult]
+    results: list[DisplayedResult]
     timings: dict[str, float]
     embedding_status: str | None = None
 
@@ -84,6 +96,10 @@ def main() -> int:
         require_indexed_version(repository_record, arguments.repository, arguments.version)
         if arguments.mode == VECTOR_MODE:
             search_run = _run_vector_search(
+                arguments, database, chunks_collection, repository_record
+            )
+        elif arguments.mode == HYBRID_MODE:
+            search_run = _run_hybrid_search(
                 arguments, database, chunks_collection, repository_record
             )
         else:
@@ -133,12 +149,7 @@ def _run_vector_search(
     options = SearchOptions(
         limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
     )
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
-    embedder = CachingQueryEmbedder(
-        GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
-    )
-    require_searchable_version(repository_record, arguments.repository, arguments.version, embedder)
+    embedder = _checked_query_embedder(arguments, database, repository_record)
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
     timings: dict[str, float] = {}
     stage_started = time.perf_counter()
@@ -155,10 +166,58 @@ def _run_vector_search(
         method = f"vector, approximate ({options.candidate_count} candidates)"
     return SearchRun(
         description=_describe_search(method, options.limit, options.exclude_tests),
-        results=results,
+        results=[DisplayedResult(result.score, result) for result in results],
         timings=timings,
         embedding_status=_describe_cache_use(embedder),
     )
+
+
+def _run_hybrid_search(
+    arguments: argparse.Namespace,
+    database: Database,
+    chunks_collection: Collection,
+    repository_record: dict[str, Any],
+) -> SearchRun:
+    options = HybridSearchOptions(
+        limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
+    )
+    embedder = _checked_query_embedder(arguments, database, repository_record)
+    require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
+    require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
+    outcome = hybrid_search(
+        chunks_collection,
+        embedder,
+        arguments.query,
+        arguments.repository,
+        arguments.version,
+        options,
+    )
+    vector_method = "exact" if options.exact else "approximate"
+    method = (
+        f"hybrid, RRF of {vector_method} vector and BM25 keyword "
+        f"({options.candidate_depth} candidates each)"
+    )
+    return SearchRun(
+        description=_describe_search(method, options.limit, options.exclude_tests),
+        results=[
+            DisplayedResult(fused.fused_score, fused.result, _describe_ranks(fused))
+            for fused in outcome.results
+        ],
+        timings=outcome.timings,
+        embedding_status=_describe_cache_use(embedder),
+    )
+
+
+def _checked_query_embedder(
+    arguments: argparse.Namespace, database: Database, repository_record: dict[str, Any]
+) -> CachingQueryEmbedder:
+    query_embedding_store = MongoQueryEmbeddingStore(database)
+    query_embedding_store.ensure_indexes()
+    embedder = CachingQueryEmbedder(
+        GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
+    )
+    require_searchable_version(repository_record, arguments.repository, arguments.version, embedder)
+    return embedder
 
 
 def _run_keyword_search(arguments: argparse.Namespace, chunks_collection: Collection) -> SearchRun:
@@ -171,7 +230,7 @@ def _run_keyword_search(arguments: argparse.Namespace, chunks_collection: Collec
     timings = {"keyword search": _milliseconds_since(stage_started)}
     return SearchRun(
         description=_describe_search("keyword, BM25", options.limit, options.exclude_tests),
-        results=results,
+        results=[DisplayedResult(result.score, result) for result in results],
         timings=timings,
     )
 
@@ -185,7 +244,7 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="the indexed tag, branch, or commit ID")
     parser.add_argument(
         "--mode",
-        choices=[VECTOR_MODE, KEYWORD_MODE],
+        choices=[VECTOR_MODE, KEYWORD_MODE, HYBRID_MODE],
         default=VECTOR_MODE,
         help=f"search method (default {VECTOR_MODE})",
     )
@@ -201,11 +260,11 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--exact",
         action="store_true",
-        help="vector mode only: compare with every chunk instead of approximately",
+        help="vector and hybrid modes: compare with every chunk instead of approximately",
     )
     arguments = parser.parse_args()
-    if arguments.exact and arguments.mode != VECTOR_MODE:
-        parser.error("--exact applies only to --mode vector")
+    if arguments.exact and arguments.mode == KEYWORD_MODE:
+        parser.error("--exact does not apply to --mode keyword")
     return arguments
 
 
@@ -237,13 +296,22 @@ def _describe_cache_use(embedder: CachingQueryEmbedder) -> str:
     return "question embedded and cached (1 request)"
 
 
-def _result_lines(results: list[SearchResult]) -> list[str]:
-    if not results:
+def _describe_ranks(fused: FusedResult) -> str:
+    rank_descriptions = [f"{list_name} #{rank}" for list_name, rank in fused.ranks.items()]
+    if len(rank_descriptions) == 1:
+        return f"{rank_descriptions[0]} only"
+    return ", ".join(rank_descriptions)
+
+
+def _result_lines(displayed_results: list[DisplayedResult]) -> list[str]:
+    if not displayed_results:
         return ["  No results."]
     lines: list[str] = []
-    for rank, result in enumerate(results, start=1):
+    for rank, displayed in enumerate(displayed_results, start=1):
+        result = displayed.result
         location = f"{result.file_path}:{result.start_line}-{result.end_line}"
-        lines.append(f"{rank:>3}. {result.score:.4f}  {location}")
+        rank_note = f"  ({displayed.rank_note})" if displayed.rank_note else ""
+        lines.append(f"{rank:>3}. {displayed.score:.4f}  {location}{rank_note}")
         lines.append(f"      {_describe_definition(result)}")
         lines.append(f"      {_first_code_line(result)}")
     return lines

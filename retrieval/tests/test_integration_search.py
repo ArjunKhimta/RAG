@@ -6,7 +6,7 @@ A free Atlas cluster allows three search indexes, and production already uses tw
 use the production indexes rather than creating their own. Their chunks are stored under a unique
 `integration-test/<random>` repository, which the search filters keep out of real searches, and
 are deleted afterwards; leftovers from an interrupted run are deleted first. Costs eight embedding
-requests: seven chunks and one question.
+requests: seven chunks and one question. Hybrid search reuses that question's vector.
 """
 
 from __future__ import annotations
@@ -28,10 +28,17 @@ from retrieval.config import (
     KEYWORD_INDEX_NAME,
     MONGODB_DATABASE,
     MONGODB_URI_VARIABLE,
+    RRF_K,
     VECTOR_INDEX_NAME,
     load_environment,
 )
 from retrieval.embedders import GeminiDocumentEmbedder, GeminiQueryEmbedder
+from retrieval.hybrid_search import (
+    KEYWORD_LIST,
+    VECTOR_LIST,
+    HybridSearchOptions,
+    hybrid_search,
+)
 from retrieval.indexer import index_chunks
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
 from retrieval.rate_limiter import RateLimiter
@@ -276,6 +283,98 @@ def test_keyword_search_can_exclude_test_file_chunks(searchable_collection, test
     assert any(result.is_test_file for result in included_results)
     assert excluded_results
     assert not any(result.is_test_file for result in excluded_results)
+
+
+def test_hybrid_search_puts_the_chunk_both_searches_rank_first_at_the_top(
+    searchable_collection, test_repository, query_vector
+):
+    outcome = _hybrid_search(searchable_collection, test_repository, query_vector)
+
+    top_result = outcome.results[0]
+    assert top_result.result.qualified_name == "add_numbers"
+    assert top_result.ranks == {VECTOR_LIST: 1, KEYWORD_LIST: 1}
+
+
+def test_hybrid_ranks_match_each_search_run_on_its_own(
+    searchable_collection, test_repository, query_vector
+):
+    depth = HybridSearchOptions().candidate_depth
+    vector_results = search_chunks(
+        searchable_collection,
+        query_vector,
+        test_repository,
+        SEARCHED_VERSION,
+        SearchOptions(limit=depth),
+    )
+    keyword_results = search_chunks_by_keywords(
+        searchable_collection,
+        QUESTION,
+        test_repository,
+        SEARCHED_VERSION,
+        KeywordSearchOptions(limit=depth),
+    )
+
+    outcome = _hybrid_search(searchable_collection, test_repository, query_vector)
+
+    vector_ranks = {result.chunk_id: rank for rank, result in enumerate(vector_results, start=1)}
+    keyword_ranks = {result.chunk_id: rank for rank, result in enumerate(keyword_results, start=1)}
+    for fused in outcome.results:
+        chunk_id = fused.result.chunk_id
+        assert fused.ranks.get(VECTOR_LIST) == vector_ranks.get(chunk_id)
+        assert fused.ranks.get(KEYWORD_LIST) == keyword_ranks.get(chunk_id)
+        expected_score = sum(1 / (RRF_K + rank) for rank in fused.ranks.values())
+        assert fused.fused_score == pytest.approx(expected_score)
+
+
+def test_hybrid_search_keeps_chunks_found_by_only_one_search(
+    searchable_collection, test_repository, query_vector
+):
+    outcome = _hybrid_search(searchable_collection, test_repository, query_vector)
+
+    fused_scores = [fused.fused_score for fused in outcome.results]
+    assert len(outcome.results) == len(CHUNK_SOURCES)
+    assert any(len(fused.ranks) == 1 for fused in outcome.results)
+    assert fused_scores == sorted(fused_scores, reverse=True)
+
+
+def test_hybrid_search_can_exclude_test_file_chunks(
+    searchable_collection, test_repository, query_vector
+):
+    outcome = _hybrid_search(
+        searchable_collection,
+        test_repository,
+        query_vector,
+        HybridSearchOptions(exclude_tests=True),
+    )
+
+    assert outcome.results
+    assert not any(fused.result.is_test_file for fused in outcome.results)
+
+
+class _FixedQueryEmbedder:
+    """Returns the vector already fetched for `QUESTION`, so hybrid tests cost no requests."""
+
+    model_id = "gemini-embedding-001"
+    dimensions = EMBEDDING_DIMENSIONS
+    task_type = "CODE_RETRIEVAL_QUERY"
+
+    def __init__(self, query_vector):
+        self._query_vector = query_vector
+
+    def embed_query(self, question):
+        assert question == QUESTION
+        return self._query_vector
+
+
+def _hybrid_search(collection, repository, query_vector, options=None):
+    return hybrid_search(
+        collection,
+        _FixedQueryEmbedder(query_vector),
+        QUESTION,
+        repository,
+        SEARCHED_VERSION,
+        options or HybridSearchOptions(),
+    )
 
 
 def _keyword_search(collection, repository, query, exclude_tests=False):
