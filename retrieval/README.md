@@ -16,6 +16,9 @@ pip install -e retrieval
 import ...` works from scripts and tests. Dependencies are pinned in `requirements.txt` rather
 than in `pyproject.toml`, so there is one source of truth for versions.
 
+`tree-sitter` is pinned to 0.25.2 because 0.26.0 segfaults when reading line positions from
+large trees. `tests/test_parsing.py` reproduces the crash, so run it before upgrading.
+
 Copy `.env.example` to `.env` and fill in `MONGODB_URI` and `GEMINI_API_KEY`.
 
 ## Layout
@@ -26,6 +29,8 @@ src/retrieval/
     redaction.py           scrubs secrets out of anything about to be displayed
     clients.py             MongoDB and Gemini client constructors
     connection_checks.py   reachability checks for both services
+    parsing.py             shared Tree-sitter parser; the one place rows become 1-indexed lines
+    chunker.py             splits a Python file into function, method, class, and module chunks
 scripts/
     check_connections.py   command line entry point for those checks
 tests/

@@ -33,8 +33,8 @@ A full-stack code search engine. Users sign in with GitHub, import a repository,
 
 ## Current phase
 Phase 1: search engine as plain Python scripts in `retrieval/`, run from the terminal. No web layer yet.
-Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test.
-Next: Tree-sitter chunker in `src/retrieval/`, moving Parser setup out of the smoke test into one shared place.
+Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test, shared parser (`parsing.py`), Tree-sitter chunker (`chunker.py`).
+Next: repository reader: shallow clone of pallets/flask into `data/repos/`, walk `.py` files with a size cap, and a script printing chunk-size statistics.
 ## Rules
 - Never execute code from cloned repositories; only read it
 - Never read, print, or edit `.env` files; reference variables by name only
