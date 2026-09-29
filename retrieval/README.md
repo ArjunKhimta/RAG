@@ -31,6 +31,9 @@ src/retrieval/
     connection_checks.py   reachability checks for both services
     parsing.py             shared Tree-sitter parser; the one place rows become 1-indexed lines
     chunker.py             splits a Python file into function, method, class, and module chunks
+    github_urls.py         accepts only https://github.com/<owner>/<repo> URLs
+    licenses.py            allowed licenses: OSI-approved SPDX IDs plus CC0-1.0
+    repository_cloner.py   public, licensed, size-checked shallow clones into data/repos/
 scripts/
     check_connections.py   command line entry point for those checks
 tests/
