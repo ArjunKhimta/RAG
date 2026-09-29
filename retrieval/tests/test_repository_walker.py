@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from retrieval.chunker import ChunkKind
+from retrieval.redaction import REDACTION_PLACEHOLDER
 from retrieval.repository_walker import (
     SkippedPath,
     SkipReason,
@@ -15,6 +16,8 @@ from retrieval.repository_walker import (
 )
 
 SMALL_SOURCE = "def run():\n    return 1\n"
+
+FAKE_PASSWORD = "Tr0ub4dor" + "&3xyzQ"
 
 
 @pytest.fixture
@@ -99,7 +102,7 @@ def test_a_file_that_is_not_a_regular_file_is_skipped(repository_root):
 def test_chunks_carry_relative_paths_and_the_test_file_flag(repository_root):
     walk_result = find_python_files(repository_root)
 
-    chunks = chunk_source_files(walk_result.files)
+    chunks = chunk_source_files(walk_result.files).chunks
 
     flags_by_path = {chunk.file_path: chunk.is_test_file for chunk in chunks}
     assert flags_by_path == {
@@ -109,6 +112,50 @@ def test_chunks_carry_relative_paths_and_the_test_file_flag(repository_root):
         "tests/test_app.py": True,
     }
     assert all(chunk.kind == ChunkKind.FUNCTION for chunk in chunks)
+
+
+def test_secrets_are_redacted_before_chunking_and_only_covering_chunks_are_marked(
+    repository_root,
+):
+    secret_source = (
+        "def connect():\n"
+        f'    password = "{FAKE_PASSWORD}"\n'
+        "    return password\n"
+        "\n"
+        "\n"
+        "def disconnect():\n"
+        "    return None\n"
+    )
+    _write(repository_root / "src" / "package" / "database.py", secret_source)
+    walk_result = find_python_files(repository_root)
+
+    chunking = chunk_source_files(walk_result.files)
+
+    database_path = "src/package/database.py"
+    database_chunks = {
+        chunk.name: chunk for chunk in chunking.chunks if chunk.file_path == database_path
+    }
+    assert FAKE_PASSWORD not in database_chunks["connect"].text
+    assert f'password = "{REDACTION_PLACEHOLDER}"' in database_chunks["connect"].text
+    assert (database_chunks["connect"].start_line, database_chunks["connect"].end_line) == (1, 3)
+    assert database_chunks["connect"].contains_redaction
+    assert not database_chunks["disconnect"].contains_redaction
+    assert [(finding.file_path, finding.line_number) for finding in chunking.secret_findings] == [
+        ("src/package/database.py", 2)
+    ]
+    assert all(FAKE_PASSWORD not in chunk.text for chunk in chunking.chunks)
+
+
+def test_a_file_that_cannot_be_scanned_is_skipped_not_indexed(repository_root):
+    (repository_root / "src" / "package" / "latin1.py").write_bytes(b'NAME = "caf\xe9"\n')
+    walk_result = find_python_files(repository_root)
+
+    chunking = chunk_source_files(walk_result.files)
+
+    assert chunking.unscannable == [
+        SkippedPath("src/package/latin1.py", SkipReason.NOT_SCANNABLE)
+    ]
+    assert all(chunk.file_path != "src/package/latin1.py" for chunk in chunking.chunks)
 
 
 @pytest.mark.parametrize(

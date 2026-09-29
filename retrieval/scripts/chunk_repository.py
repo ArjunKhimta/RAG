@@ -4,9 +4,10 @@ Run from the repository root with the virtual environment active:
 
     python retrieval/scripts/chunk_repository.py https://github.com/pallets/flask --version 3.1.3
 
-An existing clone of that version is reused. Nothing is written to MongoDB. Exits 0 on success and
-1 when the URL, the version, or the repository is refused. Every printed line passes through the
-redaction module.
+An existing clone of that version is reused. Each file is scanned and its secrets redacted before
+chunking; the report lists where secrets were found and of what type, never their values. Nothing
+is written to MongoDB. Exits 0 on success and 1 when the URL, the version, or the repository is
+refused. Every printed line passes through the redaction module.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.redaction import redact
 from retrieval.repository_cloner import ClonedRepository, RepositoryError, clone_repository
 from retrieval.repository_walker import (
+    ChunkingResult,
+    SkippedPath,
     WalkResult,
     chunk_source_files,
     find_python_files,
@@ -49,12 +52,13 @@ def main() -> int:
     walk_result = find_python_files(cloned.source_path)
     walk_milliseconds = _milliseconds_since(walk_started)
     chunk_started = time.perf_counter()
-    chunks = chunk_source_files(walk_result.files)
+    chunking = chunk_source_files(walk_result.files)
     chunk_milliseconds = _milliseconds_since(chunk_started)
-    statistics = summarize_chunks(chunks)
+    statistics = summarize_chunks(chunking.chunks)
     report_lines = [
         *_repository_lines(cloned),
-        *_file_lines(walk_result),
+        *_file_lines(walk_result, chunking.unscannable),
+        *_secret_lines(chunking),
         *_kind_count_lines(statistics),
         *_size_lines(statistics),
         *_split_lines(statistics),
@@ -84,18 +88,36 @@ def _repository_lines(cloned: ClonedRepository) -> list[str]:
     ]
 
 
-def _file_lines(walk_result: WalkResult) -> list[str]:
+def _file_lines(walk_result: WalkResult, unscannable: list[SkippedPath]) -> list[str]:
     test_file_count = sum(
         1 for source_file in walk_result.files if is_test_path(source_file.relative_path)
     )
     source_file_count = len(walk_result.files) - test_file_count
+    skipped_paths = sorted([*walk_result.skipped, *unscannable], key=_relative_path_of)
     lines = [
-        f"Python files read: {len(walk_result.files)} "
+        f"Python files found: {len(walk_result.files)} "
         f"({source_file_count} source, {test_file_count} test)",
-        f"Skipped: {len(walk_result.skipped)}",
+        f"Skipped: {len(skipped_paths)}",
     ]
-    for skipped_path in walk_result.skipped:
+    for skipped_path in skipped_paths:
         lines.append(f"  {skipped_path.relative_path}  ({skipped_path.reason})")
+    lines.append("")
+    return lines
+
+
+def _secret_lines(chunking: ChunkingResult) -> list[str]:
+    findings = chunking.secret_findings
+    files_with_findings = {finding.file_path for finding in findings}
+    redacted_chunk_count = sum(1 for chunk in chunking.chunks if chunk.contains_redaction)
+    type_counts = Counter(finding.secret_type for finding in findings)
+    lines = [
+        f"Secret findings redacted: {len(findings)} in {len(files_with_findings)} files, "
+        f"affecting {redacted_chunk_count} chunks",
+    ]
+    for secret_type, count in type_counts.most_common():
+        lines.append(f"  {count:4}  {secret_type}")
+    for finding in findings:
+        lines.append(f"  {finding.file_path}:{finding.line_number}  {finding.secret_type}")
     lines.append("")
     return lines
 
@@ -159,7 +181,7 @@ def _timing_lines(
         "Timing",
         f"  {clone_label.ljust(12)}{clone_milliseconds:8.0f} ms",
         f"  {'walk'.ljust(12)}{walk_milliseconds:8.0f} ms",
-        f"  {'chunk'.ljust(12)}{chunk_milliseconds:8.0f} ms",
+        f"  {'scan, chunk'.ljust(12)}{chunk_milliseconds:8.0f} ms",
     ]
 
 
@@ -188,6 +210,10 @@ def _describe_chunk(chunk: CodeChunk) -> str:
         part_label = f" part {chunk.part_number}/{chunk.part_count}"
     location = f"{chunk.file_path}:{chunk.start_line}-{chunk.end_line}"
     return f"{len(chunk.text):6} chars  {location}  {chunk.kind} {chunk.qualified_name}{part_label}"
+
+
+def _relative_path_of(skipped_path: SkippedPath) -> str:
+    return skipped_path.relative_path
 
 
 def _total(kind_counts: Counter[ChunkKind]) -> int:

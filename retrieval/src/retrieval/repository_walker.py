@@ -6,6 +6,9 @@ sent to Gemini. Every candidate path is also checked to resolve inside the repos
 
 Folders that hold tooling, dependencies, or build output are not entered. Python files that are
 skipped are reported with the reason, so nothing disappears silently.
+
+Each file is scanned for secrets and redacted before it is chunked. A file that cannot be scanned
+reliably is skipped rather than indexed unscanned.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path, PurePosixPath
 
 from retrieval.chunker import CodeChunk, chunk_python_source
 from retrieval.config import MAX_FILE_BYTES
+from retrieval.secret_scanning import SecretFinding, UnscannableSourceError, scan_and_redact
 
 PYTHON_FILE_SUFFIX = ".py"
 
@@ -42,6 +46,7 @@ class SkipReason(StrEnum):
     NOT_A_REGULAR_FILE = "not a regular file"
     TOO_LARGE = "over the file size limit"
     OUTSIDE_REPOSITORY = "resolves outside the repository"
+    NOT_SCANNABLE = "could not be scanned for secrets"
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,13 @@ class SkippedPath:
 class WalkResult:
     files: list[SourceFile]
     skipped: list[SkippedPath]
+
+
+@dataclass(frozen=True)
+class ChunkingResult:
+    chunks: list[CodeChunk]
+    secret_findings: list[SecretFinding]
+    unscannable: list[SkippedPath]
 
 
 def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTES) -> WalkResult:
@@ -88,15 +100,32 @@ def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTE
     )
 
 
-def chunk_source_files(files: list[SourceFile]) -> list[CodeChunk]:
-    """Chunk each file under its repository-relative path, marking chunks from test files."""
+def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
+    """Redact secrets in each file, then chunk it under its repository-relative path.
+
+    Chunks are marked when they come from a test file or cover a redacted line.
+    """
     chunks: list[CodeChunk] = []
+    secret_findings: list[SecretFinding] = []
+    unscannable: list[SkippedPath] = []
     for source_file in files:
         source = source_file.path.read_bytes()
+        try:
+            redacted = scan_and_redact(source_file.path, source_file.relative_path, source)
+        except UnscannableSourceError:
+            unscannable.append(SkippedPath(source_file.relative_path, SkipReason.NOT_SCANNABLE))
+            continue
+        secret_findings.extend(redacted.findings)
         is_test_file = is_test_path(source_file.relative_path)
-        for chunk in chunk_python_source(source_file.relative_path, source):
-            chunks.append(replace(chunk, is_test_file=is_test_file))
-    return chunks
+        for chunk in chunk_python_source(source_file.relative_path, redacted.source):
+            contains_redaction = _covers_any_line(chunk, redacted.redacted_line_numbers)
+            marked_chunk = replace(
+                chunk, is_test_file=is_test_file, contains_redaction=contains_redaction
+            )
+            chunks.append(marked_chunk)
+    return ChunkingResult(
+        chunks=chunks, secret_findings=secret_findings, unscannable=unscannable
+    )
 
 
 def is_test_path(relative_path: str) -> bool:
@@ -156,6 +185,10 @@ def _reason_to_skip_file(
     if file_status.st_size > max_file_bytes:
         return SkipReason.TOO_LARGE
     return None
+
+
+def _covers_any_line(chunk: CodeChunk, line_numbers: frozenset[int]) -> bool:
+    return any(chunk.start_line <= line_number <= chunk.end_line for line_number in line_numbers)
 
 
 def _relative_posix_path(path: Path, resolved_root: Path) -> str:

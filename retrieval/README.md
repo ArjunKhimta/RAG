@@ -36,6 +36,7 @@ src/retrieval/
     repository_cloner.py   public, licensed, size-checked shallow clones into data/repos/
     repository_walker.py   finds Python files in a checkout and chunks them, flagging test files
     chunk_statistics.py    chunk counts, size percentiles, and split counts
+    secret_scanning.py     finds secrets and redacts them inside strings and comments
 scripts/
     check_connections.py   command line entry point for those checks
     chunk_repository.py    clones a repository at a version and prints chunk statistics
@@ -60,9 +61,15 @@ or the API key back at you.
 python retrieval/scripts/chunk_repository.py https://github.com/pallets/flask --version 3.1.3
 ```
 
-Clones into `data/repos/pallets/flask/3.1.3/` (or reuses that clone), chunks every Python file,
-and prints file and chunk counts split by source and test code, chunk-size percentiles, split
-definitions, the largest chunks, and the time each stage took. Nothing is written to MongoDB.
+Clones into `data/repos/pallets/flask/3.1.3/` (or reuses that clone), scans every Python file for
+secrets and redacts them, chunks it, and prints file and chunk counts split by source and test
+code, where secrets were found and of what type (never their values), chunk-size percentiles,
+split definitions, the largest chunks, and the time each stage took. Nothing is written to
+MongoDB.
+
+Redaction only ever changes string contents and comments, never code, and never adds or removes
+a line, so chunk boundaries and line numbers are the same as without it. A file that cannot be
+scanned reliably is skipped rather than indexed unscanned.
 
 ## Tests
 

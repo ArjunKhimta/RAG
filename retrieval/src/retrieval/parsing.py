@@ -41,3 +41,13 @@ def line_range_of(node: Node) -> LineRange:
     if ends_at_column_zero and ends_on_a_later_row:
         last_line = node.end_point.row
     return LineRange(first_line=first_line, last_line=last_line)
+
+
+def find_line_start_bytes(source: bytes) -> list[int]:
+    """Return the byte offset where each line starts, splitting on newlines as Tree-sitter does."""
+    line_start_bytes = [0]
+    newline_byte = source.find(b"\n")
+    while newline_byte != -1:
+        line_start_bytes.append(newline_byte + 1)
+        newline_byte = source.find(b"\n", newline_byte + 1)
+    return line_start_bytes

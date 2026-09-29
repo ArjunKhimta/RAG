@@ -23,7 +23,7 @@ from enum import StrEnum
 
 from tree_sitter import Node
 
-from retrieval.parsing import line_range_of, parse_python_source
+from retrieval.parsing import find_line_start_bytes, line_range_of, parse_python_source
 
 MAX_CHUNK_CHARACTERS = 4000
 
@@ -61,7 +61,8 @@ class CodeChunk:
 
     `start_line` and `end_line` are 1-indexed and inclusive. `signature` is set only on the second
     and later parts of a split definition, whose text does not include the definition's header.
-    `is_test_file` is set by the repository walker, which knows the file's place in the repository.
+    `is_test_file` and `contains_redaction` are set by the repository walker, which knows the
+    file's place in the repository and which of its lines had secrets redacted.
     """
 
     file_path: str
@@ -76,6 +77,7 @@ class CodeChunk:
     part_number: int = 1
     part_count: int = 1
     is_test_file: bool = False
+    contains_redaction: bool = False
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,7 @@ class _SourceLines:
 
     def __init__(self, source: bytes) -> None:
         self._source = source
-        self._line_start_bytes = _find_line_start_bytes(source)
+        self._line_start_bytes = find_line_start_bytes(source)
 
     def text_of(self, first_line: int, last_line: int) -> str:
         start_byte, end_byte = self.byte_range_of(first_line, last_line)
@@ -422,15 +424,6 @@ def _joined_length(segments: list[_Segment]) -> int:
     text_length = sum(len(segment.text) for segment in segments)
     newline_count = len(segments) - 1
     return text_length + newline_count
-
-
-def _find_line_start_bytes(source: bytes) -> list[int]:
-    line_start_bytes = [0]
-    newline_byte = source.find(b"\n")
-    while newline_byte != -1:
-        line_start_bytes.append(newline_byte + 1)
-        newline_byte = source.find(b"\n", newline_byte + 1)
-    return line_start_bytes
 
 
 def _first_lines_of(nodes: list[Node]) -> list[int]:
