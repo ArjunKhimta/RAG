@@ -42,6 +42,14 @@ EMBEDDING_TOKENS_PER_MINUTE = 30_000
 
 MONGODB_DATABASE = "code_search"
 
+VECTOR_INDEX_NAME = "chunk_embedding_vector"
+
+VECTOR_SEARCH_CANDIDATE_MULTIPLIER = 20
+
+DEFAULT_SEARCH_LIMIT = 10
+
+MAX_SEARCH_LIMIT = 100
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""

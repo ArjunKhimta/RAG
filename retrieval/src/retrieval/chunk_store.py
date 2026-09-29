@@ -121,6 +121,10 @@ class MongoChunkStore:
         document = repository_document(indexed_version)
         self._repositories.replace_one({"_id": document["_id"]}, document, upsert=True)
 
+    def find_repository_record(self, repository: str, version: str) -> dict[str, Any] | None:
+        """Return the version's record, which exists only once indexing has fully finished."""
+        return self._repositories.find_one({"repository": repository, "version": version})
+
     def chunk_collection_statistics(self) -> dict[str, int]:
         """Return document count and sizes in bytes: data, storage on disk, and indexes."""
         statistics = self._database.command("collStats", CHUNKS_COLLECTION)

@@ -9,6 +9,7 @@ from google.genai import errors
 from retrieval.embedders import (
     EmbeddingRequestError,
     GeminiDocumentEmbedder,
+    GeminiQueryEmbedder,
     normalize_to_unit_length,
 )
 
@@ -48,6 +49,31 @@ def test_documents_are_embedded_with_the_document_task_type_and_dimensions():
     assert call["config"].task_type == "RETRIEVAL_DOCUMENT"
     assert call["config"].output_dimensionality == 2
     assert vectors == [[0.6, 0.8], [0.0, 1.0]]
+
+
+def test_a_question_is_embedded_alone_with_the_code_retrieval_query_task_type():
+    models = FakeModels(vectors=[[3.0, 4.0]])
+    embedder = GeminiQueryEmbedder(SimpleNamespace(models=models), model="model-a", dimensions=2)
+
+    vector = embedder.embed_query("How are routes registered?")
+
+    call = models.embed_calls[0]
+    assert call["model"] == "model-a"
+    assert call["contents"] == ["How are routes registered?"]
+    assert call["config"].task_type == "CODE_RETRIEVAL_QUERY"
+    assert call["config"].output_dimensionality == 2
+    assert vector == [0.6, 0.8]
+
+
+def test_a_query_embedding_failure_becomes_an_embedding_request_error():
+    bad_request_json = {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Bad"}}
+    models = FakeModels(error=errors.ClientError(400, bad_request_json))
+    embedder = GeminiQueryEmbedder(SimpleNamespace(models=models))
+
+    with pytest.raises(EmbeddingRequestError) as raised:
+        embedder.embed_query("question")
+
+    assert raised.value.status_code == 400
 
 
 def test_a_vector_count_mismatch_is_an_error():

@@ -5,9 +5,11 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/index_repository.py https://github.com/pallets/flask --version 3.1.3
 
 Embeddings are cached by content hash in the chunks collection, so running it again for the same
-version makes no embedding requests. Prints what the run cost: cache hits, requests, retries,
-estimated tokens, the time for each stage, and the chunk collection's size. Exits 0 on success and
-1 on any refusal or failure. Every printed line passes through the redaction module.
+version makes no embedding requests. Also creates the Atlas vector index on the stored embeddings
+if it is missing, or updates it if its definition changed. Prints what the run cost: cache hits,
+requests, retries, estimated tokens, the time for each stage, and the chunk collection's size.
+Exits 0 on success and 1 on any refusal or failure. Every printed line passes through the
+redaction module.
 """
 
 from __future__ import annotations
@@ -18,12 +20,13 @@ import time
 
 from pymongo.errors import PyMongoError
 
-from retrieval.chunk_store import MongoChunkStore
+from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
     EMBEDDING_REQUESTS_PER_MINUTE,
     EMBEDDING_TOKENS_PER_MINUTE,
     MONGODB_DATABASE,
+    VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
 )
@@ -34,6 +37,7 @@ from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError, clone_repository
 from retrieval.repository_walker import chunk_source_files, find_python_files
+from retrieval.vector_search import ensure_vector_index
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -56,9 +60,11 @@ def main() -> int:
         chunking = chunk_source_files(walk_result.files)
         timings["walk, scan, chunk"] = _milliseconds_since(stage_started)
         mongo_client = build_mongo_client()
-        store = MongoChunkStore(mongo_client[MONGODB_DATABASE])
+        database = mongo_client[MONGODB_DATABASE]
+        store = MongoChunkStore(database)
         store.ensure_indexes()
         embedder = GeminiDocumentEmbedder(build_gemini_client())
+        vector_index_change = ensure_vector_index(database[CHUNKS_COLLECTION], embedder.dimensions)
         rate_limiter = RateLimiter(EMBEDDING_REQUESTS_PER_MINUTE, EMBEDDING_TOKENS_PER_MINUTE)
         stage_started = time.perf_counter()
         report = index_chunks(cloned.metadata, chunking.chunks, embedder, store, rate_limiter)
@@ -85,6 +91,7 @@ def main() -> int:
         f"Repository  {cloned.metadata.repository} at {cloned.metadata.version} "
         f"({cloned.metadata.commit_id[:12]}, {cloned.metadata.license_spdx_id})",
         f"Embedding   {embedder.model_id}, {embedder.dimensions} dimensions, {embedder.task_type}",
+        f"Vector index {VECTOR_INDEX_NAME}: {vector_index_change}",
         "",
         _row("Python files indexed", len(walk_result.files) - len(chunking.unscannable)),
         _row("Paths skipped", skipped_count),
