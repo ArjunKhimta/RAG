@@ -42,16 +42,11 @@ from retrieval.config import (
 )
 from retrieval.embedders import DocumentEmbedder, EmbeddingRequestError
 from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
+from retrieval.gemini_errors import retry_delay_seconds
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import CloneMetadata
 
 MAX_ATTEMPTS = 6
-
-BASE_RETRY_DELAY_SECONDS = 2.0
-
-MAX_RETRY_DELAY_SECONDS = 60.0
-
-MINIMUM_JITTER_FRACTION = 0.5
 
 
 @dataclass
@@ -211,7 +206,7 @@ def _embed_with_retries(
             is_last_attempt = attempt_number == settings.max_attempts
             if not error.is_retryable or is_last_attempt:
                 raise
-            delay_seconds = _retry_delay_seconds(error, attempt_number, jitter_fraction)
+            delay_seconds = retry_delay_seconds(error, attempt_number, jitter_fraction)
             report.retry_count += 1
             report.retry_wait_seconds += delay_seconds
             sleep(delay_seconds)
@@ -219,23 +214,6 @@ def _embed_with_retries(
         report.estimated_tokens_sent += batch_tokens
         return vectors
     raise AssertionError("unreachable: the last attempt either returns or raises")
-
-
-def _retry_delay_seconds(
-    error: EmbeddingRequestError, attempt_number: int, jitter_fraction: Callable[[], float]
-) -> float:
-    """Use the API's suggested delay if given; otherwise back off exponentially with jitter.
-
-    Jitter spreads retries between half and all of the backoff, so parallel clients that failed
-    together do not all retry at the same moment.
-    """
-    if error.retry_after_seconds is not None:
-        return error.retry_after_seconds
-    backoff_seconds = min(
-        MAX_RETRY_DELAY_SECONDS, BASE_RETRY_DELAY_SECONDS * 2 ** (attempt_number - 1)
-    )
-    jitter_range = 1.0 - MINIMUM_JITTER_FRACTION
-    return backoff_seconds * (MINIMUM_JITTER_FRACTION + jitter_range * jitter_fraction())
 
 
 def _require_unique(chunk_ids: list[str]) -> None:

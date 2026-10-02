@@ -76,6 +76,16 @@ RERANK_CANDIDATE_COUNT = 30
 
 RERANK_RESULT_COUNT = 5
 
+GEMINI_ANSWER_MODEL = "gemini-3.5-flash-lite"
+
+ANSWER_MAX_OUTPUT_TOKENS = 4096
+
+ANSWER_REQUESTS_PER_MINUTE = 15
+
+ANSWER_TOKENS_PER_MINUTE = 250_000
+
+ANSWER_MAX_ATTEMPTS = 3
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""
