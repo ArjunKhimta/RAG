@@ -11,7 +11,11 @@ Run from the repository root with the virtual environment active:
 Options: `--mode vector` (default), `--mode keyword`, or `--mode hybrid`, which fuses both result
 lists with Reciprocal Rank Fusion and shows each result's rank in each list. `--limit N` (default
 10), and `--exclude-tests` to leave out chunks from test files. `--exact`, for vector and hybrid
-modes, compares the question with every chunk instead of searching approximately.
+modes, compares the question with every chunk instead of searching approximately. `--rerank`
+takes the top 30 of the chosen search, scores each against the question with the local
+cross-encoder, and shows the best 5 (or `--limit`, at most 30), each with its rank before
+reranking; it also reports how many candidates were cut to fit the model and the process's peak
+memory before and after reranking. Run `download_reranker_model.py` once before using it.
 
 Refuses to search a version that has not finished indexing, and in vector and hybrid modes one
 that was embedded with a different model. Question embeddings are cached in MongoDB, so only a
@@ -24,6 +28,7 @@ failure. Every printed line passes through the redaction module.
 from __future__ import annotations
 
 import argparse
+import resource
 import sys
 import time
 from dataclasses import dataclass
@@ -40,6 +45,10 @@ from retrieval.config import (
     KEYWORD_INDEX_NAME,
     MAX_SEARCH_LIMIT,
     MONGODB_DATABASE,
+    RERANK_CANDIDATE_COUNT,
+    RERANK_RESULT_COUNT,
+    RERANKER_MAX_TOKENS,
+    RERANKER_MODEL_REPOSITORY,
     VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
@@ -50,6 +59,8 @@ from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keyw
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
 from retrieval.rank_fusion import FusedResult
 from retrieval.redaction import redact
+from retrieval.reranker_model import RerankerModelError, verified_reranker_files
+from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError, RerankedResult, rerank
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
 from retrieval.vector_search import SearchOptions, require_searchable_version, search_chunks
@@ -68,6 +79,14 @@ MAX_CODE_LINE_LENGTH = 100
 
 LABEL_WIDTH = 28
 
+BYTES_PER_MEGABYTE = 1_000_000
+
+MACOS_PLATFORM = "darwin"
+
+MACOS_MAXRSS_BYTES_PER_UNIT = 1
+
+LINUX_MAXRSS_BYTES_PER_UNIT = 1024
+
 
 @dataclass(frozen=True)
 class DisplayedResult:
@@ -82,6 +101,8 @@ class SearchRun:
     results: list[DisplayedResult]
     timings: dict[str, float]
     embedding_status: str | None = None
+    reranker_status: str | None = None
+    memory: dict[str, float] | None = None
 
 
 def main() -> int:
@@ -94,17 +115,20 @@ def main() -> int:
         store = MongoChunkStore(database)
         repository_record = store.find_repository_record(arguments.repository, arguments.version)
         require_indexed_version(repository_record, arguments.repository, arguments.version)
+        search_limit = RERANK_CANDIDATE_COUNT if arguments.rerank else arguments.limit
         if arguments.mode == VECTOR_MODE:
             search_run = _run_vector_search(
-                arguments, database, chunks_collection, repository_record
+                arguments, search_limit, database, chunks_collection, repository_record
             )
         elif arguments.mode == HYBRID_MODE:
             search_run = _run_hybrid_search(
-                arguments, database, chunks_collection, repository_record
+                arguments, search_limit, database, chunks_collection, repository_record
             )
         else:
-            search_run = _run_keyword_search(arguments, chunks_collection)
-    except SearchRefusedError as error:
+            search_run = _run_keyword_search(arguments, search_limit, chunks_collection)
+        if arguments.rerank:
+            search_run = _rerank_search_run(arguments, search_run)
+    except (SearchRefusedError, QuestionTooLongError) as error:
         _print(f"Refused: {error}")
         return 1
     except EmbeddingRequestError as error:
@@ -112,7 +136,7 @@ def main() -> int:
             _print("Stopped: the daily embedding quota is used up; try again after the reset.")
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
-    except (MissingConfigError, PyMongoError) as error:
+    except (MissingConfigError, PyMongoError, RerankerModelError) as error:
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
     commit_id = repository_record["commit_id"][:COMMIT_ID_DISPLAY_LENGTH]
@@ -124,6 +148,8 @@ def main() -> int:
     ]
     if search_run.embedding_status is not None:
         header_lines.append(f"Embedding   {search_run.embedding_status}")
+    if search_run.reranker_status is not None:
+        header_lines.append(f"Reranker    {search_run.reranker_status}")
     timing_lines = [
         _row(stage, f"{milliseconds:.0f} ms") for stage, milliseconds in search_run.timings.items()
     ]
@@ -135,6 +161,11 @@ def main() -> int:
         "Timing",
         *timing_lines,
     ]
+    if search_run.memory is not None:
+        memory_lines = [
+            _row(label, f"{megabytes:.0f} MB") for label, megabytes in search_run.memory.items()
+        ]
+        report_lines.extend(["", "Peak memory (whole process)", *memory_lines])
     for line in report_lines:
         _print(line)
     return 0
@@ -142,12 +173,13 @@ def main() -> int:
 
 def _run_vector_search(
     arguments: argparse.Namespace,
+    limit: int,
     database: Database,
     chunks_collection: Collection,
     repository_record: dict[str, Any],
 ) -> SearchRun:
     options = SearchOptions(
-        limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
+        limit=limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
     )
     embedder = _checked_query_embedder(arguments, database, repository_record)
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
@@ -174,12 +206,13 @@ def _run_vector_search(
 
 def _run_hybrid_search(
     arguments: argparse.Namespace,
+    limit: int,
     database: Database,
     chunks_collection: Collection,
     repository_record: dict[str, Any],
 ) -> SearchRun:
     options = HybridSearchOptions(
-        limit=arguments.limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
+        limit=limit, exclude_tests=arguments.exclude_tests, exact=arguments.exact
     )
     embedder = _checked_query_embedder(arguments, database, repository_record)
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
@@ -220,8 +253,10 @@ def _checked_query_embedder(
     return embedder
 
 
-def _run_keyword_search(arguments: argparse.Namespace, chunks_collection: Collection) -> SearchRun:
-    options = KeywordSearchOptions(limit=arguments.limit, exclude_tests=arguments.exclude_tests)
+def _run_keyword_search(
+    arguments: argparse.Namespace, limit: int, chunks_collection: Collection
+) -> SearchRun:
+    options = KeywordSearchOptions(limit=limit, exclude_tests=arguments.exclude_tests)
     require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
     stage_started = time.perf_counter()
     results = search_chunks_by_keywords(
@@ -233,6 +268,62 @@ def _run_keyword_search(arguments: argparse.Namespace, chunks_collection: Collec
         results=[DisplayedResult(result.score, result) for result in results],
         timings=timings,
     )
+
+
+def _rerank_search_run(arguments: argparse.Namespace, search_run: SearchRun) -> SearchRun:
+    """Rerank every candidate, so the cut count covers all of them, then keep the best few."""
+    peak_before_megabytes = _peak_memory_megabytes()
+    timings = dict(search_run.timings)
+    stage_started = time.perf_counter()
+    scorer = CrossEncoderScorer(verified_reranker_files())
+    timings["load reranker"] = _milliseconds_since(stage_started)
+    stage_started = time.perf_counter()
+    candidates = [displayed.result for displayed in search_run.results]
+    reranked_results = rerank(arguments.query, candidates, scorer, RERANK_CANDIDATE_COUNT)
+    timings["rerank"] = _milliseconds_since(stage_started)
+    truncated_count = sum(1 for reranked in reranked_results if reranked.was_truncated)
+    kept_results = reranked_results[: arguments.limit]
+    return SearchRun(
+        description=f"{search_run.description}, reranked to top {arguments.limit}",
+        results=[
+            DisplayedResult(
+                reranked.rerank_score,
+                reranked.result,
+                _describe_rerank(arguments.mode, reranked, search_run.results),
+            )
+            for reranked in kept_results
+        ],
+        timings=timings,
+        embedding_status=search_run.embedding_status,
+        reranker_status=(
+            f"{RERANKER_MODEL_REPOSITORY}, {len(candidates)} candidates, "
+            f"{truncated_count} cut to {RERANKER_MAX_TOKENS} tokens"
+        ),
+        memory={
+            "before loading reranker": peak_before_megabytes,
+            "after reranking": _peak_memory_megabytes(),
+        },
+    )
+
+
+def _describe_rerank(
+    mode: str, reranked: RerankedResult, candidates: list[DisplayedResult]
+) -> str:
+    description = f"{mode} #{reranked.original_rank}"
+    candidate_note = candidates[reranked.original_rank - 1].rank_note
+    if candidate_note:
+        description += f": {candidate_note}"
+    if reranked.was_truncated:
+        description += ", cut to fit"
+    return description
+
+
+def _peak_memory_megabytes() -> float:
+    """The process's highest resident memory so far; macOS reports bytes, Linux kilobytes."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == MACOS_PLATFORM:
+        return peak * MACOS_MAXRSS_BYTES_PER_UNIT / BYTES_PER_MEGABYTE
+    return peak * LINUX_MAXRSS_BYTES_PER_UNIT / BYTES_PER_MEGABYTE
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -251,8 +342,10 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=_search_limit,
-        default=DEFAULT_SEARCH_LIMIT,
-        help=f"number of results, 1 to {MAX_SEARCH_LIMIT} (default {DEFAULT_SEARCH_LIMIT})",
+        help=(
+            f"number of results, 1 to {MAX_SEARCH_LIMIT} (default {DEFAULT_SEARCH_LIMIT}; "
+            f"with --rerank, at most {RERANK_CANDIDATE_COUNT}, default {RERANK_RESULT_COUNT})"
+        ),
     )
     parser.add_argument(
         "--exclude-tests", action="store_true", help="leave out chunks from test files"
@@ -262,9 +355,18 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="vector and hybrid modes: compare with every chunk instead of approximately",
     )
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help=f"rerank the top {RERANK_CANDIDATE_COUNT} with the local cross-encoder",
+    )
     arguments = parser.parse_args()
     if arguments.exact and arguments.mode == KEYWORD_MODE:
         parser.error("--exact does not apply to --mode keyword")
+    if arguments.limit is None:
+        arguments.limit = RERANK_RESULT_COUNT if arguments.rerank else DEFAULT_SEARCH_LIMIT
+    if arguments.rerank and arguments.limit > RERANK_CANDIDATE_COUNT:
+        parser.error(f"with --rerank, --limit must be at most {RERANK_CANDIDATE_COUNT}")
     return arguments
 
 

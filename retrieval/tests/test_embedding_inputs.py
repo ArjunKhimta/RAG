@@ -5,10 +5,12 @@ from dataclasses import dataclass, replace
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.embedding_inputs import (
     build_embedding_input,
+    build_result_input,
     compute_embedding_key,
     estimate_tokens,
     normalize_question,
 )
+from retrieval.search_results import SearchResult
 
 METHOD_CHUNK = CodeChunk(
     file_path="src/flask/app.py",
@@ -99,3 +101,32 @@ def test_token_estimates_are_pessimistic_for_ascii_and_other_scripts():
     assert estimate_tokens("abcdefg") == 3
     assert estimate_tokens("日本語") == 3
     assert estimate_tokens("abc日本") == 3
+
+
+def _search_result_from(chunk: CodeChunk) -> SearchResult:
+    return SearchResult(
+        chunk_id="chunk",
+        file_path=chunk.file_path,
+        start_line=chunk.start_line,
+        end_line=chunk.end_line,
+        kind=str(chunk.kind),
+        qualified_name=chunk.qualified_name,
+        signature=chunk.signature,
+        part_number=chunk.part_number,
+        part_count=chunk.part_count,
+        is_test_file=chunk.is_test_file,
+        text=chunk.text,
+        score=0.5,
+    )
+
+
+def test_a_search_result_rebuilds_the_exact_text_its_chunk_was_embedded_with():
+    split_part = replace(
+        METHOD_CHUNK, part_number=2, part_count=3, signature="def dispatch_request(self):"
+    )
+    module_chunk = replace(
+        METHOD_CHUNK, kind=ChunkKind.MODULE, name="<module>", qualified_name="<module>"
+    )
+
+    for chunk in (METHOD_CHUNK, split_part, module_chunk):
+        assert build_result_input(_search_result_from(chunk)) == build_embedding_input(chunk)

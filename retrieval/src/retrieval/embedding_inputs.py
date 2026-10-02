@@ -4,7 +4,8 @@ token estimate.
 The input is a short header naming the file and the definition, then the chunk's text. The header
 puts the location and name into the vector, so a question about Flask's dispatching can match a
 method whose body never says "Flask". Later parts of a split definition also get the definition's
-signature, which their own text lacks.
+signature, which their own text lacks. The reranker reads the same text, rebuilt from a stored
+search result by `build_result_input`, so both models see a chunk the same way.
 
 The cache key is a SHA-256 hash of the model, dimensions, task type, and input text. Changing any
 of them, including the header format, produces a different key, so a stale vector is never reused.
@@ -22,6 +23,7 @@ import math
 
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.embedders import EmbeddingIdentity
+from retrieval.search_results import SearchResult
 
 ASCII_CHARACTERS_PER_TOKEN = 3
 
@@ -36,10 +38,27 @@ KIND_LABELS = {
 
 
 def build_embedding_input(chunk: CodeChunk) -> str:
-    header_lines = [f"# File: {chunk.file_path}", f"# {_describe_definition(chunk)}"]
-    if chunk.signature:
-        header_lines.append(chunk.signature)
-    return "\n".join([*header_lines, chunk.text])
+    return _format_input(
+        file_path=chunk.file_path,
+        kind=chunk.kind,
+        qualified_name=chunk.qualified_name,
+        part_number=chunk.part_number,
+        part_count=chunk.part_count,
+        signature=chunk.signature,
+        text=chunk.text,
+    )
+
+
+def build_result_input(result: SearchResult) -> str:
+    return _format_input(
+        file_path=result.file_path,
+        kind=ChunkKind(result.kind),
+        qualified_name=result.qualified_name,
+        part_number=result.part_number,
+        part_count=result.part_count,
+        signature=result.signature,
+        text=result.text,
+    )
 
 
 def normalize_question(question: str) -> str:
@@ -64,11 +83,29 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(ascii_count / ASCII_CHARACTERS_PER_TOKEN) + non_ascii_count
 
 
-def _describe_definition(chunk: CodeChunk) -> str:
-    kind_label = KIND_LABELS[chunk.kind]
+def _format_input(
+    file_path: str,
+    kind: ChunkKind,
+    qualified_name: str,
+    part_number: int,
+    part_count: int,
+    signature: str | None,
+    text: str,
+) -> str:
+    definition = _describe_definition(kind, qualified_name, part_number, part_count)
+    header_lines = [f"# File: {file_path}", f"# {definition}"]
+    if signature:
+        header_lines.append(signature)
+    return "\n".join([*header_lines, text])
+
+
+def _describe_definition(
+    kind: ChunkKind, qualified_name: str, part_number: int, part_count: int
+) -> str:
+    kind_label = KIND_LABELS[kind]
     part_label = ""
-    if chunk.part_count > 1:
-        part_label = f" (part {chunk.part_number} of {chunk.part_count})"
-    if chunk.kind == ChunkKind.MODULE:
+    if part_count > 1:
+        part_label = f" (part {part_number} of {part_count})"
+    if kind == ChunkKind.MODULE:
         return f"{kind_label}{part_label}"
-    return f"{kind_label}: {chunk.qualified_name}{part_label}"
+    return f"{kind_label}: {qualified_name}{part_label}"

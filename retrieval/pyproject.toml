@@ -15,7 +15,7 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = ["-m", "not integration", "--strict-markers"]
 markers = [
-    "integration: reaches real MongoDB and Gemini services; run with -m integration",
+    "integration: reaches real MongoDB and Gemini services, or loads the downloaded reranker model; run with -m integration",
 ]
 
 [tool.ruff]
