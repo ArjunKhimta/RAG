@@ -1,0 +1,113 @@
+{
+  "repository": "pallets/flask",
+  "version": "3.1.3",
+  "commit_id": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
+  "written_on": "2026-10-02",
+  "notes": "Handwritten after reading the source, so they may favour good results. Line ranges are 1-indexed and inclusive, and cover the whole definition even when it is split into several chunks.",
+  "questions": [
+    {
+      "id": "flask-001",
+      "question": "get_signing_serializer",
+      "query_style": "identifier",
+      "expected": [
+        {
+          "file_path": "src/flask/sessions.py",
+          "qualified_name": "SecureCookieSessionInterface.get_signing_serializer",
+          "start_line": 303,
+          "end_line": 321
+        }
+      ]
+    },
+    {
+      "id": "flask-002",
+      "question": "from_prefixed_env",
+      "query_style": "identifier",
+      "expected": [
+        {
+          "file_path": "src/flask/config.py",
+          "qualified_name": "Config.from_prefixed_env",
+          "start_line": 126,
+          "end_line": 185
+        }
+      ]
+    },
+    {
+      "id": "flask-003",
+      "question": "How does Flask sign the session cookie with the secret key?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/sessions.py",
+          "qualified_name": "SecureCookieSessionInterface.get_signing_serializer",
+          "start_line": 303,
+          "end_line": 321
+        }
+      ]
+    },
+    {
+      "id": "flask-004",
+      "question": "How are environment variables that start with FLASK_ loaded into the config?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/config.py",
+          "qualified_name": "Config.from_prefixed_env",
+          "start_line": 126,
+          "end_line": 185
+        }
+      ]
+    },
+    {
+      "id": "flask-005",
+      "question": "What happens when an unhandled exception is raised during a request?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.handle_exception",
+          "start_line": 811,
+          "end_line": 862
+        }
+      ]
+    },
+    {
+      "id": "flask-006",
+      "question": "How does the command line find the application object in a module?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "find_best_app",
+          "start_line": 41,
+          "end_line": 91
+        }
+      ]
+    },
+    {
+      "id": "flask-007",
+      "question": "How is a view function's return value turned into a response object?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.make_response",
+          "start_line": 1129,
+          "end_line": 1269
+        }
+      ]
+    },
+    {
+      "id": "flask-008",
+      "question": "Where are teardown functions called when the application context ends?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.do_teardown_appcontext",
+          "start_line": 1360,
+          "end_line": 1384
+        }
+      ]
+    }
+  ]
+}
