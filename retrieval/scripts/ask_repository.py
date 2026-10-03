@@ -10,7 +10,9 @@ best 5 to Gemini, which writes a short answer with markers such as [2]. Every re
 against the code that was sent; a reply citing anything else is rejected, never shown. Prints the
 answer, then for each citation the file, lines, a short snippet, and a link to those lines on
 GitHub at the indexed commit, then the license, the tokens used, and the time for each stage.
-`--exclude-tests` leaves test files out of the search.
+`--exclude-tests` leaves test files out of the search. `--expand` also adds the 3 callers or
+callees of those sources that the cross-encoder rates best for the question, found through the call
+graph; it is off by default until measured.
 
 Costs one generation request, plus one embedding request for a question not asked before. A
 temporary Gemini failure is retried up to twice, and the report says how many requests were made.
@@ -41,6 +43,7 @@ from retrieval.answer_generation import (
     is_outline,
     source_code_lines,
 )
+from retrieval.answer_sources import ExpandedSources, expand_sources, find_sources
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
@@ -50,19 +53,18 @@ from retrieval.config import (
     KEYWORD_INDEX_NAME,
     MONGODB_DATABASE,
     RERANK_CANDIDATE_COUNT,
-    RERANK_RESULT_COUNT,
     VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
 )
 from retrieval.embedders import GeminiQueryEmbedder
 from retrieval.gemini_errors import GeminiRequestError
-from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
+from retrieval.graph_expansion import require_call_graph
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError, rerank
+from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
 from retrieval.vector_search import require_searchable_version
@@ -89,6 +91,7 @@ class AskRun:
     generated: GeneratedAnswer
     timings: dict[str, float]
     embedding_status: str
+    expansion: ExpandedSources | None
 
 
 def main() -> int:
@@ -128,6 +131,8 @@ def main() -> int:
 def _ask(
     arguments: argparse.Namespace, database: Database, repository_record: dict[str, Any]
 ) -> AskRun:
+    if arguments.expand:
+        require_call_graph(repository_record, arguments.repository, arguments.version)
     query_embedding_store = MongoQueryEmbeddingStore(database)
     query_embedding_store.ensure_indexes()
     gemini_client = build_gemini_client()
@@ -136,39 +141,52 @@ def _ask(
     chunks_collection = database[CHUNKS_COLLECTION]
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
     require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
-    search_options = HybridSearchOptions(
-        limit=RERANK_CANDIDATE_COUNT, exclude_tests=arguments.exclude_tests
-    )
-    outcome = hybrid_search(
+    stage_started = time.perf_counter()
+    scorer = CrossEncoderScorer(verified_reranker_files())
+    load_milliseconds = _milliseconds_since(stage_started)
+    found = find_sources(
         chunks_collection,
         embedder,
+        scorer,
         arguments.question,
         arguments.repository,
         arguments.version,
-        search_options,
+        exclude_tests=arguments.exclude_tests,
     )
-    timings = dict(outcome.timings)
-    candidates = [fused.result for fused in outcome.results]
-    if not candidates:
+    if not found.sources:
         raise _NoSourcesFound()
-    stage_started = time.perf_counter()
-    scorer = CrossEncoderScorer(verified_reranker_files())
-    timings["load reranker"] = _milliseconds_since(stage_started)
-    stage_started = time.perf_counter()
-    reranked_results = rerank(arguments.question, candidates, scorer, RERANK_RESULT_COUNT)
-    timings["rerank"] = _milliseconds_since(stage_started)
-    sources = [reranked.result for reranked in reranked_results]
+    timings = {"load reranker": load_milliseconds, **found.timings}
+    sources = found.sources
+    related_notes: list[str | None] | None = None
+    expansion = None
+    if arguments.expand:
+        expansion = expand_sources(
+            chunks_collection,
+            scorer,
+            arguments.question,
+            found.sources,
+            arguments.repository,
+            arguments.version,
+        )
+        timings.update(expansion.timings)
+        sources = expansion.sources
+        related_notes = expansion.related_notes
     answer_model = GeminiAnswerModel(
         gemini_client, RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
     )
     stage_started = time.perf_counter()
-    generated = generate_answer(arguments.question, sources, answer_model)
+    generated = generate_answer(arguments.question, sources, answer_model, related_notes)
     timings["generate answer"] = _milliseconds_since(stage_started)
     if embedder.hit_count:
         embedding_status = "question embedding from the cache (0 requests)"
     else:
         embedding_status = "question embedded and cached (1 request)"
-    return AskRun(generated=generated, timings=timings, embedding_status=embedding_status)
+    return AskRun(
+        generated=generated,
+        timings=timings,
+        embedding_status=embedding_status,
+        expansion=expansion,
+    )
 
 
 def _report_lines(
@@ -178,12 +196,17 @@ def _report_lines(
     commit_id = repository_record["commit_id"]
     license_id = repository_record["license_spdx_id"]
     tests = "test files excluded" if arguments.exclude_tests else "test files included"
+    expansion = ask_run.expansion
+    searched_count = len(generated.sources)
+    if expansion is not None:
+        searched_count -= len(expansion.kept_neighbors)
     header_lines = [
         f"Repository  {arguments.repository} at {arguments.version} "
         f"({commit_id[:COMMIT_ID_DISPLAY_LENGTH]}, {license_id})",
         f"Question    {arguments.question}",
         f"Retrieval   hybrid search, top {RERANK_CANDIDATE_COUNT} reranked to "
-        f"{len(generated.sources)} sources, {tests}",
+        f"{searched_count} sources, {tests}",
+        *_expansion_header_lines(expansion, searched_count),
         f"Embedding   {ask_run.embedding_status}",
         f"Model       {GEMINI_ANSWER_MODEL}, low thinking ({_describe_attempts(generated)})",
     ]
@@ -213,6 +236,22 @@ def _report_lines(
         "Timing",
         *timing_lines,
     ]
+
+
+def _expansion_header_lines(expansion: ExpandedSources | None, searched_count: int) -> list[str]:
+    if expansion is None:
+        return []
+    lines = [
+        f"Expansion   {expansion.found_neighbor_count} callers and callees found, "
+        f"best {len(expansion.kept_neighbors)} added by the reranker"
+    ]
+    for number, kept in enumerate(expansion.kept_neighbors, start=searched_count + 1):
+        result = kept.neighbor.result
+        lines.append(
+            f"            [{number}] {result.kind} {result.qualified_name}, {kept.note} "
+            f"(score {kept.rerank_score:.2f})"
+        )
+    return lines
 
 
 def _citation_lines(generated: GeneratedAnswer, repository: str, commit_id: str) -> list[str]:
@@ -300,6 +339,11 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="the indexed tag, branch, or commit ID")
     parser.add_argument(
         "--exclude-tests", action="store_true", help="leave out chunks from test files"
+    )
+    parser.add_argument(
+        "--expand",
+        action="store_true",
+        help="also add the best 3 callers or callees of the sources, from the call graph",
     )
     return parser.parse_args()
 
