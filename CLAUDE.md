@@ -89,7 +89,7 @@ Next: Phase 2 evaluation, starting with the remaining 38 handwritten questions.
 2. Evaluation
 3. Flask API
 4. Node API and MongoDB
-5. React frontend, including an auto-generated repo overview page with a Mermaid architecture diagram
+5. React frontend, including an auto-generated repo overview page with a Mermaid architecture diagram. Before any answer is shown to anyone other than the developer (here or in Phase 7, whichever comes first), every answer must link to the repository's LICENSE file at the indexed commit, so the copyright notice travels with each snippet
 6. Incremental re-indexing
 7. Docker, CI/CD, deployment
 8. Polish
