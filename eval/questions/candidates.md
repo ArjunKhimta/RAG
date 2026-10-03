@@ -4,6 +4,9 @@ Real questions from Stack Overflow, gathered on 2026-10-03 through its public re
 38 open slots in `pallets-flask-3.1.3.json` (12 of 50 written so far). Each answer location was checked
 against the Flask 3.1.3 source.
 
+Question titles are from Stack Overflow, written by their original authors and licensed under
+CC BY-SA (https://stackoverflow.com/help/licensing); each one links to its source.
+
 ## How to use this list
 
 1. Pick a question and rewrite it in your own words. Stack Overflow text is licensed (CC BY-SA), so
