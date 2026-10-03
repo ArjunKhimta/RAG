@@ -3,7 +3,7 @@
   "version": "3.1.3",
   "commit_id": "22d924701a6ae2e4cd01e9a15bbaf3946094af65",
   "written_on": "2026-10-02",
-  "notes": "flask-009 to flask-020 were drafted by Claude and approved by Arjun Khimta; who drafted flask-001 to flask-008 was not recorded, so their written_by is null. origin is written_from_code (written after reading the source, so they may favour good results) or stack_overflow (a real user's question, rewritten in new words; source_url links the original, licensed CC BY-SA). Line ranges are 1-indexed and inclusive, and cover the whole definition even when it is split into several chunks. When answer_in_code is false, expected is empty and a correct reply says the code does not contain the answer and cites nothing.",
+  "notes": "Every question was drafted by Claude and approved by Arjun Khimta; written_by records who wrote the wording. origin is written_from_code (written after reading the source, so they may favour good results) or stack_overflow (a real user's question, rewritten in new words; source_url links the original, licensed CC BY-SA). Line ranges are 1-indexed and inclusive, and cover the whole definition even when it is split into several chunks. When answer_in_code is false, expected is empty and a correct reply says the code does not contain the answer and cites nothing.",
   "questions": [
     {
       "id": "flask-001",
@@ -11,7 +11,7 @@
       "query_style": "identifier",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -28,7 +28,7 @@
       "query_style": "identifier",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -45,7 +45,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -62,7 +62,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -79,7 +79,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -96,7 +96,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -113,7 +113,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
@@ -130,7 +130,7 @@
       "query_style": "natural_language",
       "origin": "written_from_code",
       "source_url": null,
-      "written_by": null,
+      "written_by": "claude",
       "answer_in_code": true,
       "expected": [
         {
