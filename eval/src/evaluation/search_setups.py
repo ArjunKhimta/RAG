@@ -57,30 +57,58 @@ class SearchContext:
 
 @dataclass(frozen=True)
 class SetupRun:
+    """A setup's sources and time. `related_notes` is set only by the expand setups."""
+
     sources: list[SearchResult]
     milliseconds: float
+    related_notes: list[str | None] | None = None
 
 
 def run_all_setups(context: SearchContext, question: str) -> dict[SearchSetup, SetupRun]:
     """Run every setup for one question, in the order the setups are declared."""
-    runs = {
-        SearchSetup.VECTOR: _timed(_vector_sources, context, question),
-        SearchSetup.KEYWORD: _timed(_keyword_sources, context, question),
-        SearchSetup.HYBRID: _timed(_hybrid_sources, context, question),
-        SearchSetup.VECTOR_RERANK: _timed(_vector_rerank_sources, context, question),
-        SearchSetup.HYBRID_RERANK: _timed(_hybrid_rerank_sources, context, question),
-        SearchSetup.ROUTER: _timed(_router_sources, context, question),
-    }
-    runs[SearchSetup.ROUTER_EXPAND] = _expanded_run(context, question, runs[SearchSetup.ROUTER])
-    runs[SearchSetup.VECTOR_EXPAND] = _expanded_run(context, question, runs[SearchSetup.VECTOR])
+    return run_setups(context, question, list(SearchSetup))
+
+
+def run_setups(
+    context: SearchContext, question: str, setups: list[SearchSetup]
+) -> dict[SearchSetup, SetupRun]:
+    """Run the given setups for one question; an expand setup reuses its base run if present."""
+    runs: dict[SearchSetup, SetupRun] = {}
+    for setup in setups:
+        runs[setup] = _run_setup(context, question, setup, runs)
     return runs
 
 
+def _run_setup(
+    context: SearchContext,
+    question: str,
+    setup: SearchSetup,
+    earlier_runs: dict[SearchSetup, SetupRun],
+) -> SetupRun:
+    base_setup = EXPANDED_FROM.get(setup)
+    if base_setup is None:
+        return _timed(BASE_SEARCHES[setup], context, question)
+    base_run = earlier_runs.get(base_setup)
+    if base_run is None:
+        base_run = _timed(BASE_SEARCHES[base_setup], context, question)
+    return _expanded_run(context, question, base_run)
+
+
 def _expanded_run(context: SearchContext, question: str, base_run: SetupRun) -> SetupRun:
-    expansion_run = _timed(_expanded_sources, context, question, base_run.sources)
+    started = time.perf_counter()
+    expansion = expand_sources(
+        context.chunks_collection,
+        context.scorer,
+        question,
+        base_run.sources,
+        context.repository,
+        context.version,
+    )
+    expansion_milliseconds = (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
     return SetupRun(
-        sources=expansion_run.sources,
-        milliseconds=base_run.milliseconds + expansion_run.milliseconds,
+        sources=expansion.sources,
+        milliseconds=base_run.milliseconds + expansion_milliseconds,
+        related_notes=expansion.related_notes,
     )
 
 
@@ -142,20 +170,6 @@ def _router_sources(context: SearchContext, question: str) -> list[SearchResult]
     return found.sources
 
 
-def _expanded_sources(
-    context: SearchContext, question: str, sources: list[SearchResult]
-) -> list[SearchResult]:
-    expansion = expand_sources(
-        context.chunks_collection,
-        context.scorer,
-        question,
-        sources,
-        context.repository,
-        context.version,
-    )
-    return expansion.sources
-
-
 def _vector_candidates(context: SearchContext, question: str, limit: int) -> list[SearchResult]:
     query_vector = context.embedder.embed_query(question)
     return search_chunks(
@@ -177,3 +191,18 @@ def _hybrid_candidates(context: SearchContext, question: str, limit: int) -> lis
         HybridSearchOptions(limit=limit),
     )
     return [fused.result for fused in outcome.results]
+
+
+BASE_SEARCHES: dict[SearchSetup, Callable[[SearchContext, str], list[SearchResult]]] = {
+    SearchSetup.VECTOR: _vector_sources,
+    SearchSetup.KEYWORD: _keyword_sources,
+    SearchSetup.HYBRID: _hybrid_sources,
+    SearchSetup.VECTOR_RERANK: _vector_rerank_sources,
+    SearchSetup.HYBRID_RERANK: _hybrid_rerank_sources,
+    SearchSetup.ROUTER: _router_sources,
+}
+
+EXPANDED_FROM = {
+    SearchSetup.ROUTER_EXPAND: SearchSetup.ROUTER,
+    SearchSetup.VECTOR_EXPAND: SearchSetup.VECTOR,
+}

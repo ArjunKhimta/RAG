@@ -24,7 +24,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from retrieval.question_set import EvaluationQuestion
+from retrieval.config import (
+    EMBEDDING_DIMENSIONS,
+    GEMINI_EMBEDDING_MODEL,
+    RERANKER_MODEL_REPOSITORY,
+    RERANKER_MODEL_REVISION,
+)
+from retrieval.question_set import EvaluationQuestion, QuestionSet
 from retrieval.search_results import SearchResult
 
 from evaluation.retrieval_metrics import QuestionScore, SetupSummary, summarize_scores
@@ -54,12 +60,46 @@ class RunDetails:
     embedding_dimensions: int
     reranker_model: str
     reranker_revision: str
+    answer_model: str | None = None
 
 
 @dataclass(frozen=True)
 class QuestionGroup:
     label: str
     question_ids: list[str]
+
+
+def build_run_details(
+    run_at: datetime,
+    question_path: Path,
+    question_set: QuestionSet,
+    repository_record: dict[str, Any],
+    project_root: Path,
+    answer_model: str | None = None,
+) -> RunDetails:
+    commit, has_changes = project_commit_state(project_root)
+    return RunDetails(
+        run_at=run_at.isoformat(timespec="seconds"),
+        project_commit=commit,
+        project_has_uncommitted_changes=has_changes,
+        question_file=relative_path(question_path, project_root),
+        question_file_sha256=file_sha256(question_path),
+        repository=question_set.repository,
+        version=question_set.version,
+        indexed_commit=repository_record["commit_id"],
+        embedding_model=GEMINI_EMBEDDING_MODEL,
+        embedding_dimensions=EMBEDDING_DIMENSIONS,
+        reranker_model=RERANKER_MODEL_REPOSITORY,
+        reranker_revision=RERANKER_MODEL_REVISION,
+        answer_model=answer_model,
+    )
+
+
+def relative_path(path: Path, project_root: Path) -> str:
+    resolved = path.resolve()
+    if resolved.is_relative_to(project_root):
+        return resolved.relative_to(project_root).as_posix()
+    return str(path)
 
 
 def file_sha256(path: Path) -> str:
@@ -121,8 +161,10 @@ def source_location(source: SearchResult) -> dict[str, Any]:
     }
 
 
-def result_paths(output_directory: Path, run_at: datetime) -> tuple[Path, Path]:
-    stem = f"{run_at.strftime(RESULT_TIME_FORMAT)}-retrieval"
+def result_paths(
+    output_directory: Path, run_at: datetime, kind: str = "retrieval"
+) -> tuple[Path, Path]:
+    stem = f"{run_at.strftime(RESULT_TIME_FORMAT)}-{kind}"
     return output_directory / f"{stem}.json", output_directory / f"{stem}.md"
 
 
