@@ -857,6 +857,126 @@
           "end_line": 293
         }
       ]
+    },
+    {
+      "id": "flask-045",
+      "question": "How can I make a variable available in every template without passing it to render_template each time?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/13809890",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sansio/scaffold.py",
+          "qualified_name": "Scaffold.context_processor",
+          "start_line": 541,
+          "end_line": 556
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.update_template_context",
+          "start_line": 506,
+          "end_line": 532
+        }
+      ]
+    },
+    {
+      "id": "flask-046",
+      "question": "When I return a dictionary as JSON, Flask puts the keys in alphabetical order. Why, and how do I keep my own order?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/54446080",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/json/provider.py",
+          "qualified_name": "DefaultJSONProvider",
+          "start_line": 124,
+          "end_line": 215
+        },
+        {
+          "file_path": "src/flask/json/provider.py",
+          "qualified_name": "DefaultJSONProvider.dumps",
+          "start_line": 166,
+          "end_line": 179
+        }
+      ]
+    },
+    {
+      "id": "flask-047",
+      "question": "I put my settings in a .flaskenv file, but the flask command ignores them. Why?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/62411746",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "load_dotenv",
+          "start_line": 706,
+          "end_line": 771
+        }
+      ]
+    },
+    {
+      "id": "flask-048",
+      "question": "How can I run one of my custom flask commands from a test and check its output?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/50963130",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/testing.py",
+          "qualified_name": "FlaskCliRunner.invoke",
+          "start_line": 275,
+          "end_line": 298
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.test_cli_runner",
+          "start_line": 727,
+          "end_line": 742
+        }
+      ]
+    },
+    {
+      "id": "flask-049",
+      "question": "test_request_context",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/17375340",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.test_request_context",
+          "start_line": 1423,
+          "end_line": 1477
+        }
+      ]
+    },
+    {
+      "id": "flask-050",
+      "question": "after_request",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/30717152",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sansio/scaffold.py",
+          "qualified_name": "Scaffold.after_request",
+          "start_line": 486,
+          "end_line": 505
+        }
+      ]
     }
   ]
 }

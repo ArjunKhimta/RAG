@@ -52,13 +52,13 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [x] 15. [When should Flask.g be used?](https://stackoverflow.com/q/15083967): `_AppCtxGlobals`, `AppContext` -> flask-014
 - [ ] 16. [Flask: 'session' vs. 'g'?](https://stackoverflow.com/q/32909851): `_AppCtxGlobals`, `SecureCookieSession` (two-part)
 - [ ] 17. [RuntimeError: working outside of application context](https://stackoverflow.com/q/31444036): `src/flask/globals.py`, where the message is module-level text, not inside a function; decide how to mark it as expected before using it
-- [ ] 18. [Testing code that requires a Flask app or request context](https://stackoverflow.com/q/17375340): `Flask.app_context`, `Flask.test_request_context`
+- [x] 18. [Testing code that requires a Flask app or request context](https://stackoverflow.com/q/17375340): `Flask.app_context`, `Flask.test_request_context` -> flask-049
 - [x] 19. ["Working outside of request context" in a background thread](https://stackoverflow.com/q/31647081) 🔤: `copy_current_request_context` -> flask-027
 - [x] 20. [Access the request in after_request or teardown_request](https://stackoverflow.com/q/27938818): `Flask.do_teardown_request`, `RequestContext.pop` -> flask-040
 
 ## Hooks around each request
 
-- [ ] 21. [How to set response header for all responses](https://stackoverflow.com/q/30717152): `Scaffold.after_request`, `Flask.process_response`
+- [x] 21. [How to set response header for all responses](https://stackoverflow.com/q/30717152): `Scaffold.after_request`, `Flask.process_response` -> flask-050
 - [x] 22. [How to run code after send_file()](https://stackoverflow.com/q/29192132) 🔤: `after_this_request` -> flask-019
 
 ## Everyday helpers
@@ -75,13 +75,13 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 - [ ] 30. [TemplateNotFound even though template file exists](https://stackoverflow.com/q/23327293): `DispatchingJinjaLoader.get_source`, `explain_template_loading_attempts`
 - [x] 31. [Reload Flask app when template file changes](https://stackoverflow.com/q/9508667): `Flask.create_jinja_environment` (`TEMPLATES_AUTO_RELOAD`) -> flask-021
-- [ ] 32. [Flask context processors functions](https://stackoverflow.com/q/13809890): `Scaffold.context_processor`, `Flask.update_template_context`
+- [x] 32. [Flask context processors functions](https://stackoverflow.com/q/13809890): `Scaffold.context_processor`, `Flask.update_template_context` -> flask-045
 
 ## JSON
 
 - [x] 33. [How do I jsonify a list in Flask?](https://stackoverflow.com/q/12435297) 🔤: `jsonify`, `JSONProvider._prepare_response_obj` -> flask-035
 - [x] 34. [Object is not JSON serializable](https://stackoverflow.com/q/11280382): `_default` in `src/flask/json/provider.py` (the types Flask converts for you) -> flask-022
-- [ ] 35. [Keep order of sorted dictionary passed to jsonify()](https://stackoverflow.com/q/54446080) 📅: `DefaultJSONProvider.sort_keys` (the old setting was removed)
+- [x] 35. [Keep order of sorted dictionary passed to jsonify()](https://stackoverflow.com/q/54446080) 📅: `DefaultJSONProvider.sort_keys` (the old setting was removed) -> flask-046
 
 ## Upload size limits
 
@@ -93,8 +93,8 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [x] 38. [How to access app context in a CLI command](https://stackoverflow.com/q/51822129) 🔤: `with_appcontext`, `AppGroup.command` -> flask-023
 - [x] 39. [Run Flask dev server over HTTPS using CLI](https://stackoverflow.com/q/48467835): `CertParamType`, `_validate_key`, `run_command` -> flask-041
 - [ ] 40. [Change the host and port that the flask command uses](https://stackoverflow.com/q/41940663): `run_command`, `FlaskGroup.__init__` (`FLASK_` environment variables)
-- [ ] 41. [.flaskenv or .env file not being read](https://stackoverflow.com/q/62411746): `load_dotenv` (needs python-dotenv installed)
-- [ ] 42. [Invoke a Flask CLI command programmatically?](https://stackoverflow.com/q/50963130): `FlaskCliRunner.invoke`, `Flask.test_cli_runner`
+- [x] 41. [.flaskenv or .env file not being read](https://stackoverflow.com/q/62411746): `load_dotenv` (needs python-dotenv installed) -> flask-047
+- [x] 42. [Invoke a Flask CLI command programmatically?](https://stackoverflow.com/q/50963130): `FlaskCliRunner.invoke`, `Flask.test_cli_runner` -> flask-048
 
 ## Config, sessions, views, testing, async
 
