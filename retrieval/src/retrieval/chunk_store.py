@@ -13,7 +13,13 @@ Chunk IDs are readable and deterministic, such as
 `pallets/flask@3.1.3:src/flask/app.py:546:method:1`, so indexing a version again overwrites
 documents in place instead of adding duplicates.
 
-`repositories` holds one document per indexed version, including the license that answers show.
+Each chunk also stores its `symbol` (file path and qualified name) and `calls`, the symbols it
+calls, so `$graphLookup` can walk from a chunk to its callers and callees. Both are indexed within
+a repository version.
+
+`repositories` holds one document per indexed version, including the license that answers show
+and the number of call graph edges. A record without that count was indexed before the call graph
+existed.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from pymongo import ASCENDING, ReplaceOne
 from pymongo.database import Database
 
 from retrieval.chunker import CodeChunk
+from retrieval.code_graph import symbol_for
 from retrieval.repository_cloner import CloneMetadata
 
 CHUNKS_COLLECTION = "chunks"
@@ -57,6 +64,7 @@ class IndexedVersion:
     embedding_model: str
     embedding_dimensions: int
     chunk_count: int
+    call_graph_edge_count: int
 
 
 class ChunkStore(Protocol):
@@ -89,6 +97,12 @@ class MongoChunkStore:
     def ensure_indexes(self) -> None:
         self._chunks.create_index([("embedding_key", ASCENDING)])
         self._chunks.create_index([("repository", ASCENDING), ("version", ASCENDING)])
+        self._chunks.create_index(
+            [("repository", ASCENDING), ("version", ASCENDING), ("symbol", ASCENDING)]
+        )
+        self._chunks.create_index(
+            [("repository", ASCENDING), ("version", ASCENDING), ("calls", ASCENDING)]
+        )
 
     def find_cached_embeddings(self, embedding_keys: list[str]) -> dict[str, CachedEmbedding]:
         cached_embeddings: dict[str, CachedEmbedding] = {}
@@ -150,6 +164,8 @@ def chunk_document(stored: StoredChunk) -> dict[str, Any]:
         "name": chunk.name,
         "qualified_name": chunk.qualified_name,
         "parent_class": chunk.parent_class,
+        "symbol": symbol_for(chunk.file_path, chunk.qualified_name),
+        "calls": list(chunk.calls),
         "text": chunk.text,
         "signature": chunk.signature,
         "part_number": chunk.part_number,
@@ -182,5 +198,6 @@ def repository_document(indexed_version: IndexedVersion) -> dict[str, Any]:
         "embedding_model": indexed_version.embedding_model,
         "embedding_dimensions": indexed_version.embedding_dimensions,
         "chunk_count": indexed_version.chunk_count,
+        "call_graph_edge_count": indexed_version.call_graph_edge_count,
         "indexed_at": datetime.now(UTC),
     }

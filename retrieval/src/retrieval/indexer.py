@@ -35,6 +35,7 @@ from retrieval.chunk_store import (
     chunk_id_for,
 )
 from retrieval.chunker import CodeChunk
+from retrieval.code_graph import edge_count_of
 from retrieval.config import (
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_INPUT_TOKEN_LIMIT,
@@ -151,6 +152,7 @@ def index_chunks(
             embedding_model=embedder.model_id,
             embedding_dimensions=embedder.dimensions,
             chunk_count=len(chunks),
+            call_graph_edge_count=edge_count_of(chunks),
         )
     )
     return report

@@ -38,6 +38,7 @@ CHUNK = CodeChunk(
     text="    def run(self):\n        ...",
     is_test_file=False,
     contains_redaction=True,
+    calls=("src/flask/cli.py::show_server_banner",),
 )
 
 VECTOR = [0.6, -0.8, 0.0]
@@ -58,6 +59,8 @@ def test_a_chunk_document_holds_every_field_and_a_binary_float32_vector():
     assert document["kind"] == "method"
     assert document["qualified_name"] == "Flask.run"
     assert document["contains_redaction"] is True
+    assert document["symbol"] == "src/flask/app.py::Flask.run"
+    assert document["calls"] == ["src/flask/cli.py::show_server_banner"]
     assert document["embedding_key"] == "key-1"
     assert isinstance(document["embedding"], Binary)
     assert len(document["embedding"]) == 2 + 4 * len(VECTOR)
@@ -79,6 +82,7 @@ def test_a_repository_document_records_the_license_shown_with_answers():
             embedding_model="gemini-embedding-001",
             embedding_dimensions=768,
             chunk_count=1009,
+            call_graph_edge_count=262,
         )
     )
 
@@ -86,6 +90,7 @@ def test_a_repository_document_records_the_license_shown_with_answers():
     assert document["license_spdx_id"] == "BSD-3-Clause"
     assert document["chunk_count"] == 1009
     assert document["embedding_dimensions"] == 768
+    assert document["call_graph_edge_count"] == 262
 
 
 def _stored_chunk() -> StoredChunk:

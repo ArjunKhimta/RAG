@@ -10,7 +10,9 @@ from retrieval.code_graph import (
     CallGraph,
     CallGraphError,
     CallOutcome,
+    attach_calls,
     build_call_graph,
+    edge_count_of,
     symbol_for,
 )
 
@@ -289,3 +291,16 @@ def test_a_call_site_without_a_matching_chunk_is_an_error():
 
     with pytest.raises(CallGraphError, match="run"):
         build_call_graph([], [file_calls])
+
+
+def test_attaching_calls_keeps_the_chunk_order_and_gives_each_chunk_its_callees():
+    source = b"def first():\n    return second()\n\ndef second():\n    return 1\n"
+    chunks = chunk_python_source(APP_FILE, source)
+    graph = build_call_graph(chunks, [find_file_calls(APP_FILE, source)])
+
+    attached = attach_calls(chunks, graph)
+
+    assert [chunk.qualified_name for chunk in attached] == ["first", "second"]
+    assert attached[0].calls == (symbol_for(APP_FILE, "second"),)
+    assert attached[1].calls == ()
+    assert edge_count_of(attached) == 1

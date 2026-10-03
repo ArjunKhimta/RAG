@@ -5,7 +5,8 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/index_repository.py https://github.com/pallets/flask --version 3.1.3
 
 Embeddings are cached by content hash in the chunks collection, so running it again for the same
-version makes no embedding requests. Also creates the Atlas vector and keyword search indexes if
+version makes no embedding requests. Each chunk is stored with the symbols it calls, from the
+repository's call graph. Also creates the Atlas vector and keyword search indexes if
 they are missing, or updates them if their definitions changed. Prints what the run cost: cache
 hits, requests, retries, estimated tokens, the time for each stage, and the chunk collection's
 size. Exits 0 on success and 1 on any refusal or failure. Every printed line passes through the
@@ -22,6 +23,7 @@ from pymongo.errors import PyMongoError
 
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
+from retrieval.code_graph import RESOLVED_OUTCOMES, attach_calls, build_call_graph, edge_count_of
 from retrieval.config import (
     EMBEDDING_REQUESTS_PER_MINUTE,
     EMBEDDING_TOKENS_PER_MINUTE,
@@ -60,6 +62,10 @@ def main() -> int:
         walk_result = find_python_files(cloned.source_path)
         chunking = chunk_source_files(walk_result.files)
         timings["walk, scan, chunk"] = _milliseconds_since(stage_started)
+        stage_started = time.perf_counter()
+        call_graph = build_call_graph(chunking.chunks, chunking.file_calls)
+        chunks = attach_calls(chunking.chunks, call_graph)
+        timings["call graph"] = _milliseconds_since(stage_started)
         mongo_client = build_mongo_client()
         database = mongo_client[MONGODB_DATABASE]
         store = MongoChunkStore(database)
@@ -70,7 +76,7 @@ def main() -> int:
         keyword_index_change = ensure_keyword_index(chunks_collection)
         rate_limiter = RateLimiter(EMBEDDING_REQUESTS_PER_MINUTE, EMBEDDING_TOKENS_PER_MINUTE)
         stage_started = time.perf_counter()
-        report = index_chunks(cloned.metadata, chunking.chunks, embedder, store, rate_limiter)
+        report = index_chunks(cloned.metadata, chunks, embedder, store, rate_limiter)
         timings["embed and store"] = _milliseconds_since(stage_started)
         collection_statistics = store.chunk_collection_statistics()
     except EmbeddingRequestError as error:
@@ -90,6 +96,9 @@ def main() -> int:
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
     skipped_count = len(walk_result.skipped) + len(chunking.unscannable)
+    resolved_call_count = sum(
+        1 for resolved in call_graph.resolved_calls if resolved.outcome in RESOLVED_OUTCOMES
+    )
     report_lines = [
         f"Repository  {cloned.metadata.repository} at {cloned.metadata.version} "
         f"({cloned.metadata.commit_id[:12]}, {cloned.metadata.license_spdx_id})",
@@ -100,6 +109,8 @@ def main() -> int:
         _row("Python files indexed", len(walk_result.files) - len(chunking.unscannable)),
         _row("Paths skipped", skipped_count),
         _row("Secret findings redacted", len(chunking.secret_findings)),
+        _row("Call sites resolved", f"{resolved_call_count} of {len(call_graph.resolved_calls)}"),
+        _row("Call graph edges", edge_count_of(chunks)),
         "",
         *_report_lines(report),
         "",

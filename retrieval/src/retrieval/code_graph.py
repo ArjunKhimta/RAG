@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import builtins
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from retrieval.call_sites import CallShape, CallSite, FileCalls, ImportBinding, module_name_for
@@ -129,6 +129,15 @@ def build_call_graph(chunks: list[CodeChunk], file_calls: list[FileCalls]) -> Ca
                 callee_sets[caller_chunk].add(callee_symbol)
     callees_by_chunk = {chunk: tuple(sorted(symbols)) for chunk, symbols in callee_sets.items()}
     return CallGraph(resolved_calls=resolved_calls, callees_by_chunk=callees_by_chunk)
+
+
+def attach_calls(chunks: list[CodeChunk], graph: CallGraph) -> list[CodeChunk]:
+    """Return the chunks in the same order, each carrying the symbols it calls."""
+    return [replace(chunk, calls=graph.callees_by_chunk.get(chunk, ())) for chunk in chunks]
+
+
+def edge_count_of(chunks: list[CodeChunk]) -> int:
+    return sum(len(chunk.calls) for chunk in chunks)
 
 
 def _caller_chunks_by_definition(chunks: list[CodeChunk]) -> dict[str, list[CodeChunk]]:

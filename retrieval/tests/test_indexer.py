@@ -137,6 +137,35 @@ def test_every_chunk_is_embedded_and_stored_on_the_first_run():
     assert store.repositories[0].chunk_count == 5
 
 
+def test_the_version_record_counts_the_call_graph_edges_of_its_chunks():
+    chunks = [
+        replace(_function_chunk(0), calls=("pkg/module.py::function_1",)),
+        replace(
+            _function_chunk(1),
+            calls=("pkg/module.py::function_0", "pkg/module.py::function_2"),
+        ),
+        _function_chunk(2),
+    ]
+
+    store = InMemoryChunkStore()
+    _index(chunks, FakeEmbedder(), store)
+
+    assert store.repositories[0].call_graph_edge_count == 3
+
+
+def test_calls_do_not_change_the_embedding_cache_key():
+    store = InMemoryChunkStore()
+    _index([_function_chunk(0)], FakeEmbedder(), store)
+    embedder = FakeEmbedder()
+
+    report = _index(
+        [replace(_function_chunk(0), calls=("pkg/module.py::function_1",))], embedder, store
+    )
+
+    assert report.cache_hit_count == 1
+    assert embedder.embedded_batches == []
+
+
 def test_a_second_run_reuses_every_embedding_and_makes_no_requests():
     chunks = [_function_chunk(index) for index in range(5)]
     store = InMemoryChunkStore()

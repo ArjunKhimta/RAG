@@ -62,7 +62,9 @@ class CodeChunk:
     `start_line` and `end_line` are 1-indexed and inclusive. `signature` is set only on the second
     and later parts of a split definition, whose text does not include the definition's header.
     `is_test_file` and `contains_redaction` are set by the repository walker, which knows the
-    file's place in the repository and which of its lines had secrets redacted.
+    file's place in the repository and which of its lines had secrets redacted. `calls` holds the
+    symbols of the definitions this chunk calls, set once the whole repository's call graph is
+    built.
     """
 
     file_path: str
@@ -78,6 +80,7 @@ class CodeChunk:
     part_count: int = 1
     is_test_file: bool = False
     contains_redaction: bool = False
+    calls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
