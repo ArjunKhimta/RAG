@@ -5,8 +5,10 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/ask_repository.py "How does Flask sign the session cookie?" \
         --repository pallets/flask --version 3.1.3
 
-Finds the code with hybrid search, reranks the top 30 with the local cross-encoder, and gives the
-best 5 to Gemini, which writes a short answer with markers such as [2]. Every reference is checked
+A question that is a single code name, such as `url_for`, goes to keyword search, whose top 5 are
+used directly; anything else goes to hybrid search, whose top 30 are reranked by the local
+cross-encoder to the best 5. `--no-router` sends every question to hybrid search. Gemini then
+writes a short answer from the 5 sources with markers such as [2]. Every reference is checked
 against the code that was sent; a reply citing anything else is rejected, never shown. Prints the
 answer, then for each citation the file, lines, a short snippet, and a link to those lines on
 GitHub at the indexed commit, then the license, the tokens used, and the time for each stage.
@@ -14,7 +16,8 @@ GitHub at the indexed commit, then the license, the tokens used, and the time fo
 callees of those sources that the cross-encoder rates best for the question, found through the call
 graph; it is off by default until measured.
 
-Costs one generation request, plus one embedding request for a question not asked before. A
+Costs one generation request, plus one embedding request for a hybrid-route question not asked
+before; a code name needs no embedding. A
 temporary Gemini failure is retried up to twice, and the report says how many requests were made.
 Stays under the per-minute generation limits and stops with a clear message when a daily quota is
 used up. Run `download_reranker_model.py` once first. Exits 0 when an answer is shown, including one
@@ -61,6 +64,12 @@ from retrieval.embedders import GeminiQueryEmbedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.graph_expansion import require_call_graph
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_router import (
+    QueryRoute,
+    RouteDecision,
+    hybrid_without_router,
+    route_query,
+)
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
@@ -92,6 +101,7 @@ class AskRun:
     timings: dict[str, float]
     embedding_status: str
     expansion: ExpandedSources | None
+    route: RouteDecision
 
 
 def main() -> int:
@@ -141,9 +151,16 @@ def _ask(
     chunks_collection = database[CHUNKS_COLLECTION]
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
     require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
-    stage_started = time.perf_counter()
-    scorer = CrossEncoderScorer(verified_reranker_files())
-    load_milliseconds = _milliseconds_since(stage_started)
+    if arguments.no_router:
+        route = hybrid_without_router(arguments.question)
+    else:
+        route = route_query(arguments.question)
+    timings: dict[str, float] = {}
+    scorer = None
+    if route.route == QueryRoute.HYBRID or arguments.expand:
+        stage_started = time.perf_counter()
+        scorer = CrossEncoderScorer(verified_reranker_files())
+        timings["load reranker"] = _milliseconds_since(stage_started)
     found = find_sources(
         chunks_collection,
         embedder,
@@ -151,15 +168,16 @@ def _ask(
         arguments.question,
         arguments.repository,
         arguments.version,
+        route,
         exclude_tests=arguments.exclude_tests,
     )
     if not found.sources:
         raise _NoSourcesFound()
-    timings = {"load reranker": load_milliseconds, **found.timings}
+    timings.update(found.timings)
     sources = found.sources
     related_notes: list[str | None] | None = None
     expansion = None
-    if arguments.expand:
+    if arguments.expand and scorer is not None:
         expansion = expand_sources(
             chunks_collection,
             scorer,
@@ -179,13 +197,16 @@ def _ask(
     timings["generate answer"] = _milliseconds_since(stage_started)
     if embedder.hit_count:
         embedding_status = "question embedding from the cache (0 requests)"
-    else:
+    elif embedder.miss_count:
         embedding_status = "question embedded and cached (1 request)"
+    else:
+        embedding_status = "question not embedded: keyword search needs none (0 requests)"
     return AskRun(
         generated=generated,
         timings=timings,
         embedding_status=embedding_status,
         expansion=expansion,
+        route=found.route,
     )
 
 
@@ -204,8 +225,7 @@ def _report_lines(
         f"Repository  {arguments.repository} at {arguments.version} "
         f"({commit_id[:COMMIT_ID_DISPLAY_LENGTH]}, {license_id})",
         f"Question    {arguments.question}",
-        f"Retrieval   hybrid search, top {RERANK_CANDIDATE_COUNT} reranked to "
-        f"{searched_count} sources, {tests}",
+        f"Retrieval   {_describe_retrieval(ask_run.route, searched_count)}, {tests}",
         *_expansion_header_lines(expansion, searched_count),
         f"Embedding   {ask_run.embedding_status}",
         f"Model       {GEMINI_ANSWER_MODEL}, low thinking ({_describe_attempts(generated)})",
@@ -236,6 +256,15 @@ def _report_lines(
         "Timing",
         *timing_lines,
     ]
+
+
+def _describe_retrieval(route: RouteDecision, searched_count: int) -> str:
+    if route.route == QueryRoute.KEYWORD:
+        return f"keyword search for {route.query} ({route.reason}), top {searched_count} sources"
+    return (
+        f"hybrid search ({route.reason}), top {RERANK_CANDIDATE_COUNT} reranked to "
+        f"{searched_count} sources"
+    )
 
 
 def _expansion_header_lines(expansion: ExpandedSources | None, searched_count: int) -> list[str]:
@@ -339,6 +368,11 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="the indexed tag, branch, or commit ID")
     parser.add_argument(
         "--exclude-tests", action="store_true", help="leave out chunks from test files"
+    )
+    parser.add_argument(
+        "--no-router",
+        action="store_true",
+        help="send every question to hybrid search, even a single code name",
     )
     parser.add_argument(
         "--expand",

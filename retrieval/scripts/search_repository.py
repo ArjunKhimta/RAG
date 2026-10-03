@@ -8,14 +8,15 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/search_repository.py add_url_rule --mode keyword \
         --repository pallets/flask --version 3.1.3
 
-Options: `--mode vector` (default), `--mode keyword`, or `--mode hybrid`, which fuses both result
-lists with Reciprocal Rank Fusion and shows each result's rank in each list. `--limit N` (default
-10), and `--exclude-tests` to leave out chunks from test files. `--exact`, for vector and hybrid
-modes, compares the question with every chunk instead of searching approximately. `--rerank`
-takes the top 30 of the chosen search, scores each against the question with the local
-cross-encoder, and shows the best 5 (or `--limit`, at most 30), each with its rank before
-reranking; it also reports how many candidates were cut to fit the model and the process's peak
-memory before and after reranking. Run `download_reranker_model.py` once before using it.
+Options: `--mode vector` (default), `--mode keyword`, `--mode hybrid`, which fuses both result lists
+with Reciprocal Rank Fusion and shows each result's rank in each list, or `--mode auto`, which lets
+the query router choose: keyword for a single code name, hybrid otherwise. `--limit N` (default 10),
+and `--exclude-tests` to leave out chunks from test files. `--exact`, for vector and hybrid modes,
+compares the question with every chunk instead of searching approximately. `--rerank` takes the top
+30 of the chosen search, scores each against the question with the local cross-encoder, and shows
+the best 5 (or `--limit`, at most 30), each with its rank before reranking; it also reports how many
+candidates were cut to fit the model and the process's peak memory before and after reranking. Run
+`download_reranker_model.py` once before using it.
 
 Refuses to search a version that has not finished indexing, and in vector and hybrid modes one
 that was embedded with a different model. Question embeddings are cached in MongoDB, so only a
@@ -57,6 +58,7 @@ from retrieval.embedders import EmbeddingRequestError, GeminiQueryEmbedder
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_router import QueryRoute, route_query
 from retrieval.rank_fusion import FusedResult
 from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
@@ -70,6 +72,8 @@ VECTOR_MODE = "vector"
 KEYWORD_MODE = "keyword"
 
 HYBRID_MODE = "hybrid"
+
+AUTO_MODE = "auto"
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -116,16 +120,26 @@ def main() -> int:
         repository_record = store.find_repository_record(arguments.repository, arguments.version)
         require_indexed_version(repository_record, arguments.repository, arguments.version)
         search_limit = RERANK_CANDIDATE_COUNT if arguments.rerank else arguments.limit
-        if arguments.mode == VECTOR_MODE:
+        mode = arguments.mode
+        keyword_query = arguments.query
+        route_note = None
+        if mode == AUTO_MODE:
+            decision = route_query(arguments.query)
+            mode = KEYWORD_MODE if decision.route == QueryRoute.KEYWORD else HYBRID_MODE
+            keyword_query = decision.query
+            route_note = f"router chose {mode}: {decision.reason}"
+        if mode == VECTOR_MODE:
             search_run = _run_vector_search(
                 arguments, search_limit, database, chunks_collection, repository_record
             )
-        elif arguments.mode == HYBRID_MODE:
+        elif mode == HYBRID_MODE:
             search_run = _run_hybrid_search(
                 arguments, search_limit, database, chunks_collection, repository_record
             )
         else:
-            search_run = _run_keyword_search(arguments, search_limit, chunks_collection)
+            search_run = _run_keyword_search(
+                arguments, keyword_query, search_limit, chunks_collection
+            )
         if arguments.rerank:
             search_run = _rerank_search_run(arguments, search_run)
     except (SearchRefusedError, QuestionTooLongError) as error:
@@ -146,6 +160,8 @@ def main() -> int:
         f"Query       {arguments.query}",
         f"Search      {search_run.description}",
     ]
+    if route_note is not None:
+        header_lines.append(f"Route       {route_note}")
     if search_run.embedding_status is not None:
         header_lines.append(f"Embedding   {search_run.embedding_status}")
     if search_run.reranker_status is not None:
@@ -254,13 +270,13 @@ def _checked_query_embedder(
 
 
 def _run_keyword_search(
-    arguments: argparse.Namespace, limit: int, chunks_collection: Collection
+    arguments: argparse.Namespace, query: str, limit: int, chunks_collection: Collection
 ) -> SearchRun:
     options = KeywordSearchOptions(limit=limit, exclude_tests=arguments.exclude_tests)
     require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
     stage_started = time.perf_counter()
     results = search_chunks_by_keywords(
-        chunks_collection, arguments.query, arguments.repository, arguments.version, options
+        chunks_collection, query, arguments.repository, arguments.version, options
     )
     timings = {"keyword search": _milliseconds_since(stage_started)}
     return SearchRun(
@@ -335,7 +351,7 @@ def _parse_arguments() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="the indexed tag, branch, or commit ID")
     parser.add_argument(
         "--mode",
-        choices=[VECTOR_MODE, KEYWORD_MODE, HYBRID_MODE],
+        choices=[VECTOR_MODE, KEYWORD_MODE, HYBRID_MODE, AUTO_MODE],
         default=VECTOR_MODE,
         help=f"search method (default {VECTOR_MODE})",
     )
@@ -363,6 +379,8 @@ def _parse_arguments() -> argparse.Namespace:
     arguments = parser.parse_args()
     if arguments.exact and arguments.mode == KEYWORD_MODE:
         parser.error("--exact does not apply to --mode keyword")
+    if arguments.exact and arguments.mode == AUTO_MODE:
+        parser.error("--exact needs a chosen mode: use --mode vector or --mode hybrid")
     if arguments.limit is None:
         arguments.limit = RERANK_RESULT_COUNT if arguments.rerank else DEFAULT_SEARCH_LIMIT
     if arguments.rerank and arguments.limit > RERANK_CANDIDATE_COUNT:

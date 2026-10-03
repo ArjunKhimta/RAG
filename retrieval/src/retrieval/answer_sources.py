@@ -1,8 +1,11 @@
 """Choose the code an answer is written from: the searched sources, then optionally related code.
 
 Two steps, kept apart so their effect can be compared:
-1. `find_sources`: hybrid search finds the top 30 candidates, and the cross-encoder keeps the
-   best 5.
+1. `find_sources`: follows the query router's decision. A code name goes to keyword search, whose
+   top 5 are used as they are: on the 264 names defined once in Flask, keyword search ranked the
+   definition first for 98.5% of them, and reranking lowered that to 75%, because the
+   cross-encoder, trained on web search, favours tests that repeat the name. Anything else goes to
+   hybrid search for the top 30 candidates, and the cross-encoder keeps the best 5.
 2. `expand_sources`: the call graph lists the direct callers and callees of those 5. The first 30,
    in source rank order, are scored against the question by the same cross-encoder, and the best
    3 are added after the sources, each with a note such as "called by source 2".
@@ -29,6 +32,8 @@ from retrieval.config import (
 from retrieval.embedders import QueryEmbedder
 from retrieval.graph_expansion import GraphNeighbor, find_graph_neighbors
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
+from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
+from retrieval.query_router import QueryRoute, RouteDecision
 from retrieval.reranking import PairScorer, rerank
 from retrieval.search_results import SearchResult
 
@@ -39,6 +44,7 @@ MILLISECONDS_PER_SECOND = 1000
 class FoundSources:
     sources: list[SearchResult]
     timings: dict[str, float]
+    route: RouteDecision
 
 
 @dataclass(frozen=True)
@@ -65,12 +71,18 @@ class ExpandedSources:
 def find_sources(
     chunks_collection: Collection,
     embedder: QueryEmbedder,
-    scorer: PairScorer,
+    scorer: PairScorer | None,
     question: str,
     repository: str,
     version: str,
+    route: RouteDecision,
     exclude_tests: bool = False,
 ) -> FoundSources:
+    """Find the answer's sources along `route`. The scorer is needed only for the hybrid route."""
+    if route.route == QueryRoute.KEYWORD:
+        return _keyword_sources(chunks_collection, route, repository, version, exclude_tests)
+    if scorer is None:
+        raise ValueError("The hybrid route needs the reranker's scorer")
     search_options = HybridSearchOptions(limit=RERANK_CANDIDATE_COUNT, exclude_tests=exclude_tests)
     outcome = hybrid_search(
         chunks_collection, embedder, question, repository, version, search_options
@@ -78,12 +90,28 @@ def find_sources(
     timings = dict(outcome.timings)
     candidates = [fused.result for fused in outcome.results]
     if not candidates:
-        return FoundSources(sources=[], timings=timings)
+        return FoundSources(sources=[], timings=timings, route=route)
     stage_started = time.perf_counter()
     reranked_results = rerank(question, candidates, scorer, RERANK_RESULT_COUNT)
     timings["rerank"] = _milliseconds_since(stage_started)
     sources = [reranked.result for reranked in reranked_results]
-    return FoundSources(sources=sources, timings=timings)
+    return FoundSources(sources=sources, timings=timings, route=route)
+
+
+def _keyword_sources(
+    chunks_collection: Collection,
+    route: RouteDecision,
+    repository: str,
+    version: str,
+    exclude_tests: bool,
+) -> FoundSources:
+    options = KeywordSearchOptions(limit=RERANK_RESULT_COUNT, exclude_tests=exclude_tests)
+    stage_started = time.perf_counter()
+    sources = search_chunks_by_keywords(
+        chunks_collection, route.query, repository, version, options
+    )
+    timings = {"keyword search": _milliseconds_since(stage_started)}
+    return FoundSources(sources=sources, timings=timings, route=route)
 
 
 def expand_sources(

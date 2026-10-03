@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from retrieval.answer_sources import expand_sources
+import pytest
+
+from retrieval.answer_sources import expand_sources, find_sources
+from retrieval.query_router import QueryRoute, route_query
 from retrieval.reranking import PairScores
 from retrieval.search_results import SearchResult
 
@@ -130,3 +133,53 @@ def test_with_no_neighbors_the_sources_come_back_unchanged_and_nothing_is_rerank
     assert expanded.kept_neighbors == []
     assert scorer.scored_passage_counts == []
     assert set(expanded.timings) == {"expand context"}
+
+
+class RefusingEmbedder:
+    """Fails the test if the question is ever embedded."""
+
+    model_id = "fake-model"
+    dimensions = 3
+    task_type = "CODE_RETRIEVAL_QUERY"
+
+    def embed_query(self, question: str) -> list[float]:
+        raise AssertionError("a code name must not be embedded")
+
+
+def test_a_code_name_takes_keyword_search_top_5_without_embedding_or_reranking():
+    keyword_documents = [
+        {**_document(f"url_for_{index}", index * 10), "score": 9.0 - index} for index in range(5)
+    ]
+    collection = FakeCollection(keyword_documents)
+
+    found = find_sources(
+        collection,
+        RefusingEmbedder(),
+        None,
+        "`url_for()`",
+        "owner/repo",
+        "1.0",
+        route_query("`url_for()`"),
+    )
+
+    assert [source.qualified_name for source in found.sources] == [
+        f"url_for_{index}" for index in range(5)
+    ]
+    assert found.route.route == QueryRoute.KEYWORD
+    assert set(found.timings) == {"keyword search"}
+    search_stage = collection.pipelines[0][0]["$search"]
+    assert "url_for" in str(search_stage)
+    assert "`" not in str(search_stage)
+
+
+def test_the_hybrid_route_needs_the_reranker():
+    with pytest.raises(ValueError, match="scorer"):
+        find_sources(
+            FakeCollection([]),
+            RefusingEmbedder(),
+            None,
+            "How are URLs built?",
+            "owner/repo",
+            "1.0",
+            route_query("How are URLs built?"),
+        )

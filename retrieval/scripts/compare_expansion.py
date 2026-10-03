@@ -5,10 +5,10 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/compare_expansion.py eval/questions/pallets-flask-3.1.3.json
     python retrieval/scripts/compare_expansion.py eval/questions/pallets-flask-3.1.3.json --answers
 
-For each question, searches and reranks once, as `ask_repository.py` does, then expands those
-sources through the call graph. Reports context recall both ways: how many expected definitions
-reach the answer model, by the rules in `question_set.py`. This costs no generation requests, and
-one embedding request for each question not asked before.
+For each question, finds the sources once, as `ask_repository.py` does (routing code names to
+keyword search), then expands those sources through the call graph. Reports context recall both
+ways: how many expected definitions reach the answer model, by the rules in `question_set.py`. This
+costs no generation requests, and one embedding request for each question not asked before.
 
 `--answers` also asks Gemini both ways, 2 generation requests per question (more if a temporary
 failure is retried), and reports whether each answer cites every expected definition, its prompt
@@ -52,6 +52,7 @@ from retrieval.embedders import GeminiQueryEmbedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.graph_expansion import require_call_graph
 from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_router import route_query
 from retrieval.question_set import (
     EvaluationQuestion,
     QuestionSet,
@@ -160,6 +161,7 @@ def _compare_all(
             question.question,
             question_set.repository,
             question_set.version,
+            route_query(question.question),
         )
         expansion = expand_sources(
             chunks_collection,
@@ -225,7 +227,7 @@ def _report_lines(
     lines = [
         f"Questions   {len(comparisons)} of {len(question_set.questions)} from "
         f"{question_set.repository} at {question_set.version}",
-        "Base        hybrid search, top 30 reranked to 5 sources",
+        "Base        keyword top 5 for a code name, else hybrid top 30 reranked to 5",
         "Expanded    base plus the best 3 callers or callees, picked by the reranker",
         "",
     ]
