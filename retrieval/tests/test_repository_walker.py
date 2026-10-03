@@ -114,6 +114,19 @@ def test_chunks_carry_relative_paths_and_the_test_file_flag(repository_root):
     assert all(chunk.kind == ChunkKind.FUNCTION for chunk in chunks)
 
 
+def test_calls_are_collected_for_source_files_only(repository_root):
+    walk_result = find_python_files(repository_root)
+
+    chunking = chunk_source_files(walk_result.files)
+
+    assert [file_calls.file_path for file_calls in chunking.file_calls] == [
+        "setup.py",
+        "src/package/__init__.py",
+        "src/package/app.py",
+    ]
+    assert chunking.file_calls[2].module == "package.app"
+
+
 def test_secrets_are_redacted_before_chunking_and_only_covering_chunks_are_marked(
     repository_root,
 ):

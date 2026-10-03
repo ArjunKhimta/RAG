@@ -9,6 +9,9 @@ skipped are reported with the reason, so nothing disappears silently.
 
 Each file is scanned for secrets and redacted before it is chunked. A file that cannot be scanned
 reliably is skipped rather than indexed unscanned.
+
+The calls and imports of each source file are collected from the same redacted text, for the call
+graph. Test files are left out of the graph, so their calls are not collected.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 
+from retrieval.call_sites import FileCalls, find_file_calls
 from retrieval.chunker import CodeChunk, chunk_python_source
 from retrieval.config import MAX_FILE_BYTES
 from retrieval.secret_scanning import SecretFinding, UnscannableSourceError, scan_and_redact
@@ -72,6 +76,7 @@ class ChunkingResult:
     chunks: list[CodeChunk]
     secret_findings: list[SecretFinding]
     unscannable: list[SkippedPath]
+    file_calls: list[FileCalls]
 
 
 def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTES) -> WalkResult:
@@ -103,11 +108,13 @@ def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTE
 def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
     """Redact secrets in each file, then chunk it under its repository-relative path.
 
-    Chunks are marked when they come from a test file or cover a redacted line.
+    Chunks are marked when they come from a test file or cover a redacted line. Calls and imports
+    are collected for source files only.
     """
     chunks: list[CodeChunk] = []
     secret_findings: list[SecretFinding] = []
     unscannable: list[SkippedPath] = []
+    file_calls: list[FileCalls] = []
     for source_file in files:
         source = source_file.path.read_bytes()
         try:
@@ -123,8 +130,13 @@ def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
                 chunk, is_test_file=is_test_file, contains_redaction=contains_redaction
             )
             chunks.append(marked_chunk)
+        if not is_test_file:
+            file_calls.append(find_file_calls(source_file.relative_path, redacted.source))
     return ChunkingResult(
-        chunks=chunks, secret_findings=secret_findings, unscannable=unscannable
+        chunks=chunks,
+        secret_findings=secret_findings,
+        unscannable=unscannable,
+        file_calls=file_calls,
     )
 
 

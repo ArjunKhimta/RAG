@@ -166,7 +166,7 @@ class _FileChunker:
         groups: list[_Definition | _LeftoverRun] = []
         pending_items: list[Node] = []
         for item in items:
-            definition_node = _definition_inside(item)
+            definition_node = definition_inside(item)
             if definition_node is None:
                 pending_items.append(item)
                 continue
@@ -214,7 +214,7 @@ class _FileChunker:
     def _chunk_function(self, definition: _Definition, parent_class: str | None) -> list[CodeChunk]:
         function_node = definition.node
         kind = ChunkKind.FUNCTION if parent_class is None else ChunkKind.METHOD
-        boundary_lines = _first_lines_of(_body_items(function_node))
+        boundary_lines = _first_lines_of(body_items(function_node))
         segments = self._raw_segments_between(
             definition.first_line, definition.last_line, boundary_lines
         )
@@ -238,7 +238,7 @@ class _FileChunker:
             parent_class=parent_class,
             signature=self._signature_of(class_node),
         )
-        qualified_name = _qualify(name, parent_class)
+        qualified_name = qualify(name, parent_class)
         for member in members:
             chunks.extend(self._chunk_definition(member, parent_class=qualified_name))
         return chunks
@@ -257,14 +257,14 @@ class _FileChunker:
         )
 
     def _member_definitions(self, class_node: Node) -> list[_Definition]:
-        groups = self._group_definitions(_body_items(class_node))
+        groups = self._group_definitions(body_items(class_node))
         return [group for group in groups if isinstance(group, _Definition)]
 
     def _outline_segments(
         self, definition: _Definition, members: list[_Definition]
     ) -> list[_Segment]:
         replaced_bodies = self._method_bodies(members)
-        boundary_lines = _first_lines_of(_body_items(definition.node))
+        boundary_lines = _first_lines_of(body_items(definition.node))
         units = _units_between(definition.first_line, definition.last_line, boundary_lines)
         segments: list[_Segment] = []
         for first_line, last_line in units:
@@ -346,7 +346,7 @@ class _FileChunker:
                 end_line=group[-1].last_line,
                 kind=kind,
                 name=name,
-                qualified_name=_qualify(name, parent_class),
+                qualified_name=qualify(name, parent_class),
                 parent_class=parent_class,
                 text="\n".join(segment.text for segment in group),
                 signature=None if is_first_part else signature,
@@ -370,7 +370,7 @@ class _FileChunker:
         return _decode(self._source[name_node.start_byte : name_node.end_byte])
 
 
-def _definition_inside(item: Node) -> Node | None:
+def definition_inside(item: Node) -> Node | None:
     """Return the function or class that `item` is or wraps with decorators, or None."""
     candidate = item
     if item.type == DECORATED_NODE_TYPE:
@@ -380,7 +380,7 @@ def _definition_inside(item: Node) -> Node | None:
     return candidate
 
 
-def _body_items(definition_node: Node) -> list[Node]:
+def body_items(definition_node: Node) -> list[Node]:
     """Return the statements and comments inside a definition's body, in source order.
 
     Tree-sitter attaches a comment that comes before the first statement of a body to the
@@ -441,7 +441,7 @@ def _start_byte_of(node: Node) -> int:
     return node.start_byte
 
 
-def _qualify(name: str, parent_class: str | None) -> str:
+def qualify(name: str, parent_class: str | None) -> str:
     if parent_class is None:
         return name
     return f"{parent_class}.{name}"
