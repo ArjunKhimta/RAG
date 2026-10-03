@@ -1,7 +1,7 @@
 # Candidate evaluation questions for pallets/flask 3.1.3
 
 Real questions from Stack Overflow, gathered on 2026-10-03 through its public read-only API, for the
-38 open slots in `pallets-flask-3.1.3.json` (12 of 50 written so far). Each answer location was checked
+38 open slots in `pallets-flask-3.1.3.json` (12 of 50 written when this list was made). Each answer location was checked
 against the Flask 3.1.3 source.
 
 Question titles are from Stack Overflow, written by their original authors and licensed under
@@ -26,7 +26,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 ## Routing and endpoints
 
-- [ ] 1. [Method Not Allowed flask error 405](https://stackoverflow.com/q/21689364): `App.add_url_rule` (routes accept only GET unless methods are given)
+- [x] 1. [Method Not Allowed flask error 405](https://stackoverflow.com/q/21689364): `App.add_url_rule` (routes accept only GET unless methods are given) -> flask-013
 - [ ] 2. [What is an 'endpoint' in Flask?](https://stackoverflow.com/q/19261833): `App.add_url_rule`, `_endpoint_from_view_func`
 - [ ] 3. [View function mapping is overwriting an existing endpoint function](https://stackoverflow.com/q/17256602): `App.add_url_rule` (raises that error)
 - [ ] 4. [before_request: add exception for specific route](https://stackoverflow.com/q/14367991): `Scaffold.before_request`, `Flask.preprocess_request`
@@ -44,12 +44,12 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 10. [What are Flask Blueprints, exactly?](https://stackoverflow.com/q/24420857): `Blueprint`, `Blueprint.register` (both in `src/flask/sansio/blueprints.py`)
 - [ ] 11. [How to access app.config in a blueprint?](https://stackoverflow.com/q/18214612): `Blueprint.record`, `BlueprintSetupState`
 - [ ] 12. [Flask blueprint template folder](https://stackoverflow.com/q/7974771): `DispatchingJinjaLoader._iter_loaders` (the app's templates win over a blueprint's)
-- [ ] 13. [errorhandler in separate blueprint is not working](https://stackoverflow.com/q/55785287): `Blueprint.app_errorhandler`, `App._find_error_handler`
+- [x] 13. [errorhandler in separate blueprint is not working](https://stackoverflow.com/q/55785287): `Blueprint.app_errorhandler`, `App._find_error_handler` -> flask-016
 - [ ] 14. [Nested Blueprints in Flask?](https://stackoverflow.com/q/33003178): `Blueprint.register_blueprint`, `Blueprint.register`
 
 ## Contexts and `g`
 
-- [ ] 15. [When should Flask.g be used?](https://stackoverflow.com/q/15083967): `_AppCtxGlobals`, `AppContext`
+- [x] 15. [When should Flask.g be used?](https://stackoverflow.com/q/15083967): `_AppCtxGlobals`, `AppContext` -> flask-014
 - [ ] 16. [Flask: 'session' vs. 'g'?](https://stackoverflow.com/q/32909851): `_AppCtxGlobals`, `SecureCookieSession` (two-part)
 - [ ] 17. [RuntimeError: working outside of application context](https://stackoverflow.com/q/31444036): `src/flask/globals.py`, where the message is module-level text, not inside a function; decide how to mark it as expected before using it
 - [ ] 18. [Testing code that requires a Flask app or request context](https://stackoverflow.com/q/17375340): `Flask.app_context`, `Flask.test_request_context`
@@ -59,16 +59,16 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Hooks around each request
 
 - [ ] 21. [How to set response header for all responses](https://stackoverflow.com/q/30717152): `Scaffold.after_request`, `Flask.process_response`
-- [ ] 22. [How to run code after send_file()](https://stackoverflow.com/q/29192132) 🔤: `after_this_request`
+- [x] 22. [How to run code after send_file()](https://stackoverflow.com/q/29192132) 🔤: `after_this_request` -> flask-019
 
 ## Everyday helpers
 
 - [ ] 23. [Redirecting to URL in Flask](https://stackoverflow.com/q/14343812) 🔤: `redirect`, `App.redirect`
 - [ ] 24. [How to return 400 (Bad Request) on Flask?](https://stackoverflow.com/q/57664997): `abort`, `App.make_aborter`
-- [ ] 25. [Difference between send_file and send_from_directory?](https://stackoverflow.com/q/38252955): `send_file`, `send_from_directory` (two-part)
+- [x] 25. [Difference between send_file and send_from_directory?](https://stackoverflow.com/q/38252955): `send_file`, `send_from_directory` (two-part) -> flask-017
 - [ ] 26. [How to change downloading name in Flask?](https://stackoverflow.com/q/41543951): `send_file` (`download_name`)
 - [ ] 27. [Streaming data with Python and Flask](https://stackoverflow.com/q/13386681) 🔤: `stream_with_context`, `stream_template`
-- [ ] 28. [Message flashing fails across redirects](https://stackoverflow.com/q/6196598): `flash`, `get_flashed_messages` (messages are kept in the session)
+- [x] 28. [Message flashing fails across redirects](https://stackoverflow.com/q/6196598): `flash`, `get_flashed_messages` (messages are kept in the session) -> flask-015
 - [ ] 29. [Flash success and danger with different messages](https://stackoverflow.com/q/51273822): `flash`, `get_flashed_messages` (categories)
 
 ## Templates
@@ -100,13 +100,13 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 - [ ] 43. [Using config classes with from_object() for dev/prod/testing](https://stackoverflow.com/q/61622845) 🔤: `Config.from_object` (only UPPERCASE names load)
 - [ ] 44. [Flask permanent session: where to define them?](https://stackoverflow.com/q/34118093): `SessionMixin.permanent`, `SessionInterface.get_expiration_time`
-- [ ] 45. [About as_view function in Flask](https://stackoverflow.com/q/15098215) 🔤: `View.as_view`
+- [x] 45. [About as_view function in Flask](https://stackoverflow.com/q/15098215) 🔤: `View.as_view` -> flask-018
 - [ ] 46. [Unit test a Flask session (session_transaction)](https://stackoverflow.com/q/16528679) 🔤: `FlaskClient.session_transaction`
 - [ ] 47. [Install Flask with the 'async' extra to use async views](https://stackoverflow.com/q/70321014): `Flask.async_to_sync`, `Flask.ensure_sync`
 - [ ] 48. [Connect to a database in Flask: which approach is better?](https://stackoverflow.com/q/16311974): not in Flask itself; the tutorial example shows how, in `get_db` and `close_db` in `examples/tutorial/flaskr/db.py`
 
 ## Not in the code (the right reply is "the code does not show this")
 
-- [ ] 49. [ImportError: cannot import name 'json' from itsdangerous](https://stackoverflow.com/q/71189819): a package-version mismatch; Flask 3.1.3 does not contain the old import
+- [x] 49. [ImportError: cannot import name 'json' from itsdangerous](https://stackoverflow.com/q/71189819): a package-version mismatch; Flask 3.1.3 does not contain the old import -> flask-020
 - [ ] 50. [ImportError: cannot import name 'url_quote' from werkzeug.urls](https://stackoverflow.com/q/77213053): the same kind of version problem
 - [ ] 51. [Flask CLI throws 'Exec format error' through docker-compose](https://stackoverflow.com/q/55271912): a Docker setup problem, not Flask code

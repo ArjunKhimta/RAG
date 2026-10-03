@@ -15,7 +15,8 @@ failure is retried), and reports whether each answer cites every expected defini
 tokens, and its time. A rejected answer counts as citing nothing. A used-up daily quota stops the
 run, and the questions finished so far are still reported.
 
-This is a sanity check on a few questions, not the evaluation. Exits 0 when every question ran,
+Questions whose answer is not in the code are skipped, because there is no code to find. This is a
+sanity check on a few questions, not the evaluation. Exits 0 when every question ran,
 and 1 on a refusal or when a daily quota stopped the run. Every printed line passes through the
 redaction module.
 """
@@ -153,7 +154,7 @@ def _compare_all(
         gemini_client, RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
     )
     comparisons: list[QuestionComparison] = []
-    for question in question_set.questions:
+    for question in _answerable(question_set):
         found = find_sources(
             chunks_collection,
             embedder,
@@ -194,6 +195,10 @@ def _compare_all(
     return comparisons, False
 
 
+def _answerable(question_set: QuestionSet) -> list[EvaluationQuestion]:
+    return [question for question in question_set.questions if question.answer_in_code]
+
+
 def _check_answer(
     question: EvaluationQuestion,
     sources: list[SearchResult],
@@ -224,9 +229,11 @@ def _check_answer(
 def _report_lines(
     question_set: QuestionSet, comparisons: list[QuestionComparison], with_answers: bool
 ) -> list[str]:
+    skipped_count = len(question_set.questions) - len(_answerable(question_set))
     lines = [
         f"Questions   {len(comparisons)} of {len(question_set.questions)} from "
-        f"{question_set.repository} at {question_set.version}",
+        f"{question_set.repository} at {question_set.version} "
+        f"({skipped_count} skipped: answer not in the code)",
         "Base        keyword top 5 for a code name, else hybrid top 30 reranked to 5",
         "Expanded    base plus the best 3 callers or callees, picked by the reranker",
         "",

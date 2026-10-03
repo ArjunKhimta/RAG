@@ -8,6 +8,14 @@ definition counts.
 
 An answer counts as citing an expected definition when one of its citations names such a source
 and its lines overlap the definition.
+
+Some questions cannot be answered from the code, such as an import error caused by mismatched
+package versions. They have `answer_in_code` set to false and no expected definitions, and a
+correct reply says the sources do not contain the answer and cites nothing.
+
+Each question also records where it came from (`origin`: written from the code, or taken from
+Stack Overflow), the original's link (`source_url`), and who wrote the wording (`written_by`), so
+results can be compared by source.
 """
 
 from __future__ import annotations
@@ -15,8 +23,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from retrieval.answer_generation import Citation
+from retrieval.answer_generation import Citation, GeneratedAnswer
 from retrieval.search_results import SearchResult
 
 
@@ -36,6 +45,14 @@ class EvaluationQuestion:
     question: str
     query_style: str
     expected: tuple[ExpectedDefinition, ...]
+    answer_in_code: bool = True
+    origin: str | None = None
+    source_url: str | None = None
+    written_by: str | None = None
+
+
+class QuestionFileError(ValueError):
+    """Raised when a question's expectations contradict each other."""
 
 
 @dataclass(frozen=True)
@@ -48,29 +65,44 @@ class QuestionSet:
 
 def load_question_set(path: Path) -> QuestionSet:
     data = json.loads(path.read_text(encoding="utf-8"))
-    questions = tuple(
-        EvaluationQuestion(
-            question_id=item["id"],
-            question=item["question"],
-            query_style=item["query_style"],
-            expected=tuple(
-                ExpectedDefinition(
-                    file_path=expected["file_path"],
-                    qualified_name=expected["qualified_name"],
-                    start_line=expected["start_line"],
-                    end_line=expected["end_line"],
-                )
-                for expected in item["expected"]
-            ),
-        )
-        for item in data["questions"]
-    )
+    questions = tuple(_question_from(item) for item in data["questions"])
     return QuestionSet(
         repository=data["repository"],
         version=data["version"],
         commit_id=data["commit_id"],
         questions=questions,
     )
+
+
+def is_correct_refusal(generated: GeneratedAnswer) -> bool:
+    """A question the code cannot answer is handled correctly by saying so and citing nothing."""
+    return not generated.found_answer and not generated.citations
+
+
+def _question_from(item: dict[str, Any]) -> EvaluationQuestion:
+    question = EvaluationQuestion(
+        question_id=item["id"],
+        question=item["question"],
+        query_style=item["query_style"],
+        expected=tuple(
+            ExpectedDefinition(
+                file_path=expected["file_path"],
+                qualified_name=expected["qualified_name"],
+                start_line=expected["start_line"],
+                end_line=expected["end_line"],
+            )
+            for expected in item["expected"]
+        ),
+        answer_in_code=item.get("answer_in_code", True),
+        origin=item.get("origin"),
+        source_url=item.get("source_url"),
+        written_by=item.get("written_by"),
+    )
+    if question.answer_in_code and not question.expected:
+        raise QuestionFileError(f"{question.question_id} expects an answer but lists no code")
+    if not question.answer_in_code and question.expected:
+        raise QuestionFileError(f"{question.question_id} has no answer in the code but lists code")
+    return question
 
 
 def is_covered_by(expected: ExpectedDefinition, source: SearchResult) -> bool:
