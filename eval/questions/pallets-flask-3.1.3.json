@@ -108,6 +108,82 @@
           "end_line": 1384
         }
       ]
+    },
+    {
+      "id": "flask-009",
+      "question": "When the CLI is given a module name but no app name, how does it pick the application object from that module?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "locate_app",
+          "start_line": 241,
+          "end_line": 264
+        },
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "find_best_app",
+          "start_line": 41,
+          "end_line": 91
+        }
+      ]
+    },
+    {
+      "id": "flask-010",
+      "question": "What steps turn a view's return value into the final response, including after-request functions?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.finalize_request",
+          "start_line": 922,
+          "end_line": 951
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.process_response",
+          "start_line": 1298,
+          "end_line": 1324
+        }
+      ]
+    },
+    {
+      "id": "flask-011",
+      "question": "How does Flask choose which registered error handler to call for an HTTP error like 404?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.handle_http_exception",
+          "start_line": 744,
+          "end_line": 777
+        },
+        {
+          "file_path": "src/flask/sansio/app.py",
+          "qualified_name": "App._find_error_handler",
+          "start_line": 823,
+          "end_line": 846
+        }
+      ]
+    },
+    {
+      "id": "flask-012",
+      "question": "How is the session saved into the response cookie at the end of a request?",
+      "query_style": "natural_language",
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.process_response",
+          "start_line": 1298,
+          "end_line": 1324
+        },
+        {
+          "file_path": "src/flask/sessions.py",
+          "qualified_name": "SecureCookieSessionInterface.save_session",
+          "start_line": 337,
+          "end_line": 385
+        }
+      ]
     }
   ]
 }
