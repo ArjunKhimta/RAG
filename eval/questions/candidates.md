@@ -27,14 +27,14 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Routing and endpoints
 
 - [x] 1. [Method Not Allowed flask error 405](https://stackoverflow.com/q/21689364): `App.add_url_rule` (routes accept only GET unless methods are given) -> flask-013
-- [ ] 2. [What is an 'endpoint' in Flask?](https://stackoverflow.com/q/19261833): `App.add_url_rule`, `_endpoint_from_view_func`
+- [x] 2. [What is an 'endpoint' in Flask?](https://stackoverflow.com/q/19261833): `App.add_url_rule`, `_endpoint_from_view_func` -> flask-037
 - [ ] 3. [View function mapping is overwriting an existing endpoint function](https://stackoverflow.com/q/17256602): `App.add_url_rule` (raises that error)
-- [ ] 4. [before_request: add exception for specific route](https://stackoverflow.com/q/14367991): `Scaffold.before_request`, `Flask.preprocess_request`
+- [x] 4. [before_request: add exception for specific route](https://stackoverflow.com/q/14367991): `Scaffold.before_request`, `Flask.preprocess_request` -> flask-038
 - [x] 5. [How to serve static files in Flask](https://stackoverflow.com/q/20646822): `Flask.__init__` (adds the static route), `Flask.send_static_file` -> flask-033
 
 ## Building URLs
 
-- [ ] 6. [Create dynamic URLs in Flask with url_for()](https://stackoverflow.com/q/7478366) 🔤: `Flask.url_for`
+- [x] 6. [Create dynamic URLs in Flask with url_for()](https://stackoverflow.com/q/7478366) 🔤: `Flask.url_for` -> flask-043
 - [ ] 7. [Where do I define the domain to be used by url_for()?](https://stackoverflow.com/q/12162634): `Flask.create_url_adapter` (`SERVER_NAME`)
 - [ ] 8. [url_for generating http URL instead of https](https://stackoverflow.com/q/14810795) ⚠️: `Flask.url_for` (`_scheme`, `PREFERRED_URL_SCHEME`); behind a proxy the fix is in Werkzeug
 - [x] 9. [url_for() error: without the application context being pushed](https://stackoverflow.com/q/31766082): `Flask.url_for` (raises "Unable to build URLs outside an active request...") -> flask-025
@@ -43,7 +43,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 - [ ] 10. [What are Flask Blueprints, exactly?](https://stackoverflow.com/q/24420857): `Blueprint`, `Blueprint.register` (both in `src/flask/sansio/blueprints.py`)
 - [ ] 11. [How to access app.config in a blueprint?](https://stackoverflow.com/q/18214612): `Blueprint.record`, `BlueprintSetupState`
-- [ ] 12. [Flask blueprint template folder](https://stackoverflow.com/q/7974771): `DispatchingJinjaLoader._iter_loaders` (the app's templates win over a blueprint's)
+- [x] 12. [Flask blueprint template folder](https://stackoverflow.com/q/7974771): `DispatchingJinjaLoader._iter_loaders` (the app's templates win over a blueprint's) -> flask-039
 - [x] 13. [errorhandler in separate blueprint is not working](https://stackoverflow.com/q/55785287): `Blueprint.app_errorhandler`, `App._find_error_handler` -> flask-016
 - [x] 14. [Nested Blueprints in Flask?](https://stackoverflow.com/q/33003178): `Blueprint.register_blueprint`, `Blueprint.register` -> flask-029
 
@@ -54,7 +54,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 17. [RuntimeError: working outside of application context](https://stackoverflow.com/q/31444036): `src/flask/globals.py`, where the message is module-level text, not inside a function; decide how to mark it as expected before using it
 - [ ] 18. [Testing code that requires a Flask app or request context](https://stackoverflow.com/q/17375340): `Flask.app_context`, `Flask.test_request_context`
 - [x] 19. ["Working outside of request context" in a background thread](https://stackoverflow.com/q/31647081) 🔤: `copy_current_request_context` -> flask-027
-- [ ] 20. [Access the request in after_request or teardown_request](https://stackoverflow.com/q/27938818): `Flask.do_teardown_request`, `RequestContext.pop`
+- [x] 20. [Access the request in after_request or teardown_request](https://stackoverflow.com/q/27938818): `Flask.do_teardown_request`, `RequestContext.pop` -> flask-040
 
 ## Hooks around each request
 
@@ -64,7 +64,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Everyday helpers
 
 - [x] 23. [Redirecting to URL in Flask](https://stackoverflow.com/q/14343812) 🔤: `redirect`, `App.redirect` -> flask-034
-- [ ] 24. [How to return 400 (Bad Request) on Flask?](https://stackoverflow.com/q/57664997): `abort`, `App.make_aborter`
+- [x] 24. [How to return 400 (Bad Request) on Flask?](https://stackoverflow.com/q/57664997): `abort`, `App.make_aborter` -> flask-044
 - [x] 25. [Difference between send_file and send_from_directory?](https://stackoverflow.com/q/38252955): `send_file`, `send_from_directory` (two-part) -> flask-017
 - [ ] 26. [How to change downloading name in Flask?](https://stackoverflow.com/q/41543951): `send_file` (`download_name`)
 - [x] 27. [Streaming data with Python and Flask](https://stackoverflow.com/q/13386681) 🔤: `stream_with_context`, `stream_template` -> flask-030
@@ -91,7 +91,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 - [ ] 37. [Where should I implement custom commands?](https://stackoverflow.com/q/57202736): `AppGroup.command`
 - [x] 38. [How to access app context in a CLI command](https://stackoverflow.com/q/51822129) 🔤: `with_appcontext`, `AppGroup.command` -> flask-023
-- [ ] 39. [Run Flask dev server over HTTPS using CLI](https://stackoverflow.com/q/48467835): `CertParamType`, `_validate_key`, `run_command`
+- [x] 39. [Run Flask dev server over HTTPS using CLI](https://stackoverflow.com/q/48467835): `CertParamType`, `_validate_key`, `run_command` -> flask-041
 - [ ] 40. [Change the host and port that the flask command uses](https://stackoverflow.com/q/41940663): `run_command`, `FlaskGroup.__init__` (`FLASK_` environment variables)
 - [ ] 41. [.flaskenv or .env file not being read](https://stackoverflow.com/q/62411746): `load_dotenv` (needs python-dotenv installed)
 - [ ] 42. [Invoke a Flask CLI command programmatically?](https://stackoverflow.com/q/50963130): `FlaskCliRunner.invoke`, `Flask.test_cli_runner`
@@ -99,7 +99,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Config, sessions, views, testing, async
 
 - [x] 43. [Using config classes with from_object() for dev/prod/testing](https://stackoverflow.com/q/61622845) 🔤: `Config.from_object` (only UPPERCASE names load) -> flask-024
-- [ ] 44. [Flask permanent session: where to define them?](https://stackoverflow.com/q/34118093): `SessionMixin.permanent`, `SessionInterface.get_expiration_time`
+- [x] 44. [Flask permanent session: where to define them?](https://stackoverflow.com/q/34118093): `SessionMixin.permanent`, `SessionInterface.get_expiration_time` -> flask-042
 - [x] 45. [About as_view function in Flask](https://stackoverflow.com/q/15098215) 🔤: `View.as_view` -> flask-018
 - [x] 46. [Unit test a Flask session (session_transaction)](https://stackoverflow.com/q/16528679) 🔤: `FlaskClient.session_transaction` -> flask-026
 - [x] 47. [Install Flask with the 'async' extra to use async views](https://stackoverflow.com/q/70321014): `Flask.async_to_sync`, `Flask.ensure_sync` -> flask-031

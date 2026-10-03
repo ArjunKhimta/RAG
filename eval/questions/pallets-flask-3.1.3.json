@@ -685,6 +685,178 @@
       "written_by": "claude",
       "answer_in_code": false,
       "expected": []
+    },
+    {
+      "id": "flask-037",
+      "question": "What does Flask mean by an \"endpoint\", and what name does a route get if I don't give it one?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/19261833",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sansio/app.py",
+          "qualified_name": "App.add_url_rule",
+          "start_line": 604,
+          "end_line": 661
+        },
+        {
+          "file_path": "src/flask/sansio/scaffold.py",
+          "qualified_name": "_endpoint_from_view_func",
+          "start_line": 701,
+          "end_line": 706
+        }
+      ]
+    },
+    {
+      "id": "flask-038",
+      "question": "I want a check to run before every request except on my login page. How does Flask run those before-request functions, and how can I skip one route?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/14367991",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sansio/scaffold.py",
+          "qualified_name": "Scaffold.before_request",
+          "start_line": 459,
+          "end_line": 484
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.preprocess_request",
+          "start_line": 1271,
+          "end_line": 1296
+        }
+      ]
+    },
+    {
+      "id": "flask-039",
+      "question": "My blueprint has its own templates folder, but Flask keeps rendering the template with the same name from the main app's folder. Why?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/7974771",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/templating.py",
+          "qualified_name": "DispatchingJinjaLoader._iter_loaders",
+          "start_line": 102,
+          "end_line": 110
+        }
+      ]
+    },
+    {
+      "id": "flask-040",
+      "question": "Can I still use the request object inside a teardown function, after the response has been sent?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/27938818",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/ctx.py",
+          "qualified_name": "RequestContext.pop",
+          "start_line": 406,
+          "end_line": 441
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.do_teardown_request",
+          "start_line": 1326,
+          "end_line": 1358
+        }
+      ]
+    },
+    {
+      "id": "flask-041",
+      "question": "How do I run the development server over HTTPS using the flask command?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/48467835",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "run_command",
+          "start_line": 890,
+          "end_line": 1001
+        },
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "CertParamType",
+          "start_line": 788,
+          "end_line": 833
+        }
+      ]
+    },
+    {
+      "id": "flask-042",
+      "question": "How do I make a user's session survive closing the browser, and how long does it last?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/34118093",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sessions.py",
+          "qualified_name": "SessionMixin.permanent",
+          "start_line": 32,
+          "end_line": 34
+        },
+        {
+          "file_path": "src/flask/sessions.py",
+          "qualified_name": "SessionInterface.get_expiration_time",
+          "start_line": 223,
+          "end_line": 231
+        }
+      ]
+    },
+    {
+      "id": "flask-043",
+      "question": "url_for",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/7478366",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/helpers.py",
+          "qualified_name": "url_for",
+          "start_line": 195,
+          "end_line": 246
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.url_for",
+          "start_line": 1003,
+          "end_line": 1127
+        }
+      ]
+    },
+    {
+      "id": "flask-044",
+      "question": "abort",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/57664997",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/helpers.py",
+          "qualified_name": "abort",
+          "start_line": 273,
+          "end_line": 293
+        }
+      ]
     }
   ]
 }
