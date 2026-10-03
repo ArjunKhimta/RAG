@@ -532,6 +532,159 @@
       "written_by": "claude",
       "answer_in_code": false,
       "expected": []
+    },
+    {
+      "id": "flask-029",
+      "question": "Can I put one blueprint inside another, and how does Flask combine their URL prefixes?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/33003178",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/sansio/blueprints.py",
+          "qualified_name": "Blueprint.register_blueprint",
+          "start_line": 255,
+          "end_line": 271
+        },
+        {
+          "file_path": "src/flask/sansio/blueprints.py",
+          "qualified_name": "Blueprint.register",
+          "start_line": 273,
+          "end_line": 377
+        }
+      ]
+    },
+    {
+      "id": "flask-030",
+      "question": "I want to send a big response a piece at a time, but my generator can't use the request while it runs. How do I keep the request available?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/13386681",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/helpers.py",
+          "qualified_name": "stream_with_context",
+          "start_line": 63,
+          "end_line": 143
+        }
+      ]
+    },
+    {
+      "id": "flask-031",
+      "question": "I wrote one of my views as an async function and Flask tells me to install an extra package. What does Flask do with async views?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/70321014",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.ensure_sync",
+          "start_line": 966,
+          "end_line": 978
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.async_to_sync",
+          "start_line": 980,
+          "end_line": 1001
+        }
+      ]
+    },
+    {
+      "id": "flask-032",
+      "question": "Can I allow bigger file uploads on one route than everywhere else in my app?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/25036498",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/wrappers.py",
+          "qualified_name": "Request.max_content_length",
+          "start_line": 59,
+          "end_line": 86
+        }
+      ]
+    },
+    {
+      "id": "flask-033",
+      "question": "How does Flask serve my CSS and image files, and where does it expect them to be?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/20646822",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.__init__",
+          "start_line": 226,
+          "end_line": 279
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.send_static_file",
+          "start_line": 308,
+          "end_line": 328
+        }
+      ]
+    },
+    {
+      "id": "flask-034",
+      "question": "redirect",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/14343812",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/helpers.py",
+          "qualified_name": "redirect",
+          "start_line": 249,
+          "end_line": 270
+        },
+        {
+          "file_path": "src/flask/sansio/app.py",
+          "qualified_name": "App.redirect",
+          "start_line": 893,
+          "end_line": 909
+        }
+      ]
+    },
+    {
+      "id": "flask-035",
+      "question": "jsonify",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/12435297",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/json/__init__.py",
+          "qualified_name": "jsonify",
+          "start_line": 138,
+          "end_line": 170
+        }
+      ]
+    },
+    {
+      "id": "flask-036",
+      "question": "Running flask through docker-compose fails with \"Exec format error\". Why?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/55271912",
+      "written_by": "claude",
+      "answer_in_code": false,
+      "expected": []
     }
   ]
 }

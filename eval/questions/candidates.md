@@ -30,7 +30,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 2. [What is an 'endpoint' in Flask?](https://stackoverflow.com/q/19261833): `App.add_url_rule`, `_endpoint_from_view_func`
 - [ ] 3. [View function mapping is overwriting an existing endpoint function](https://stackoverflow.com/q/17256602): `App.add_url_rule` (raises that error)
 - [ ] 4. [before_request: add exception for specific route](https://stackoverflow.com/q/14367991): `Scaffold.before_request`, `Flask.preprocess_request`
-- [ ] 5. [How to serve static files in Flask](https://stackoverflow.com/q/20646822): `Flask.__init__` (adds the static route), `Flask.send_static_file`
+- [x] 5. [How to serve static files in Flask](https://stackoverflow.com/q/20646822): `Flask.__init__` (adds the static route), `Flask.send_static_file` -> flask-033
 
 ## Building URLs
 
@@ -45,7 +45,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 11. [How to access app.config in a blueprint?](https://stackoverflow.com/q/18214612): `Blueprint.record`, `BlueprintSetupState`
 - [ ] 12. [Flask blueprint template folder](https://stackoverflow.com/q/7974771): `DispatchingJinjaLoader._iter_loaders` (the app's templates win over a blueprint's)
 - [x] 13. [errorhandler in separate blueprint is not working](https://stackoverflow.com/q/55785287): `Blueprint.app_errorhandler`, `App._find_error_handler` -> flask-016
-- [ ] 14. [Nested Blueprints in Flask?](https://stackoverflow.com/q/33003178): `Blueprint.register_blueprint`, `Blueprint.register`
+- [x] 14. [Nested Blueprints in Flask?](https://stackoverflow.com/q/33003178): `Blueprint.register_blueprint`, `Blueprint.register` -> flask-029
 
 ## Contexts and `g`
 
@@ -63,11 +63,11 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 ## Everyday helpers
 
-- [ ] 23. [Redirecting to URL in Flask](https://stackoverflow.com/q/14343812) 🔤: `redirect`, `App.redirect`
+- [x] 23. [Redirecting to URL in Flask](https://stackoverflow.com/q/14343812) 🔤: `redirect`, `App.redirect` -> flask-034
 - [ ] 24. [How to return 400 (Bad Request) on Flask?](https://stackoverflow.com/q/57664997): `abort`, `App.make_aborter`
 - [x] 25. [Difference between send_file and send_from_directory?](https://stackoverflow.com/q/38252955): `send_file`, `send_from_directory` (two-part) -> flask-017
 - [ ] 26. [How to change downloading name in Flask?](https://stackoverflow.com/q/41543951): `send_file` (`download_name`)
-- [ ] 27. [Streaming data with Python and Flask](https://stackoverflow.com/q/13386681) 🔤: `stream_with_context`, `stream_template`
+- [x] 27. [Streaming data with Python and Flask](https://stackoverflow.com/q/13386681) 🔤: `stream_with_context`, `stream_template` -> flask-030
 - [x] 28. [Message flashing fails across redirects](https://stackoverflow.com/q/6196598): `flash`, `get_flashed_messages` (messages are kept in the session) -> flask-015
 - [ ] 29. [Flash success and danger with different messages](https://stackoverflow.com/q/51273822): `flash`, `get_flashed_messages` (categories)
 
@@ -79,13 +79,13 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 ## JSON
 
-- [ ] 33. [How do I jsonify a list in Flask?](https://stackoverflow.com/q/12435297) 🔤: `jsonify`, `JSONProvider._prepare_response_obj`
+- [x] 33. [How do I jsonify a list in Flask?](https://stackoverflow.com/q/12435297) 🔤: `jsonify`, `JSONProvider._prepare_response_obj` -> flask-035
 - [x] 34. [Object is not JSON serializable](https://stackoverflow.com/q/11280382): `_default` in `src/flask/json/provider.py` (the types Flask converts for you) -> flask-022
 - [ ] 35. [Keep order of sorted dictionary passed to jsonify()](https://stackoverflow.com/q/54446080) 📅: `DefaultJSONProvider.sort_keys` (the old setting was removed)
 
 ## Upload size limits
 
-- [ ] 36. [Limit POST data size on a per-route basis?](https://stackoverflow.com/q/25036498) 📅⚠️: `Request.max_content_length` (settable per request since Flask 3.1)
+- [x] 36. [Limit POST data size on a per-route basis?](https://stackoverflow.com/q/25036498) 📅⚠️: `Request.max_content_length` (settable per request since Flask 3.1) -> flask-032
 
 ## Command line
 
@@ -102,11 +102,11 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 44. [Flask permanent session: where to define them?](https://stackoverflow.com/q/34118093): `SessionMixin.permanent`, `SessionInterface.get_expiration_time`
 - [x] 45. [About as_view function in Flask](https://stackoverflow.com/q/15098215) 🔤: `View.as_view` -> flask-018
 - [x] 46. [Unit test a Flask session (session_transaction)](https://stackoverflow.com/q/16528679) 🔤: `FlaskClient.session_transaction` -> flask-026
-- [ ] 47. [Install Flask with the 'async' extra to use async views](https://stackoverflow.com/q/70321014): `Flask.async_to_sync`, `Flask.ensure_sync`
+- [x] 47. [Install Flask with the 'async' extra to use async views](https://stackoverflow.com/q/70321014): `Flask.async_to_sync`, `Flask.ensure_sync` -> flask-031
 - [ ] 48. [Connect to a database in Flask: which approach is better?](https://stackoverflow.com/q/16311974): not in Flask itself; the tutorial example shows how, in `get_db` and `close_db` in `examples/tutorial/flaskr/db.py`
 
 ## Not in the code (the right reply is "the code does not show this")
 
 - [x] 49. [ImportError: cannot import name 'json' from itsdangerous](https://stackoverflow.com/q/71189819): a package-version mismatch; Flask 3.1.3 does not contain the old import -> flask-020
 - [x] 50. [ImportError: cannot import name 'url_quote' from werkzeug.urls](https://stackoverflow.com/q/77213053): the same kind of version problem -> flask-028
-- [ ] 51. [Flask CLI throws 'Exec format error' through docker-compose](https://stackoverflow.com/q/55271912): a Docker setup problem, not Flask code
+- [x] 51. [Flask CLI throws 'Exec format error' through docker-compose](https://stackoverflow.com/q/55271912): a Docker setup problem, not Flask code -> flask-036
