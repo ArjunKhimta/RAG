@@ -385,6 +385,153 @@
       "written_by": "claude",
       "answer_in_code": false,
       "expected": []
+    },
+    {
+      "id": "flask-021",
+      "question": "I change a template file, but the page in my browser doesn't update until I restart the server. How do I get Flask to pick up template edits?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/9508667",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.create_jinja_environment",
+          "start_line": 385,
+          "end_line": 423
+        },
+        {
+          "file_path": "src/flask/sansio/app.py",
+          "qualified_name": "App.debug",
+          "start_line": 562,
+          "end_line": 567
+        }
+      ]
+    },
+    {
+      "id": "flask-022",
+      "question": "Flask says my object \"is not JSON serializable\". Which kinds of values can it turn into JSON for me automatically?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/11280382",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/json/provider.py",
+          "qualified_name": "_default",
+          "start_line": 108,
+          "end_line": 121
+        }
+      ]
+    },
+    {
+      "id": "flask-023",
+      "question": "My custom command-line command fails with an error about the application context when it uses the app. How do I make the app available inside the command?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/51822129",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "AppGroup.command",
+          "start_line": 413,
+          "end_line": 427
+        },
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "with_appcontext",
+          "start_line": 380,
+          "end_line": 402
+        }
+      ]
+    },
+    {
+      "id": "flask-024",
+      "question": "I moved my settings into a Python class and loaded it, but some of them never show up in the app's config. Why?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/61622845",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/config.py",
+          "qualified_name": "Config.from_object",
+          "start_line": 218,
+          "end_line": 254
+        }
+      ]
+    },
+    {
+      "id": "flask-025",
+      "question": "I try to build a link to one of my pages from a background script and get an error about building URLs outside a request. What does Flask need to make that work?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/31766082",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.url_for",
+          "start_line": 1003,
+          "end_line": 1127
+        },
+        {
+          "file_path": "src/flask/app.py",
+          "qualified_name": "Flask.create_url_adapter",
+          "start_line": 425,
+          "end_line": 476
+        }
+      ]
+    },
+    {
+      "id": "flask-026",
+      "question": "session_transaction",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/16528679",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/testing.py",
+          "qualified_name": "FlaskClient.session_transaction",
+          "start_line": 135,
+          "end_line": 183
+        }
+      ]
+    },
+    {
+      "id": "flask-027",
+      "question": "copy_current_request_context",
+      "query_style": "identifier",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/31647081",
+      "written_by": "claude",
+      "answer_in_code": true,
+      "expected": [
+        {
+          "file_path": "src/flask/ctx.py",
+          "qualified_name": "copy_current_request_context",
+          "start_line": 155,
+          "end_line": 193
+        }
+      ]
+    },
+    {
+      "id": "flask-028",
+      "question": "After installing my packages, my app won't start: \"cannot import name 'url_quote' from 'werkzeug.urls'\". What's going on?",
+      "query_style": "natural_language",
+      "origin": "stack_overflow",
+      "source_url": "https://stackoverflow.com/q/77213053",
+      "written_by": "claude",
+      "answer_in_code": false,
+      "expected": []
     }
   ]
 }

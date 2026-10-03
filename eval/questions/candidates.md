@@ -37,7 +37,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 6. [Create dynamic URLs in Flask with url_for()](https://stackoverflow.com/q/7478366) 🔤: `Flask.url_for`
 - [ ] 7. [Where do I define the domain to be used by url_for()?](https://stackoverflow.com/q/12162634): `Flask.create_url_adapter` (`SERVER_NAME`)
 - [ ] 8. [url_for generating http URL instead of https](https://stackoverflow.com/q/14810795) ⚠️: `Flask.url_for` (`_scheme`, `PREFERRED_URL_SCHEME`); behind a proxy the fix is in Werkzeug
-- [ ] 9. [url_for() error: without the application context being pushed](https://stackoverflow.com/q/31766082): `Flask.url_for` (raises "Unable to build URLs outside an active request...")
+- [x] 9. [url_for() error: without the application context being pushed](https://stackoverflow.com/q/31766082): `Flask.url_for` (raises "Unable to build URLs outside an active request...") -> flask-025
 
 ## Blueprints
 
@@ -53,7 +53,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 - [ ] 16. [Flask: 'session' vs. 'g'?](https://stackoverflow.com/q/32909851): `_AppCtxGlobals`, `SecureCookieSession` (two-part)
 - [ ] 17. [RuntimeError: working outside of application context](https://stackoverflow.com/q/31444036): `src/flask/globals.py`, where the message is module-level text, not inside a function; decide how to mark it as expected before using it
 - [ ] 18. [Testing code that requires a Flask app or request context](https://stackoverflow.com/q/17375340): `Flask.app_context`, `Flask.test_request_context`
-- [ ] 19. ["Working outside of request context" in a background thread](https://stackoverflow.com/q/31647081) 🔤: `copy_current_request_context`
+- [x] 19. ["Working outside of request context" in a background thread](https://stackoverflow.com/q/31647081) 🔤: `copy_current_request_context` -> flask-027
 - [ ] 20. [Access the request in after_request or teardown_request](https://stackoverflow.com/q/27938818): `Flask.do_teardown_request`, `RequestContext.pop`
 
 ## Hooks around each request
@@ -74,13 +74,13 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Templates
 
 - [ ] 30. [TemplateNotFound even though template file exists](https://stackoverflow.com/q/23327293): `DispatchingJinjaLoader.get_source`, `explain_template_loading_attempts`
-- [ ] 31. [Reload Flask app when template file changes](https://stackoverflow.com/q/9508667): `Flask.create_jinja_environment` (`TEMPLATES_AUTO_RELOAD`)
+- [x] 31. [Reload Flask app when template file changes](https://stackoverflow.com/q/9508667): `Flask.create_jinja_environment` (`TEMPLATES_AUTO_RELOAD`) -> flask-021
 - [ ] 32. [Flask context processors functions](https://stackoverflow.com/q/13809890): `Scaffold.context_processor`, `Flask.update_template_context`
 
 ## JSON
 
 - [ ] 33. [How do I jsonify a list in Flask?](https://stackoverflow.com/q/12435297) 🔤: `jsonify`, `JSONProvider._prepare_response_obj`
-- [ ] 34. [Object is not JSON serializable](https://stackoverflow.com/q/11280382): `_default` in `src/flask/json/provider.py` (the types Flask converts for you)
+- [x] 34. [Object is not JSON serializable](https://stackoverflow.com/q/11280382): `_default` in `src/flask/json/provider.py` (the types Flask converts for you) -> flask-022
 - [ ] 35. [Keep order of sorted dictionary passed to jsonify()](https://stackoverflow.com/q/54446080) 📅: `DefaultJSONProvider.sort_keys` (the old setting was removed)
 
 ## Upload size limits
@@ -90,7 +90,7 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 ## Command line
 
 - [ ] 37. [Where should I implement custom commands?](https://stackoverflow.com/q/57202736): `AppGroup.command`
-- [ ] 38. [How to access app context in a CLI command](https://stackoverflow.com/q/51822129) 🔤: `with_appcontext`, `AppGroup.command`
+- [x] 38. [How to access app context in a CLI command](https://stackoverflow.com/q/51822129) 🔤: `with_appcontext`, `AppGroup.command` -> flask-023
 - [ ] 39. [Run Flask dev server over HTTPS using CLI](https://stackoverflow.com/q/48467835): `CertParamType`, `_validate_key`, `run_command`
 - [ ] 40. [Change the host and port that the flask command uses](https://stackoverflow.com/q/41940663): `run_command`, `FlaskGroup.__init__` (`FLASK_` environment variables)
 - [ ] 41. [.flaskenv or .env file not being read](https://stackoverflow.com/q/62411746): `load_dotenv` (needs python-dotenv installed)
@@ -98,15 +98,15 @@ connected definitions (4 so far), and 2 or 3 questions the code cannot answer (n
 
 ## Config, sessions, views, testing, async
 
-- [ ] 43. [Using config classes with from_object() for dev/prod/testing](https://stackoverflow.com/q/61622845) 🔤: `Config.from_object` (only UPPERCASE names load)
+- [x] 43. [Using config classes with from_object() for dev/prod/testing](https://stackoverflow.com/q/61622845) 🔤: `Config.from_object` (only UPPERCASE names load) -> flask-024
 - [ ] 44. [Flask permanent session: where to define them?](https://stackoverflow.com/q/34118093): `SessionMixin.permanent`, `SessionInterface.get_expiration_time`
 - [x] 45. [About as_view function in Flask](https://stackoverflow.com/q/15098215) 🔤: `View.as_view` -> flask-018
-- [ ] 46. [Unit test a Flask session (session_transaction)](https://stackoverflow.com/q/16528679) 🔤: `FlaskClient.session_transaction`
+- [x] 46. [Unit test a Flask session (session_transaction)](https://stackoverflow.com/q/16528679) 🔤: `FlaskClient.session_transaction` -> flask-026
 - [ ] 47. [Install Flask with the 'async' extra to use async views](https://stackoverflow.com/q/70321014): `Flask.async_to_sync`, `Flask.ensure_sync`
 - [ ] 48. [Connect to a database in Flask: which approach is better?](https://stackoverflow.com/q/16311974): not in Flask itself; the tutorial example shows how, in `get_db` and `close_db` in `examples/tutorial/flaskr/db.py`
 
 ## Not in the code (the right reply is "the code does not show this")
 
 - [x] 49. [ImportError: cannot import name 'json' from itsdangerous](https://stackoverflow.com/q/71189819): a package-version mismatch; Flask 3.1.3 does not contain the old import -> flask-020
-- [ ] 50. [ImportError: cannot import name 'url_quote' from werkzeug.urls](https://stackoverflow.com/q/77213053): the same kind of version problem
+- [x] 50. [ImportError: cannot import name 'url_quote' from werkzeug.urls](https://stackoverflow.com/q/77213053): the same kind of version problem -> flask-028
 - [ ] 51. [Flask CLI throws 'Exec format error' through docker-compose](https://stackoverflow.com/q/55271912): a Docker setup problem, not Flask code
