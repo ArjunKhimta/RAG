@@ -1,7 +1,10 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = ["--strict-markers"]
+addopts = ["-m", "not integration", "--strict-markers"]
+markers = [
+    "integration: reaches real Gemini or MongoDB services; run with -m integration",
+]
 
 [tool.ruff]
 line-length = 100
