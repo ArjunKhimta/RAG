@@ -11,7 +11,9 @@ For every question, including those with no answer in the code, finds sources wi
 answer from each, then scores whether it cites the expected definitions and whether it refuses
 correctly (see `evaluation.answer_metrics`). The three setups run question by question, so a run
 cut short still compares them on the same questions. Writes `eval/results/<time>-answers.json`
-and `.md` and prints the table.
+and `.md` and prints the table. A rejected reply's answer text and citations are kept in the JSON
+as `rejected_answer` and `rejected_citations`, next to the problems the check found, so the
+rejection can be diagnosed.
 
 Costs 3 generation requests per question (150 for 50 questions; more if a temporary failure is
 retried), paced under the per-minute limit, and no embedding requests for questions already
@@ -200,7 +202,12 @@ def _answer_from(
     except AnswerRejectedError as error:
         milliseconds = _milliseconds_since(started)
         score = score_unanswered(question, run.sources, AnswerOutcome.REJECTED, milliseconds, 1)
-        return {**base_record, **_unanswered_record(score, error.problems)}, score
+        record = {
+            **base_record,
+            **_unanswered_record(score, error.problems),
+            **_rejected_reply_record(error),
+        }
+        return record, score
     except GeminiRequestError as error:
         if error.is_daily_quota_exhausted:
             raise _DailyQuotaUsedUp() from error
@@ -246,6 +253,21 @@ def _unanswered_record(score: AnswerScore, problems: list[str]) -> dict[str, Any
         "found_in_sources_count": score.found_in_sources_count,
         "request_count": score.request_count,
         "answer_milliseconds": round(score.milliseconds, 1),
+    }
+
+
+def _rejected_reply_record(error: AnswerRejectedError) -> dict[str, Any]:
+    """What the model wrote in a rejected reply, kept to diagnose the rejection."""
+    return {
+        "rejected_answer": error.answer,
+        "rejected_citations": [
+            {
+                "source_number": citation.source_number,
+                "start_line": citation.start_line,
+                "end_line": citation.end_line,
+            }
+            for citation in error.citations
+        ],
     }
 
 

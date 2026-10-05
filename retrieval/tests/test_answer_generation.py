@@ -318,6 +318,27 @@ def test_generate_answer_rejects_a_reply_with_made_up_lines():
     assert raised.value.problems == ["lists lines 1-2 for source 1, outside its lines 303-305"]
 
 
+def test_a_rejected_reply_keeps_what_the_model_wrote_for_diagnosis():
+    reply = _reply(
+        answer="It signs with the secret key.",
+        citations=[{"source": 1, "start_line": 303, "end_line": 304}],
+    )
+
+    with pytest.raises(AnswerRejectedError) as raised:
+        generate_answer("question", SOURCES, FakeAnswerModel(reply=reply))
+
+    assert raised.value.answer == "It signs with the secret key."
+    assert raised.value.citations == [Citation(1, 303, 304)]
+
+
+def test_an_unreadable_reply_is_rejected_with_nothing_kept():
+    with pytest.raises(AnswerRejectedError) as raised:
+        parse_reply(ModelReply(text="not json"))
+
+    assert raised.value.answer is None
+    assert raised.value.citations == []
+
+
 def test_generate_answer_needs_at_least_one_source():
     with pytest.raises(ValueError, match="at least one source"):
         generate_answer("question", [], FakeAnswerModel(reply=_reply()))

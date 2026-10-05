@@ -125,11 +125,22 @@ class GenerationRequestError(GeminiRequestError):
 
 
 class AnswerRejectedError(RuntimeError):
-    """Raised when a reply is malformed or cites something it was not given."""
+    """Raised when a reply is malformed or cites something it was not given.
 
-    def __init__(self, problems: list[str]) -> None:
+    When the reply could be read, `answer` and `citations` keep what the model wrote, so a
+    rejection can be diagnosed later. They are never shown as an answer.
+    """
+
+    def __init__(
+        self,
+        problems: list[str],
+        answer: str | None = None,
+        citations: list[Citation] | None = None,
+    ) -> None:
         super().__init__("; ".join(problems))
         self.problems = problems
+        self.answer = answer
+        self.citations = citations or []
 
 
 @dataclass(frozen=True)
@@ -245,7 +256,7 @@ def generate_answer(
     found_answer, answer, citations = parse_reply(reply)
     problems = find_citation_problems(answer, found_answer, citations, sources)
     if problems:
-        raise AnswerRejectedError(problems)
+        raise AnswerRejectedError(problems, answer=answer, citations=citations)
     return GeneratedAnswer(
         found_answer=found_answer,
         answer=answer,
