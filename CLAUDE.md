@@ -33,7 +33,8 @@ A full-stack code search engine. Users sign in with GitHub, import a repository,
 
 ## Current phase
 Phase 1 (search engine as plain Python scripts in `retrieval/`, run from the terminal, no web layer) completed 2026-10-03: all 8 pipeline steps are built and tested. Measurements still owed to later phases: hybrid versus vector as the default search, whether to turn on `--expand`, and faithfulness (Phase 2); reranker memory on Render (Phase 7).
-Phase 2 (evaluation) is next.
+Phase 2 (evaluation) is in progress; its last steps (faithfulness run and hand check) wait for the answer model's daily limit to reset on 2026-10-06.
+Phase 3 (Flask API) started 2026-10-05, alongside the end of Phase 2, since the service does not depend on the faithfulness results. Pieces: 3a skeleton, 3b move the ask flow from `ask_repository.py` into the package, 3c `POST /ask`, 3d `POST /search`, 3e indexing (design first), 3f measure the web layer's time and memory. 3a done (`retrieval/src/retrieval/service/app.py`, `create_app`): Flask 3.1.3 installed with Werkzeug 3.1.9, Jinja2 3.1.6, MarkupSafe 3.0.4, itsdangerous 2.2.0, blinker 1.9.0 (click 8.5.0 already present), wheels only with SHA-256 hashes, chosen as the newest releases with no known vulnerabilities and PyPI provenance from Pallets' release workflows (itsdangerous 2.2.0 predates attestations; Werkzeug 3.1.8, first proposed, has CVE-2026-102598, Windows only); only `flask==3.1.3` pinned in `requirements.txt`. `GET /health` needs no token; every other path, including unknown ones, needs `Authorization: Bearer <RETRIEVAL_SERVICE_TOKEN>`, checked before routing and compared with `hmac.compare_digest`; start-up refuses a missing token or one under 32 characters without printing it. Errors are JSON `{"error": ...}`; an unexpected exception returns a generic 500 and logs its redacted traceback; request bodies capped at 16 KB; debug off. 16 unit tests pass with Flask's test client; a local run with a throwaway token answered `/health`, gave 401 without the token and 404 with it.
 Done: environment, config, redaction, client builders, connection checks, Tree-sitter smoke test, shared parser (`parsing.py`), Tree-sitter chunker (`chunker.py`), GitHub URL validation and shallow cloning of public, openly licensed, size-checked repositories with git isolated from personal settings (`github_urls.py`, `licenses.py`, `repository_cloner.py`).
 Also done: repository walker with `is_test_file` flag (`repository_walker.py`), chunk statistics (`chunk_statistics.py`, `scripts/chunk_repository.py`). Flask 3.1.3: 83 files, 1,009 chunks (475 source, 534 test), 11 definitions split, none over 4,000 characters.
 Also done: secret scanning with `detect-secrets`, redacting only inside strings and comments before chunking, failing closed on unscannable files (`secret_scanning.py`). Flask 3.1.3: 11 findings in 6 files, chunk structure unchanged.
@@ -117,6 +118,7 @@ Decided 2026-10-05: SWE-bench Lite deferred to Phase 8 (Polish); Phase 2 ends wi
 - Integration tests (real services): `pytest retrieval/tests -m integration`
 - Lint: `ruff check retrieval`
 - Connection check: `python retrieval/scripts/check_connections.py`
+- Run the retrieval service locally: `flask --app retrieval.service run --port 5001` (needs `RETRIEVAL_SERVICE_TOKEN` in `.env`)
 - Download the reranker model (once): `python retrieval/scripts/download_reranker_model.py`
 - Ask a question: `python retrieval/scripts/ask_repository.py "<question>" --repository pallets/flask --version 3.1.3` (vector search by default; `--search router` or `--search hybrid` to compare, `--expand` for callers and callees)
 - Evaluation tests: `pytest eval/tests` (integration tests against real Gemini: `pytest eval/tests -m integration`); lint: `ruff check eval` (run from inside `eval/` so its settings apply: `cd eval && ruff check .`)
@@ -127,6 +129,7 @@ Decided 2026-10-05: SWE-bench Lite deferred to Phase 8 (Polish); Phase 2 ends wi
 ## Environment variables
 - `GEMINI_API_KEY`
 - `MONGODB_URI`
+- `RETRIEVAL_SERVICE_TOKEN` (Phase 3: the shared secret the Node API sends to the retrieval service; at least 32 characters)
 - Add new names here as each phase needs them
 ## Paths
 - Package: src-layout at `retrieval/src/retrieval/`, imported as `retrieval`

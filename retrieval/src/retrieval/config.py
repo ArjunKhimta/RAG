@@ -90,6 +90,12 @@ ANSWER_TOKENS_PER_MINUTE = 250_000
 
 ANSWER_MAX_ATTEMPTS = 3
 
+SERVICE_TOKEN_VARIABLE = "RETRIEVAL_SERVICE_TOKEN"
+
+MINIMUM_SERVICE_TOKEN_LENGTH = 32
+
+SERVICE_MAX_REQUEST_BYTES = 16 * 1024
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""

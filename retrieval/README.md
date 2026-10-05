@@ -42,6 +42,7 @@ src/retrieval/
     rate_limiter.py        sliding-window limit on requests and tokens per minute
     chunk_store.py         chunks and repository versions in MongoDB, vectors as binary float32
     indexer.py             embeds with caching, batching, retries; writes each batch to Atlas
+    service/app.py         the private HTTP service: health check, service token, JSON errors
 scripts/
     check_connections.py   command line entry point for those checks
     chunk_repository.py    clones a repository at a version and prints chunk statistics
@@ -89,6 +90,20 @@ input text, using the `chunks` collection itself as the cache, so a second run f
 version makes no embedding requests. Requests stay under the free-tier limits in `config.py`
 (100 requests and 30,000 tokens per minute, from the AI Studio dashboard). The 1,000 requests
 per day are not tracked across runs; hitting them stops the run, and the cache keeps its progress.
+
+## Running the service
+
+The service is private: only the Node API calls it, with the shared token in
+`RETRIEVAL_SERVICE_TOKEN` (at least 32 characters; `python -c "import secrets;
+print(secrets.token_urlsafe(32))"` makes one). Add it to `.env`, then:
+
+```bash
+flask --app retrieval.service run --port 5001
+curl http://127.0.0.1:5001/health
+```
+
+Every path except `/health` needs `Authorization: Bearer <token>`. This is Flask's development
+server; a production server comes with deployment in Phase 7.
 
 ## Tests
 
