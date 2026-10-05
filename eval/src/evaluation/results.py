@@ -1,8 +1,8 @@
 """Saving an evaluation run: its details, every question's results, and the summary table.
 
 Each run writes two files to `eval/results/`, named by the time it started in UTC:
-- `<time>-retrieval.json`: every question's sources for every setup, as locations only (file,
-  definition, lines), never code text, plus the scores and the run details
+- `<time>-retrieval.json`: every question's sources for every setup, as locations only (chunk
+  ID, file, definition, lines), never code text, plus the scores and the run details
 - `<time>-retrieval.md`: the evaluation table, overall and split by kind of question
 
 The run details make a result reproducible: when it ran, the project commit and whether there
@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from retrieval.answer_generation import AnswerSentence
 from retrieval.config import (
     EMBEDDING_DIMENSIONS,
     GEMINI_EMBEDDING_MODEL,
@@ -153,12 +154,31 @@ def group_summaries(
 
 def source_location(source: SearchResult) -> dict[str, Any]:
     return {
+        "chunk_id": source.chunk_id,
         "file_path": source.file_path,
         "qualified_name": source.qualified_name,
         "kind": source.kind,
         "start_line": source.start_line,
         "end_line": source.end_line,
     }
+
+
+def sentence_records(sentences: list[AnswerSentence]) -> list[dict[str, Any]]:
+    """Each answer sentence as the model wrote it, without markers, with its own citations."""
+    return [
+        {
+            "text": sentence.text,
+            "citations": [
+                {
+                    "source_number": citation.source_number,
+                    "start_line": citation.start_line,
+                    "end_line": citation.end_line,
+                }
+                for citation in sentence.citations
+            ],
+        }
+        for sentence in sentences
+    ]
 
 
 def result_paths(

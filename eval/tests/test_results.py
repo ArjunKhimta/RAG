@@ -4,6 +4,8 @@ import json
 import subprocess
 from datetime import UTC, datetime
 
+from retrieval.answer_generation import AnswerSentence, Citation
+
 from evaluation.results import (
     RunDetails,
     group_summaries,
@@ -11,6 +13,7 @@ from evaluation.results import (
     question_groups,
     render_retrieval_table,
     result_paths,
+    sentence_records,
     source_location,
     write_json,
 )
@@ -103,6 +106,21 @@ def test_result_files_are_named_by_the_start_time(tmp_path):
     assert table_path.name == "2026-10-03-1405-retrieval.md"
 
 
+def test_sentence_records_keep_each_sentence_with_its_own_citations():
+    sentences = [
+        AnswerSentence(text="Flask signs the cookie.", citations=[Citation(2, 407, 423)]),
+        AnswerSentence(text="It uses the secret key.", citations=[]),
+    ]
+
+    assert sentence_records(sentences) == [
+        {
+            "text": "Flask signs the cookie.",
+            "citations": [{"source_number": 2, "start_line": 407, "end_line": 423}],
+        },
+        {"text": "It uses the secret key.", "citations": []},
+    ]
+
+
 def test_saved_sources_hold_locations_but_never_code(tmp_path):
     location = source_location(source("run", 10, 20))
     path = tmp_path / "results" / "run.json"
@@ -112,6 +130,7 @@ def test_saved_sources_hold_locations_but_never_code(tmp_path):
     assert json.loads(path.read_text()) == {
         "sources": [
             {
+                "chunk_id": "run:10",
                 "file_path": "src/pkg/app.py",
                 "qualified_name": "run",
                 "kind": "function",

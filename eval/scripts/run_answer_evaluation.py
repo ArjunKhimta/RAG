@@ -16,7 +16,9 @@ question by question, so a run cut short still compares them on the same questio
 and citations are kept in the JSON as `rejected_answer` and `rejected_citations`, next to the
 problems the check found, so the rejection can be diagnosed. Each answered record also counts
 its sentences and the sentences that cite nothing, to show whether uncited sentences are being
-used to carry claims.
+used to carry claims, and keeps each sentence with its own citations, so the faithfulness judge
+can check every sentence against the lines it cites. Sources are saved with their chunk IDs, so
+the judge can fetch the exact text the answer model saw.
 
 Costs 2 generation requests per question (100 for 50 questions; more if a temporary failure is
 retried), paced under the per-minute limit, and no embedding requests for questions already
@@ -71,6 +73,7 @@ from evaluation.results import (
     question_groups,
     relative_path,
     result_paths,
+    sentence_records,
     source_location,
     write_json,
 )
@@ -244,6 +247,7 @@ def _generated_record(score: AnswerScore, generated: GeneratedAnswer) -> dict[st
         "uncited_sentence_count": sum(
             1 for sentence in generated.sentences if not sentence.citations
         ),
+        "sentences": sentence_records(generated.sentences),
         "prompt_tokens": generated.reply.prompt_tokens,
         "output_tokens": generated.reply.output_tokens,
         "request_count": generated.reply.attempt_count,
