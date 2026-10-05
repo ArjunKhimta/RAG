@@ -63,7 +63,12 @@ from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError
 from retrieval.reranking import QuestionTooLongError
 from retrieval.search_results import SearchRefusedError, SearchResult
-from retrieval.snippets import cited_snippet, github_line_link, unique_citations
+from retrieval.snippets import (
+    cited_snippet,
+    github_file_link,
+    github_line_link,
+    unique_citations,
+)
 
 COMMIT_ID_DISPLAY_LENGTH = 12
 
@@ -121,6 +126,8 @@ def _report_lines(arguments: argparse.Namespace, ask_run: AskRun) -> list[str]:
     generated = ask_run.generated
     commit_id = ask_run.repository_record["commit_id"]
     license_id = ask_run.repository_record["license_spdx_id"]
+    license_path = ask_run.repository_record["license_path"]
+    license_link = github_file_link(arguments.repository, commit_id, license_path)
     tests = "test files excluded" if arguments.exclude_tests else "test files included"
     expansion = ask_run.expansion
     searched_count = len(generated.sources)
@@ -153,7 +160,7 @@ def _report_lines(arguments: argparse.Namespace, ask_run: AskRun) -> list[str]:
         *answer_lines,
         "",
         *_citation_lines(generated, arguments.repository, commit_id),
-        f"License     {license_id}",
+        f"License     {license_id}, {license_link}",
         "",
         "Tokens",
         *token_lines,

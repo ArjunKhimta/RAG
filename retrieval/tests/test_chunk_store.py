@@ -12,9 +12,11 @@ from retrieval.chunk_store import (
     chunk_document,
     chunk_id_for,
     repository_document,
+    require_license_path,
 )
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.repository_cloner import CloneMetadata
+from retrieval.search_results import SearchRefusedError
 
 METADATA = CloneMetadata(
     repository="pallets/flask",
@@ -25,6 +27,7 @@ METADATA = CloneMetadata(
     reported_size_bytes=100,
     checkout_size_bytes=50,
     cloned_at="2026-09-29T00:00:00+00:00",
+    license_path="LICENSE.txt",
 )
 
 CHUNK = CodeChunk(
@@ -88,9 +91,20 @@ def test_a_repository_document_records_the_license_shown_with_answers():
 
     assert document["_id"] == "pallets/flask@3.1.3"
     assert document["license_spdx_id"] == "BSD-3-Clause"
+    assert document["license_path"] == "LICENSE.txt"
     assert document["chunk_count"] == 1009
     assert document["embedding_dimensions"] == 768
     assert document["call_graph_edge_count"] == 262
+
+
+@pytest.mark.parametrize("record", [{}, {"license_path": None}, {"license_path": ""}])
+def test_a_record_without_a_license_path_cannot_answer(record):
+    with pytest.raises(SearchRefusedError, match="run index_repository.py again"):
+        require_license_path(record, "pallets/flask", "3.1.3")
+
+
+def test_a_record_with_a_license_path_can_answer():
+    require_license_path({"license_path": "LICENSE.txt"}, "pallets/flask", "3.1.3")
 
 
 def _stored_chunk() -> StoredChunk:

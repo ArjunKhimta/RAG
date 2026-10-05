@@ -4,8 +4,9 @@ The reply keeps the answer's structure: each sentence with its own citations, so
 a citation beside the sentence it supports, and the joined text with markers such as [1]. Sources
 are listed by location only, never with their code. Code appears only as snippets of the cited
 lines, at most 12 lines each with a link to the rest at the indexed commit, so no answer carries a
-whole file. The repository block names the indexed commit and its license, since every answer must
-show the license. "No code matched" is a normal reply, with empty lists, not an error.
+whole file. The repository block names the indexed commit and its license, with a link to the
+license file at that commit, since every answer must carry the license. "No code matched" is a
+normal reply, with empty lists, not an error.
 """
 
 from __future__ import annotations
@@ -15,7 +16,12 @@ from typing import Any
 from retrieval.answer_generation import AnswerSentence, Citation, GeneratedAnswer
 from retrieval.asking import AskRun
 from retrieval.search_results import SearchResult
-from retrieval.snippets import cited_snippet, github_line_link, unique_citations
+from retrieval.snippets import (
+    cited_snippet,
+    github_file_link,
+    github_line_link,
+    unique_citations,
+)
 
 NO_SOURCES_ANSWER = "No code in this repository version matched the question."
 
@@ -59,13 +65,17 @@ def no_sources_response(
 def repository_block(
     repository_record: dict[str, Any], repository: str, version: str
 ) -> dict[str, Any]:
+    commit_id = repository_record["commit_id"]
+    license_path = repository_record["license_path"]
     return {
         "name": repository,
         "version": version,
-        "commit_id": repository_record["commit_id"],
+        "commit_id": commit_id,
         "license": {
             "spdx_id": repository_record["license_spdx_id"],
             "name": repository_record.get("license_name"),
+            "path": license_path,
+            "link": github_file_link(repository, commit_id, license_path),
         },
     }
 

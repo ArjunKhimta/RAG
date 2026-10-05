@@ -17,9 +17,10 @@ Each chunk also stores its `symbol` (file path and qualified name) and `calls`, 
 calls, so `$graphLookup` can walk from a chunk to its callers and callees. Both are indexed within
 a repository version.
 
-`repositories` holds one document per indexed version, including the license that answers show
-and the number of call graph edges. A record without that count was indexed before the call graph
-existed.
+`repositories` holds one document per indexed version, including the license that answers show,
+the path of its license file for answers to link to, and the number of call graph edges. A record
+without that count was indexed before the call graph existed; one without the license path was
+indexed before answers linked their license, and is refused for answering until indexed again.
 """
 
 from __future__ import annotations
@@ -35,10 +36,13 @@ from pymongo.database import Database
 from retrieval.chunker import CodeChunk
 from retrieval.code_graph import symbol_for
 from retrieval.repository_cloner import CloneMetadata
+from retrieval.search_results import SearchRefusedError
 
 CHUNKS_COLLECTION = "chunks"
 
 REPOSITORIES_COLLECTION = "repositories"
+
+LICENSE_PATH_FIELD = "license_path"
 
 CACHE_LOOKUP_BATCH_SIZE = 1000
 
@@ -195,9 +199,19 @@ def repository_document(indexed_version: IndexedVersion) -> dict[str, Any]:
         "commit_id": metadata.commit_id,
         "license_spdx_id": metadata.license_spdx_id,
         "license_name": metadata.license_name,
+        LICENSE_PATH_FIELD: metadata.license_path,
         "embedding_model": indexed_version.embedding_model,
         "embedding_dimensions": indexed_version.embedding_dimensions,
         "chunk_count": indexed_version.chunk_count,
         "call_graph_edge_count": indexed_version.call_graph_edge_count,
         "indexed_at": datetime.now(UTC),
     }
+
+
+def require_license_path(repository_record: dict[str, Any], repository: str, version: str) -> None:
+    """Refuse a version whose record cannot link its license file, so no answer goes without it."""
+    if not repository_record.get(LICENSE_PATH_FIELD):
+        raise SearchRefusedError(
+            f"{repository} at {version} was indexed before license files were recorded; "
+            "run index_repository.py again to add it"
+        )

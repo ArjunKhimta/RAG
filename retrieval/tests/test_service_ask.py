@@ -31,6 +31,7 @@ REPOSITORY_RECORD = {
     "commit_id": COMMIT_ID,
     "license_spdx_id": "BSD-3-Clause",
     "license_name": 'BSD 3-Clause "New" or "Revised" License',
+    "license_path": "LICENSE.txt",
 }
 
 VALID_BODY = {
@@ -171,7 +172,12 @@ def test_a_question_is_answered_with_sentences_sources_snippets_and_license():
         "name": "pallets/flask",
         "version": "3.1.3",
         "commit_id": COMMIT_ID,
-        "license": {"spdx_id": "BSD-3-Clause", "name": 'BSD 3-Clause "New" or "Revised" License'},
+        "license": {
+            "spdx_id": "BSD-3-Clause",
+            "name": 'BSD 3-Clause "New" or "Revised" License',
+            "path": "LICENSE.txt",
+            "link": f"https://github.com/pallets/flask/blob/{COMMIT_ID}/LICENSE.txt",
+        },
     }
     assert reply["usage"] == {
         "embedding": "from the cache",
@@ -222,7 +228,7 @@ def test_no_matching_code_is_a_normal_reply():
     assert response.status_code == 200
     assert reply["found_answer"] is False
     assert reply["sentences"] == reply["sources"] == reply["snippets"] == []
-    assert reply["repository"]["license"]["spdx_id"] == "BSD-3-Clause"
+    assert reply["repository"]["license"]["link"].endswith(f"/blob/{COMMIT_ID}/LICENSE.txt")
 
 
 @pytest.mark.parametrize(

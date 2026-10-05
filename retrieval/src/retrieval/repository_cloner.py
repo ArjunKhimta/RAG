@@ -4,7 +4,7 @@ Each clone lives in its own version folder, which holds the checkout and a recor
 
     data/repos/<owner>/<repo>/<version>/
         source/          the checked-out files
-        metadata.json    commit ID, license, and sizes
+        metadata.json    commit ID, license, license file, and sizes
 
 A version is a tag, a branch, or a commit ID. All three go through the same path: `git init`, a
 depth-1 `git fetch` of that version, then a checkout of what was fetched. The eval can therefore
@@ -15,8 +15,16 @@ The steps, in order:
 2. Ask GitHub's API about the repository, without a token, and refuse before downloading if it
    is private, lacks an allowed open-source license, or is too large.
 3. Build `source/` and `metadata.json` inside a `.partial-*` folder next to the final one, measure
-   the checkout as a size backstop, then rename the whole folder into place in one step. An
-   interrupted clone is deleted, or at worst left under a name no version can have.
+   the checkout as a size backstop, find the license file, then rename the whole folder into
+   place in one step. An interrupted clone is deleted, or at worst left under a name no version
+   can have.
+
+Every answer links to the repository's license file at the indexed commit, so the file is found in
+the checkout itself, which is exactly that commit; GitHub's API names the file only as it is
+today. It is a regular file at the root named LICENSE, LICENCE, or COPYING, in any letter case,
+with no extension or `.txt`, `.md`, or `.rst`, preferring them in that order; a symbolic link does
+not count. A checkout without one is refused, since its answers could not link their license. A
+clone saved before the path was recorded gets it from its checkout when next reused.
 
 Git runs isolated from personal and system settings, with no stored credentials and only a short
 list of environment variables, so nothing on this machine can grant access to a private
@@ -36,7 +44,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -67,6 +75,10 @@ SOURCE_DIRECTORY_NAME = "source"
 METADATA_FILE_NAME = "metadata.json"
 
 PARTIAL_CLONE_PREFIX = ".partial-"
+
+LICENSE_FILE_PATTERN = re.compile(r"(LICENSE|LICENCE|COPYING)(\.(txt|md|rst))?", re.IGNORECASE)
+
+LICENSE_FILE_PREFERENCE = ("LICENSE", "LICENCE", "COPYING")
 
 VERSION_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 
@@ -100,6 +112,10 @@ class RepositoryNotPublicError(RepositoryError):
 
 class UnacceptableLicenseError(RepositoryError):
     """Raised when a repository has no license, or one that is not on the allowed list."""
+
+
+class MissingLicenseFileError(UnacceptableLicenseError):
+    """Raised when a checkout has no license file at its root for answers to link to."""
 
 
 class RepositoryTooLargeError(RepositoryError):
@@ -136,6 +152,7 @@ class CloneMetadata:
     reported_size_bytes: int
     checkout_size_bytes: int
     cloned_at: str
+    license_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -163,7 +180,7 @@ def clone_repository(
         return ClonedRepository(
             path=version_directory,
             source_path=version_directory / SOURCE_DIRECTORY_NAME,
-            metadata=_read_metadata(version_directory),
+            metadata=_metadata_with_license_path(version_directory),
             was_reused=True,
         )
     details_fetcher = fetch_repository_details or fetch_github_repository_details
@@ -208,6 +225,20 @@ def fetch_github_repository_details(reference: RepositoryReference) -> Repositor
     return _repository_details_from_json(repository_json)
 
 
+def find_license_file(source_directory: Path) -> str:
+    """Name the license file at the root of a checkout, or raise `MissingLicenseFileError`."""
+    candidates = [
+        entry.name
+        for entry in source_directory.iterdir()
+        if LICENSE_FILE_PATTERN.fullmatch(entry.name) and entry.is_file() and not entry.is_symlink()
+    ]
+    if not candidates:
+        raise MissingLicenseFileError(
+            f"{source_directory} has no license file at its root (LICENSE, LICENCE, or COPYING)"
+        )
+    return min(candidates, key=_license_file_rank)
+
+
 def remove_directory_inside(directory: Path, root: Path) -> None:
     """Delete `directory`, but only if it sits strictly inside `root` and is not a symlink."""
     if directory.is_symlink():
@@ -250,6 +281,7 @@ def _clone_into_place(
         _fetch_version(source_directory, reference.clone_url, version)
         checkout_bytes = _measure_checkout_bytes(source_directory)
         _require_within_size_limit(reference, checkout_bytes, max_repository_bytes, "on disk")
+        license_path = find_license_file(source_directory)
         metadata = CloneMetadata(
             repository=reference.full_name,
             version=version,
@@ -259,6 +291,7 @@ def _clone_into_place(
             reported_size_bytes=details.size_bytes,
             checkout_size_bytes=checkout_bytes,
             cloned_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            license_path=license_path,
         )
         _write_metadata(partial_directory, metadata)
         partial_directory.rename(version_directory)
@@ -271,6 +304,22 @@ def _clone_into_place(
 def _write_metadata(version_directory: Path, metadata: CloneMetadata) -> None:
     metadata_text = json.dumps(asdict(metadata), indent=2)
     (version_directory / METADATA_FILE_NAME).write_text(metadata_text + "\n")
+
+
+def _metadata_with_license_path(version_directory: Path) -> CloneMetadata:
+    """Read the saved metadata, adding the license file's path to a clone saved without it."""
+    metadata = _read_metadata(version_directory)
+    if metadata.license_path is not None:
+        return metadata
+    license_path = find_license_file(version_directory / SOURCE_DIRECTORY_NAME)
+    updated = replace(metadata, license_path=license_path)
+    _write_metadata(version_directory, updated)
+    return updated
+
+
+def _license_file_rank(file_name: str) -> tuple[int, str]:
+    stem = file_name.split(".")[0].upper()
+    return LICENSE_FILE_PREFERENCE.index(stem), file_name
 
 
 def _read_metadata(version_directory: Path) -> CloneMetadata:

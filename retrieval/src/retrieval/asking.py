@@ -5,9 +5,9 @@ The work splits into what is built once and what is done for each question. Buil
 query-embedding cache, and the answer model with its rate limiter, which must be shared so every
 question counts against the same per-minute limits; a limiter made per question would never stop
 anything. The reranker is loaded on first use and then kept, so a process that only ever uses
-vector search never spends the memory on it. For each question: check the version is indexed and
-searchable, find the sources along the chosen search, optionally add callers and callees from the
-call graph, and ask the answer model, timing each stage.
+vector search never spends the memory on it. For each question: check the version is indexed,
+can link its license file, and is searchable, find the sources along the chosen search, optionally
+add callers and callees from the call graph, and ask the answer model, timing each stage.
 
 The search is one of three. Vector (the default) uses vector search's top 5 directly; on the
 50-question Flask evaluation it led the other setups in both answer runs. Router sends a single
@@ -36,7 +36,7 @@ from retrieval.answer_generation import (
     generate_answer,
 )
 from retrieval.answer_sources import ExpandedSources, expand_sources, find_sources
-from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
+from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore, require_license_path
 from retrieval.config import (
     ANSWER_REQUESTS_PER_MINUTE,
     ANSWER_TOKENS_PER_MINUTE,
@@ -124,6 +124,7 @@ class QuestionAsker:
             repository, version
         )
         require_indexed_version(repository_record, repository, version)
+        require_license_path(repository_record, repository, version)
         if expand:
             require_call_graph(repository_record, repository, version)
         require_searchable_version(repository_record, repository, version, self._embedder)

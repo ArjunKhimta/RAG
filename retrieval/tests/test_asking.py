@@ -14,9 +14,13 @@ from retrieval.asking import (
 )
 from retrieval.chunk_store import CHUNKS_COLLECTION
 from retrieval.query_router import QueryRoute
-from retrieval.search_results import SearchResult
+from retrieval.search_results import SearchRefusedError, SearchResult
 
-REPOSITORY_RECORD = {"commit_id": "c" * 40, "license_spdx_id": "BSD-3-Clause"}
+REPOSITORY_RECORD = {
+    "commit_id": "c" * 40,
+    "license_spdx_id": "BSD-3-Clause",
+    "license_path": "LICENSE.txt",
+}
 
 SOURCE = SearchResult(
     chunk_id="source",
@@ -220,3 +224,18 @@ def test_options_reach_the_search_and_the_call_graph_check(monkeypatch, calls):
     assert calls.call_graph_checks == 1
     assert expanded == ["scorer"]
     assert run.timings["expand"] == 1.0
+
+
+def test_a_version_indexed_before_license_paths_is_refused(monkeypatch, calls):
+    monkeypatch.setattr(asking, "find_sources", _find_sources_returning(calls, [SOURCE]))
+
+    class StoreWithoutLicensePath(FakeStore):
+        def find_repository_record(self, repository, version):
+            return {"commit_id": "c" * 40, "license_spdx_id": "BSD-3-Clause"}
+
+    monkeypatch.setattr(asking, "MongoChunkStore", StoreWithoutLicensePath)
+
+    with pytest.raises(SearchRefusedError, match="indexed before license files were recorded"):
+        _asker(calls).ask("question", "pallets/flask", "3.1.3")
+
+    assert calls.find_sources == []

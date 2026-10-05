@@ -20,6 +20,7 @@ from retrieval.github_urls import RepositoryReference
 from retrieval.repository_cloner import (
     CloneFailedError,
     InvalidVersionError,
+    MissingLicenseFileError,
     RepositoryDetails,
     RepositoryError,
     RepositoryNotPublicError,
@@ -27,6 +28,7 @@ from retrieval.repository_cloner import (
     UnacceptableLicenseError,
     UnsafeDeletionError,
     clone_repository,
+    find_license_file,
     remove_directory_inside,
 )
 
@@ -37,6 +39,8 @@ PUBLIC_FIRST_SOURCE = "def first():\n    return 1\n"
 PUBLIC_SECOND_SOURCE = "def second():\n    return 2\n"
 
 PRIVATE_SOURCE = "PRIVATE = True\n"
+
+LICENSE_TEXT = "BSD 3-Clause License\n"
 
 PUBLIC_BSD_DETAILS = RepositoryDetails(
     is_private=False,
@@ -110,9 +114,7 @@ def test_a_tag_is_cloned_into_source_beside_its_metadata(
     assert _partial_folders(repositories_directory) == []
 
 
-def test_the_metadata_file_records_the_license_commit_and_sizes(
-    reference, repositories_directory
-):
+def test_the_metadata_file_records_the_license_commit_and_sizes(reference, repositories_directory):
     cloned = _clone(reference, repositories_directory, RELEASE_TAG)
 
     metadata_json = json.loads((cloned.path / "metadata.json").read_text())
@@ -122,7 +124,82 @@ def test_the_metadata_file_records_the_license_commit_and_sizes(
     assert metadata_json["commit_id"] == cloned.metadata.commit_id
     assert metadata_json["license_spdx_id"] == "BSD-3-Clause"
     assert metadata_json["license_name"] == PUBLIC_BSD_DETAILS.license_name
-    assert metadata_json["checkout_size_bytes"] == len(PUBLIC_FIRST_SOURCE)
+    assert metadata_json["checkout_size_bytes"] == len(PUBLIC_FIRST_SOURCE) + len(LICENSE_TEXT)
+    assert metadata_json["license_path"] == "LICENSE.txt"
+
+
+def test_a_checkout_without_a_license_file_is_refused_and_left_nowhere(
+    tmp_path, repositories_directory
+):
+    source_directory = tmp_path / "unlicensed-source"
+    source_directory.mkdir()
+    _git(source_directory, "init", "--quiet")
+    _commit_file(source_directory, PUBLIC_FIRST_SOURCE, "first")
+    _git(source_directory, "tag", RELEASE_TAG)
+    unlicensed = LocalSourceReference(
+        owner="owner", name="unlicensed", source_url=source_directory.as_uri()
+    )
+
+    with pytest.raises(MissingLicenseFileError):
+        _clone(unlicensed, repositories_directory, RELEASE_TAG)
+
+    assert not (repositories_directory / "owner" / "unlicensed" / RELEASE_TAG).exists()
+    assert _partial_folders(repositories_directory) == []
+
+
+def test_a_clone_saved_before_license_paths_gets_one_from_its_checkout(
+    reference, repositories_directory
+):
+    first = _clone(reference, repositories_directory, RELEASE_TAG)
+    metadata_path = first.path / "metadata.json"
+    old_metadata = json.loads(metadata_path.read_text())
+    del old_metadata["license_path"]
+    metadata_path.write_text(json.dumps(old_metadata))
+
+    reused = _clone(reference, repositories_directory, RELEASE_TAG)
+
+    assert reused.was_reused
+    assert reused.metadata.license_path == "LICENSE.txt"
+    assert json.loads(metadata_path.read_text())["license_path"] == "LICENSE.txt"
+
+
+@pytest.mark.parametrize(
+    "file_names, expected",
+    [
+        (["LICENSE"], "LICENSE"),
+        (["license.md"], "license.md"),
+        (["Licence.rst"], "Licence.rst"),
+        (["COPYING", "LICENSE.txt"], "LICENSE.txt"),
+        (["COPYING", "LICENCE"], "LICENCE"),
+        (["LICENSE.txt", "LICENSE"], "LICENSE"),
+        (["COPYING.txt", "README.md"], "COPYING.txt"),
+    ],
+)
+def test_the_license_file_is_found_by_name_and_preference(tmp_path, file_names, expected):
+    for file_name in file_names:
+        (tmp_path / file_name).write_text("license text")
+
+    assert find_license_file(tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "file_name", ["LICENSE.html", "LICENSE-MIT", "MY_LICENSE", "README.md", "LICENSE.txt.bak"]
+)
+def test_other_names_are_not_license_files(tmp_path, file_name):
+    (tmp_path / file_name).write_text("text")
+
+    with pytest.raises(MissingLicenseFileError):
+        find_license_file(tmp_path)
+
+
+def test_a_license_folder_or_symbolic_link_does_not_count(tmp_path):
+    (tmp_path / "LICENSE").mkdir()
+    outside_file = tmp_path.parent / "outside-license.txt"
+    outside_file.write_text("license text")
+    (tmp_path / "COPYING").symlink_to(outside_file)
+
+    with pytest.raises(MissingLicenseFileError):
+        find_license_file(tmp_path)
 
 
 def test_a_commit_id_can_be_used_as_the_version(reference, repositories_directory, public_source):
@@ -417,6 +494,9 @@ def _partial_folders(repositories_directory: Path) -> list[Path]:
 def _create_repository(directory: Path) -> Path:
     directory.mkdir()
     _git(directory, "init", "--quiet")
+    (directory / "LICENSE.txt").write_text(LICENSE_TEXT)
+    _git(directory, "add", "LICENSE.txt")
+    _git(directory, "commit", "--quiet", "-m", "license")
     return directory
 
 

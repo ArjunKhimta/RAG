@@ -17,6 +17,8 @@ MAX_SNIPPET_LINES = 12
 
 GITHUB_LINE_LINK = "https://github.com/{repository}/blob/{commit_id}/{file_path}#L{start}-L{end}"
 
+GITHUB_FILE_LINK = "https://github.com/{repository}/blob/{commit_id}/{file_path}"
+
 
 @dataclass(frozen=True)
 class SnippetLine:
@@ -66,6 +68,10 @@ def github_line_link(
         start=start_line,
         end=end_line,
     )
+
+
+def github_file_link(repository: str, commit_id: str, file_path: str) -> str:
+    return GITHUB_FILE_LINK.format(repository=repository, commit_id=commit_id, file_path=file_path)
 
 
 def unique_citations(citations: list[Citation]) -> list[Citation]:
