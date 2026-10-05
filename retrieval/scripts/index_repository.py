@@ -10,20 +10,18 @@ repository's call graph. Also creates the Atlas vector and keyword search indexe
 they are missing, or updates them if their definitions changed. Prints what the run cost: cache
 hits, requests, retries, estimated tokens, the time for each stage, and the chunk collection's
 size. Exits 0 on success and 1 on any refusal or failure. Every printed line passes through the
-redaction module.
+redaction module. The steps themselves live in `retrieval.repository_indexing`, shared with the
+retrieval service.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-import time
 
 from pymongo.errors import PyMongoError
 
-from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
-from retrieval.code_graph import RESOLVED_OUTCOMES, attach_calls, build_call_graph, edge_count_of
 from retrieval.config import (
     EMBEDDING_REQUESTS_PER_MINUTE,
     EMBEDDING_TOKENS_PER_MINUTE,
@@ -35,14 +33,11 @@ from retrieval.config import (
 )
 from retrieval.embedders import EmbeddingRequestError, GeminiDocumentEmbedder
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
-from retrieval.indexer import IndexingReport, index_chunks
+from retrieval.indexer import IndexingReport
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
-from retrieval.repository_cloner import RepositoryError, clone_repository
-from retrieval.repository_walker import chunk_source_files, find_python_files
-from retrieval.search_indexes import ensure_keyword_index, ensure_vector_index
-
-MILLISECONDS_PER_SECOND = 1000
+from retrieval.repository_cloner import RepositoryError
+from retrieval.repository_indexing import index_repository_version
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
@@ -52,33 +47,14 @@ LABEL_WIDTH = 28
 def main() -> int:
     arguments = _parse_arguments()
     load_environment()
-    timings: dict[str, float] = {}
     try:
         reference = parse_github_url(arguments.url)
-        stage_started = time.perf_counter()
-        cloned = clone_repository(reference, arguments.version)
-        timings["clone or reuse"] = _milliseconds_since(stage_started)
-        stage_started = time.perf_counter()
-        walk_result = find_python_files(cloned.source_path)
-        chunking = chunk_source_files(walk_result.files)
-        timings["walk, scan, chunk"] = _milliseconds_since(stage_started)
-        stage_started = time.perf_counter()
-        call_graph = build_call_graph(chunking.chunks, chunking.file_calls)
-        chunks = attach_calls(chunking.chunks, call_graph)
-        timings["call graph"] = _milliseconds_since(stage_started)
-        mongo_client = build_mongo_client()
-        database = mongo_client[MONGODB_DATABASE]
-        store = MongoChunkStore(database)
-        store.ensure_indexes()
+        database = build_mongo_client()[MONGODB_DATABASE]
         embedder = GeminiDocumentEmbedder(build_gemini_client())
-        chunks_collection = database[CHUNKS_COLLECTION]
-        vector_index_change = ensure_vector_index(chunks_collection, embedder.dimensions)
-        keyword_index_change = ensure_keyword_index(chunks_collection)
         rate_limiter = RateLimiter(EMBEDDING_REQUESTS_PER_MINUTE, EMBEDDING_TOKENS_PER_MINUTE)
-        stage_started = time.perf_counter()
-        report = index_chunks(cloned.metadata, chunks, embedder, store, rate_limiter)
-        timings["embed and store"] = _milliseconds_since(stage_started)
-        collection_statistics = store.chunk_collection_statistics()
+        run = index_repository_version(
+            reference, arguments.version, database, embedder, rate_limiter
+        )
     except EmbeddingRequestError as error:
         if error.is_daily_quota_exhausted:
             _print(
@@ -95,24 +71,22 @@ def main() -> int:
     ) as error:
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
-    skipped_count = len(walk_result.skipped) + len(chunking.unscannable)
-    resolved_call_count = sum(
-        1 for resolved in call_graph.resolved_calls if resolved.outcome in RESOLVED_OUTCOMES
-    )
+    metadata = run.metadata
+    collection_statistics = run.collection_statistics
     report_lines = [
-        f"Repository  {cloned.metadata.repository} at {cloned.metadata.version} "
-        f"({cloned.metadata.commit_id[:12]}, {cloned.metadata.license_spdx_id})",
+        f"Repository  {metadata.repository} at {metadata.version} "
+        f"({metadata.commit_id[:12]}, {metadata.license_spdx_id})",
         f"Embedding   {embedder.model_id}, {embedder.dimensions} dimensions, {embedder.task_type}",
-        f"Vector index   {VECTOR_INDEX_NAME}: {vector_index_change}",
-        f"Keyword index  {KEYWORD_INDEX_NAME}: {keyword_index_change}",
+        f"Vector index   {VECTOR_INDEX_NAME}: {run.vector_index_change}",
+        f"Keyword index  {KEYWORD_INDEX_NAME}: {run.keyword_index_change}",
         "",
-        _row("Python files indexed", len(walk_result.files) - len(chunking.unscannable)),
-        _row("Paths skipped", skipped_count),
-        _row("Secret findings redacted", len(chunking.secret_findings)),
-        _row("Call sites resolved", f"{resolved_call_count} of {len(call_graph.resolved_calls)}"),
-        _row("Call graph edges", edge_count_of(chunks)),
+        _row("Python files indexed", run.indexed_file_count),
+        _row("Paths skipped", run.skipped_path_count),
+        _row("Secret findings redacted", run.secret_finding_count),
+        _row("Call sites resolved", f"{run.resolved_call_count} of {run.call_site_count}"),
+        _row("Call graph edges", run.call_graph_edge_count),
         "",
-        *_report_lines(report),
+        *_report_lines(run.report),
         "",
         "Chunk collection in Atlas (all indexed versions)",
         _row("Documents", collection_statistics["count"]),
@@ -121,7 +95,7 @@ def main() -> int:
         _row("Index size", _megabytes(collection_statistics["index_size"])),
         "",
         "Timing",
-        *[_row(stage, f"{milliseconds:.0f} ms") for stage, milliseconds in timings.items()],
+        *[_row(stage, f"{milliseconds:.0f} ms") for stage, milliseconds in run.timings.items()],
     ]
     for line in report_lines:
         _print(line)
@@ -158,10 +132,6 @@ def _row(label: str, value: object) -> str:
 
 def _megabytes(size_bytes: int) -> str:
     return f"{size_bytes / BYTES_PER_MEGABYTE:.2f} MB"
-
-
-def _milliseconds_since(started: float) -> float:
-    return (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
 
 
 def _print(line: str) -> None:
