@@ -25,7 +25,8 @@ generation limits and stops with a clear message when a daily quota is used up. 
 `download_reranker_model.py` once first if the reranker is needed (`--search router` or `hybrid`,
 or `--expand`). Exits 0 when an answer is shown, including one saying the code does not contain
 the answer, and 1 on any refusal, rejection, or failure. Every printed line passes through the
-redaction module.
+redaction module. The steps themselves live in `retrieval.asking`, shared with the retrieval
+service; this script parses the arguments and prints the report.
 """
 
 from __future__ import annotations
@@ -33,56 +34,41 @@ from __future__ import annotations
 import argparse
 import sys
 import textwrap
-import time
-from dataclasses import dataclass
-from typing import Any
 
-from pymongo.database import Database
 from pymongo.errors import PyMongoError
 
 from retrieval.answer_generation import (
     AnswerRejectedError,
     Citation,
-    GeminiAnswerModel,
     GeneratedAnswer,
-    generate_answer,
     is_outline,
     source_code_lines,
 )
-from retrieval.answer_sources import ExpandedSources, expand_sources, find_sources
-from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
+from retrieval.answer_sources import ExpandedSources
+from retrieval.asking import (
+    HYBRID_SEARCH,
+    ROUTER_SEARCH,
+    SEARCH_CHOICES,
+    VECTOR_SEARCH,
+    AskRun,
+    EmbeddingUse,
+    NoSourcesFoundError,
+    build_question_asker,
+)
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
-    ANSWER_REQUESTS_PER_MINUTE,
-    ANSWER_TOKENS_PER_MINUTE,
     GEMINI_ANSWER_MODEL,
-    KEYWORD_INDEX_NAME,
     MONGODB_DATABASE,
     RERANK_CANDIDATE_COUNT,
-    VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
 )
-from retrieval.embedders import GeminiQueryEmbedder
 from retrieval.gemini_errors import GeminiRequestError
-from retrieval.graph_expansion import require_call_graph
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
-from retrieval.query_router import (
-    QueryRoute,
-    RouteDecision,
-    hybrid_without_router,
-    route_query,
-    vector_without_router,
-)
-from retrieval.rate_limiter import RateLimiter
+from retrieval.query_router import QueryRoute, RouteDecision
 from retrieval.redaction import redact
-from retrieval.reranker_model import RerankerModelError, verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError
-from retrieval.search_indexes import require_queryable_index
-from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
-from retrieval.vector_search import require_searchable_version
-
-MILLISECONDS_PER_SECOND = 1000
+from retrieval.reranker_model import RerankerModelError
+from retrieval.reranking import QuestionTooLongError
+from retrieval.search_results import SearchRefusedError, SearchResult
 
 COMMIT_ID_DISPLAY_LENGTH = 12
 
@@ -92,40 +78,30 @@ MAX_SNIPPET_LINES = 12
 
 LABEL_WIDTH = 28
 
-VECTOR_SEARCH = "vector"
-
-ROUTER_SEARCH = "router"
-
-HYBRID_SEARCH = "hybrid"
-
-SEARCH_CHOICES = [VECTOR_SEARCH, ROUTER_SEARCH, HYBRID_SEARCH]
-
 GITHUB_LINE_LINK = "https://github.com/{repository}/blob/{commit_id}/{file_path}#L{start}-L{end}"
 
 
-class _NoSourcesFound(Exception):
-    """Raised when the search returns nothing to answer from."""
-
-
-@dataclass(frozen=True)
-class AskRun:
-    generated: GeneratedAnswer
-    timings: dict[str, float]
-    embedding_status: str
-    expansion: ExpandedSources | None
-    route: RouteDecision
+EMBEDDING_STATUS = {
+    EmbeddingUse.FROM_CACHE: "question embedding from the cache (0 requests)",
+    EmbeddingUse.EMBEDDED: "question embedded and cached (1 request)",
+    EmbeddingUse.NOT_NEEDED: "question not embedded: keyword search needs none (0 requests)",
+}
 
 
 def main() -> int:
     arguments = _parse_arguments()
     load_environment()
     try:
-        mongo_client = build_mongo_client()
-        database = mongo_client[MONGODB_DATABASE]
-        store = MongoChunkStore(database)
-        repository_record = store.find_repository_record(arguments.repository, arguments.version)
-        require_indexed_version(repository_record, arguments.repository, arguments.version)
-        ask_run = _ask(arguments, database, repository_record)
+        database = build_mongo_client()[MONGODB_DATABASE]
+        asker = build_question_asker(database, build_gemini_client())
+        ask_run = asker.ask(
+            arguments.question,
+            arguments.repository,
+            arguments.version,
+            search=arguments.search,
+            exclude_tests=arguments.exclude_tests,
+            expand=arguments.expand,
+        )
     except (SearchRefusedError, QuestionTooLongError) as error:
         _print(f"Refused: {error}")
         return 1
@@ -142,97 +118,18 @@ def main() -> int:
     except (MissingConfigError, PyMongoError, RerankerModelError) as error:
         _print(f"Failed: {type(error).__name__}: {error}")
         return 1
-    except _NoSourcesFound:
+    except NoSourcesFoundError:
         _print("No code matched the question, so there is nothing to answer from.")
         return 0
-    for line in _report_lines(arguments, repository_record, ask_run):
+    for line in _report_lines(arguments, ask_run):
         _print(line)
     return 0
 
 
-def _ask(
-    arguments: argparse.Namespace, database: Database, repository_record: dict[str, Any]
-) -> AskRun:
-    if arguments.expand:
-        require_call_graph(repository_record, arguments.repository, arguments.version)
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
-    gemini_client = build_gemini_client()
-    embedder = CachingQueryEmbedder(GeminiQueryEmbedder(gemini_client), query_embedding_store)
-    require_searchable_version(repository_record, arguments.repository, arguments.version, embedder)
-    chunks_collection = database[CHUNKS_COLLECTION]
-    require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
-    require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
-    route = _route_for(arguments.search, arguments.question)
-    timings: dict[str, float] = {}
-    scorer = None
-    if route.route == QueryRoute.HYBRID or arguments.expand:
-        stage_started = time.perf_counter()
-        scorer = CrossEncoderScorer(verified_reranker_files())
-        timings["load reranker"] = _milliseconds_since(stage_started)
-    found = find_sources(
-        chunks_collection,
-        embedder,
-        scorer,
-        arguments.question,
-        arguments.repository,
-        arguments.version,
-        route,
-        exclude_tests=arguments.exclude_tests,
-    )
-    if not found.sources:
-        raise _NoSourcesFound()
-    timings.update(found.timings)
-    sources = found.sources
-    related_notes: list[str | None] | None = None
-    expansion = None
-    if arguments.expand and scorer is not None:
-        expansion = expand_sources(
-            chunks_collection,
-            scorer,
-            arguments.question,
-            found.sources,
-            arguments.repository,
-            arguments.version,
-        )
-        timings.update(expansion.timings)
-        sources = expansion.sources
-        related_notes = expansion.related_notes
-    answer_model = GeminiAnswerModel(
-        gemini_client, RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
-    )
-    stage_started = time.perf_counter()
-    generated = generate_answer(arguments.question, sources, answer_model, related_notes)
-    timings["generate answer"] = _milliseconds_since(stage_started)
-    if embedder.hit_count:
-        embedding_status = "question embedding from the cache (0 requests)"
-    elif embedder.miss_count:
-        embedding_status = "question embedded and cached (1 request)"
-    else:
-        embedding_status = "question not embedded: keyword search needs none (0 requests)"
-    return AskRun(
-        generated=generated,
-        timings=timings,
-        embedding_status=embedding_status,
-        expansion=expansion,
-        route=found.route,
-    )
-
-
-def _route_for(search: str, question: str) -> RouteDecision:
-    if search == ROUTER_SEARCH:
-        return route_query(question)
-    if search == HYBRID_SEARCH:
-        return hybrid_without_router(question)
-    return vector_without_router(question)
-
-
-def _report_lines(
-    arguments: argparse.Namespace, repository_record: dict[str, Any], ask_run: AskRun
-) -> list[str]:
+def _report_lines(arguments: argparse.Namespace, ask_run: AskRun) -> list[str]:
     generated = ask_run.generated
-    commit_id = repository_record["commit_id"]
-    license_id = repository_record["license_spdx_id"]
+    commit_id = ask_run.repository_record["commit_id"]
+    license_id = ask_run.repository_record["license_spdx_id"]
     tests = "test files excluded" if arguments.exclude_tests else "test files included"
     expansion = ask_run.expansion
     searched_count = len(generated.sources)
@@ -244,7 +141,7 @@ def _report_lines(
         f"Question    {arguments.question}",
         f"Retrieval   {_describe_retrieval(ask_run.route, searched_count)}, {tests}",
         *_expansion_header_lines(expansion, searched_count),
-        f"Embedding   {ask_run.embedding_status}",
+        f"Embedding   {EMBEDDING_STATUS[ask_run.embedding_use]}",
         f"Model       {GEMINI_ANSWER_MODEL}, low thinking ({_describe_attempts(generated)})",
     ]
     answer_heading = "Answer" if generated.found_answer else "Answer (the code does not show this)"
@@ -415,10 +312,6 @@ def _non_blank_question(value: str) -> str:
 
 def _row(label: str, value: object) -> str:
     return f"  {label.ljust(LABEL_WIDTH)}{value}"
-
-
-def _milliseconds_since(started: float) -> float:
-    return (time.perf_counter() - started) * MILLISECONDS_PER_SECOND
 
 
 def _print(line: str) -> None:
