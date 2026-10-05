@@ -11,6 +11,9 @@ including ones that do not exist, and learns nothing about which routes the serv
 are compared in constant time (`hmac.compare_digest`), so the time a wrong guess takes does not
 reveal how much of it was right.
 
+`POST /ask` and `POST /search` share one lock, so the process handles one of them at a time: both
+use the question asker's embedding cache, whose counters are not safe to share between threads.
+
 Every error is JSON, `{"error": "..."}`, with the HTTP status. An unexpected exception becomes a
 generic 500: its details, which could hold a database address or an API key, are written to the
 log only after passing through the redaction module, and never sent to the caller. Request bodies
@@ -23,6 +26,7 @@ the service at launch rather than on the first question. Tests pass their own as
 from __future__ import annotations
 
 import hmac
+import threading
 import traceback
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -42,6 +46,8 @@ from retrieval.config import (
 )
 from retrieval.redaction import redact, register_secret
 from retrieval.service.ask_route import register_ask_route
+from retrieval.service.errors import register_error_replies
+from retrieval.service.search_route import register_search_route
 
 BEARER_PREFIX = "Bearer "
 
@@ -75,7 +81,10 @@ def create_app(
     app.config["MAX_CONTENT_LENGTH"] = SERVICE_MAX_REQUEST_BYTES
     app.json.sort_keys = False
     app.add_url_rule("/health", HEALTH_ENDPOINT, _health, methods=["GET"])
-    register_ask_route(app, question_asker, now or _utc_now)
+    request_lock = threading.Lock()
+    register_ask_route(app, question_asker, request_lock)
+    register_search_route(app, question_asker, request_lock)
+    register_error_replies(app, now or _utc_now)
     app.before_request(_token_check(token))
     app.register_error_handler(HTTPException, _http_error)
     app.register_error_handler(Exception, _unexpected_error(app))

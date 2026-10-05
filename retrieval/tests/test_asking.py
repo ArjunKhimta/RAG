@@ -13,6 +13,7 @@ from retrieval.asking import (
     route_for,
 )
 from retrieval.chunk_store import CHUNKS_COLLECTION
+from retrieval.config import VECTOR_INDEX_NAME
 from retrieval.query_router import QueryRoute
 from retrieval.search_results import SearchRefusedError, SearchResult
 
@@ -239,3 +240,74 @@ def test_a_version_indexed_before_license_paths_is_refused(monkeypatch, calls):
         _asker(calls).ask("question", "pallets/flask", "3.1.3")
 
     assert calls.find_sources == []
+
+
+@dataclass
+class SearchCalls:
+    vector_searches: list[dict] = field(default_factory=list)
+    checked_indexes: list[str] = field(default_factory=list)
+
+
+@pytest.fixture
+def search_calls(monkeypatch, calls) -> SearchCalls:
+    recorded = SearchCalls()
+
+    def require_queryable_index(collection, index_name):
+        recorded.checked_indexes.append(index_name)
+
+    monkeypatch.setattr(asking, "require_queryable_index", require_queryable_index)
+
+    def find_vector_results(chunks_collection, embedder, query, repository, version, options):
+        recorded.vector_searches.append(
+            {"collection": chunks_collection, "query": query, "options": options}
+        )
+        embedder.hit_count += 1
+        return [SOURCE], {"embed query": 30.0, "vector search": 45.0}
+
+    monkeypatch.setattr(asking, "find_vector_results", find_vector_results)
+    return recorded
+
+
+def test_search_uses_vector_search_without_the_reranker_or_the_answer_model(calls, search_calls):
+    run = _asker(calls).search(
+        "how is the cookie signed", "pallets/flask", "3.1.3", limit=20, exclude_tests=True
+    )
+
+    assert run.results == [SOURCE]
+    assert run.timings == {"embed query": 30.0, "vector search": 45.0}
+    assert run.embedding_use == EmbeddingUse.FROM_CACHE
+    assert run.repository_record == REPOSITORY_RECORD
+    search = search_calls.vector_searches[0]
+    assert search["collection"] == "chunks collection"
+    assert search["query"] == "how is the cookie signed"
+    assert search["options"].limit == 20
+    assert search["options"].exclude_tests is True
+    assert calls.scorer_loads == 0
+    assert calls.generate_answer == []
+
+
+def test_search_checks_only_the_vector_index(calls, search_calls):
+    _asker(calls).search("query", "pallets/flask", "3.1.3")
+
+    assert search_calls.checked_indexes == [VECTOR_INDEX_NAME]
+
+
+def test_search_defaults_to_ten_results_with_tests_included(calls, search_calls):
+    _asker(calls).search("query", "pallets/flask", "3.1.3")
+
+    options = search_calls.vector_searches[0]["options"]
+    assert options.limit == 10
+    assert options.exclude_tests is False
+
+
+def test_search_refuses_a_version_indexed_before_license_paths(monkeypatch, calls, search_calls):
+    class StoreWithoutLicensePath(FakeStore):
+        def find_repository_record(self, repository, version):
+            return {"commit_id": "c" * 40, "license_spdx_id": "BSD-3-Clause"}
+
+    monkeypatch.setattr(asking, "MongoChunkStore", StoreWithoutLicensePath)
+
+    with pytest.raises(SearchRefusedError, match="indexed before license files were recorded"):
+        _asker(calls).search("query", "pallets/flask", "3.1.3")
+
+    assert search_calls.vector_searches == []

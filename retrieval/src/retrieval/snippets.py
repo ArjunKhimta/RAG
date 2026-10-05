@@ -2,8 +2,9 @@
 
 Answers show short snippets with a link back, never whole files: a snippet holds at most
 `MAX_SNIPPET_LINES` of the cited lines, with their real line numbers, and counts what is left
-for the link. A class outline has no real line numbers, since its method bodies were replaced
-with `...`, so its snippet shows the outline's opening lines without numbers.
+for the link. An answer's snippet holds the lines a citation names; a search result's holds the
+result's opening lines. A class outline has no real line numbers, since its method bodies were
+replaced with `...`, so its snippet shows the outline's opening lines without numbers.
 """
 
 from __future__ import annotations
@@ -36,6 +37,16 @@ class Snippet:
 def cited_snippet(
     source: SearchResult, citation: Citation, max_lines: int = MAX_SNIPPET_LINES
 ) -> Snippet:
+    return _line_range_snippet(source, citation.start_line, citation.end_line, max_lines)
+
+
+def opening_snippet(source: SearchResult, max_lines: int = MAX_SNIPPET_LINES) -> Snippet:
+    return _line_range_snippet(source, source.start_line, source.end_line, max_lines)
+
+
+def _line_range_snippet(
+    source: SearchResult, start_line: int, end_line: int, max_lines: int
+) -> Snippet:
     code_lines = source_code_lines(source)
     if is_outline(source):
         shown = code_lines[:max_lines]
@@ -44,15 +55,15 @@ def cited_snippet(
             lines=[SnippetLine(number=None, text=line) for line in shown],
             more_line_count=len(code_lines) - len(shown),
         )
-    first_index = citation.start_line - source.start_line
-    last_index = citation.end_line - source.start_line
+    first_index = start_line - source.start_line
+    last_index = end_line - source.start_line
     cited = code_lines[first_index : last_index + 1]
     shown = cited[:max_lines]
     return Snippet(
         is_outline=False,
         lines=[
             SnippetLine(number=number, text=line)
-            for number, line in enumerate(shown, start=citation.start_line)
+            for number, line in enumerate(shown, start=start_line)
         ],
         more_line_count=len(cited) - len(shown),
     )

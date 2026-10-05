@@ -115,13 +115,28 @@ def _vector_sources(
     exclude_tests: bool,
 ) -> FoundSources:
     options = SearchOptions(limit=RERANK_RESULT_COUNT, exclude_tests=exclude_tests)
+    sources, timings = find_vector_results(
+        chunks_collection, embedder, route.query, repository, version, options
+    )
+    return FoundSources(sources=sources, timings=timings, route=route)
+
+
+def find_vector_results(
+    chunks_collection: Collection,
+    embedder: QueryEmbedder,
+    query: str,
+    repository: str,
+    version: str,
+    options: SearchOptions,
+) -> tuple[list[SearchResult], dict[str, float]]:
+    """Embed the query and run vector search, timing each of the two stages."""
     stage_started = time.perf_counter()
-    query_vector = embedder.embed_query(route.query)
+    query_vector = embedder.embed_query(query)
     timings = {"embed query": _milliseconds_since(stage_started)}
     stage_started = time.perf_counter()
-    sources = search_chunks(chunks_collection, query_vector, repository, version, options)
+    results = search_chunks(chunks_collection, query_vector, repository, version, options)
     timings["vector search"] = _milliseconds_since(stage_started)
-    return FoundSources(sources=sources, timings=timings, route=route)
+    return results, timings
 
 
 def _keyword_sources(

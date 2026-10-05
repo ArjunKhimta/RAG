@@ -9,6 +9,10 @@ vector search never spends the memory on it. For each question: check the versio
 can link its license file, and is searchable, find the sources along the chosen search, optionally
 add callers and callees from the call graph, and ask the answer model, timing each stage.
 
+`search` is the same lookup without an answer: the same version checks, then vector search for a
+chosen number of results. It never loads the reranker and never asks the answer model, so it
+uses at most one embedding request and none of the answer model's daily quota.
+
 The search is one of three. Vector (the default) uses vector search's top 5 directly; on the
 50-question Flask evaluation it led the other setups in both answer runs. Router sends a single
 code name to keyword search and anything else to hybrid search with reranking. Hybrid sends every
@@ -35,11 +39,17 @@ from retrieval.answer_generation import (
     GeneratedAnswer,
     generate_answer,
 )
-from retrieval.answer_sources import ExpandedSources, expand_sources, find_sources
+from retrieval.answer_sources import (
+    ExpandedSources,
+    expand_sources,
+    find_sources,
+    find_vector_results,
+)
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore, require_license_path
 from retrieval.config import (
     ANSWER_REQUESTS_PER_MINUTE,
     ANSWER_TOKENS_PER_MINUTE,
+    DEFAULT_SEARCH_LIMIT,
     KEYWORD_INDEX_NAME,
     VECTOR_INDEX_NAME,
 )
@@ -57,8 +67,8 @@ from retrieval.rate_limiter import RateLimiter
 from retrieval.reranker_model import verified_reranker_files
 from retrieval.reranking import CrossEncoderScorer, PairScorer
 from retrieval.search_indexes import require_queryable_index
-from retrieval.search_results import require_indexed_version
-from retrieval.vector_search import require_searchable_version
+from retrieval.search_results import SearchResult, require_indexed_version
+from retrieval.vector_search import SearchOptions, require_searchable_version
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -95,6 +105,14 @@ class AskRun:
     repository_record: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class SearchRun:
+    results: list[SearchResult]
+    timings: dict[str, float]
+    embedding_use: EmbeddingUse
+    repository_record: dict[str, Any]
+
+
 class QuestionAsker:
     """Answers questions with an embedder, answer model, and reranker shared across questions."""
 
@@ -120,14 +138,9 @@ class QuestionAsker:
         exclude_tests: bool = False,
         expand: bool = False,
     ) -> AskRun:
-        repository_record = MongoChunkStore(self._database).find_repository_record(
-            repository, version
-        )
-        require_indexed_version(repository_record, repository, version)
-        require_license_path(repository_record, repository, version)
+        repository_record = self._searchable_record(repository, version)
         if expand:
             require_call_graph(repository_record, repository, version)
-        require_searchable_version(repository_record, repository, version, self._embedder)
         chunks_collection = self._database[CHUNKS_COLLECTION]
         require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
         require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
@@ -148,9 +161,7 @@ class QuestionAsker:
             route,
             exclude_tests=exclude_tests,
         )
-        embedding_use = _embedding_use(
-            self._embedder.hit_count - hits_before, self._embedder.miss_count - misses_before
-        )
+        embedding_use = self._embedding_use_since(hits_before, misses_before)
         if not found.sources:
             raise NoSourcesFoundError(repository_record)
         timings.update(found.timings)
@@ -174,6 +185,45 @@ class QuestionAsker:
             expansion=expansion,
             route=found.route,
             repository_record=repository_record,
+        )
+
+    def search(
+        self,
+        query: str,
+        repository: str,
+        version: str,
+        limit: int = DEFAULT_SEARCH_LIMIT,
+        exclude_tests: bool = False,
+    ) -> SearchRun:
+        options = SearchOptions(limit=limit, exclude_tests=exclude_tests)
+        repository_record = self._searchable_record(repository, version)
+        chunks_collection = self._database[CHUNKS_COLLECTION]
+        require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
+        hits_before = self._embedder.hit_count
+        misses_before = self._embedder.miss_count
+        results, timings = find_vector_results(
+            chunks_collection, self._embedder, query, repository, version, options
+        )
+        return SearchRun(
+            results=results,
+            timings=timings,
+            embedding_use=self._embedding_use_since(hits_before, misses_before),
+            repository_record=repository_record,
+        )
+
+    def _searchable_record(self, repository: str, version: str) -> dict[str, Any]:
+        """The version's record, once it is indexed, links its license, and matches the embedder."""
+        repository_record = MongoChunkStore(self._database).find_repository_record(
+            repository, version
+        )
+        require_indexed_version(repository_record, repository, version)
+        require_license_path(repository_record, repository, version)
+        require_searchable_version(repository_record, repository, version, self._embedder)
+        return repository_record
+
+    def _embedding_use_since(self, hits_before: int, misses_before: int) -> EmbeddingUse:
+        return _embedding_use(
+            self._embedder.hit_count - hits_before, self._embedder.miss_count - misses_before
         )
 
     def _scorer_timed_into(self, timings: dict[str, float]) -> PairScorer:

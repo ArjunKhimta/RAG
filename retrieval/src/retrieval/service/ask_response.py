@@ -17,6 +17,7 @@ from retrieval.answer_generation import AnswerSentence, Citation, GeneratedAnswe
 from retrieval.asking import AskRun
 from retrieval.search_results import SearchResult
 from retrieval.snippets import (
+    Snippet,
     cited_snippet,
     github_file_link,
     github_line_link,
@@ -43,7 +44,7 @@ def ask_response(ask_run: AskRun, repository: str, version: str) -> dict[str, An
         ],
         "repository": repository_block(ask_run.repository_record, repository, version),
         "usage": _usage(ask_run),
-        "timings_ms": _rounded_timings(ask_run.timings),
+        "timings_ms": rounded_timings(ask_run.timings),
     }
 
 
@@ -113,19 +114,24 @@ def _snippet(
     citation: Citation, generated: GeneratedAnswer, repository: str, commit_id: str
 ) -> dict[str, Any]:
     source = generated.sources[citation.source_number - 1]
-    snippet = cited_snippet(source, citation)
     return {
         **_citation(citation),
         "link": github_line_link(
             repository, commit_id, source.file_path, citation.start_line, citation.end_line
         ),
+        **snippet_fields(cited_snippet(source, citation)),
+    }
+
+
+def snippet_fields(snippet: Snippet) -> dict[str, Any]:
+    return {
         "is_outline": snippet.is_outline,
         "lines": [{"number": line.number, "text": line.text} for line in snippet.lines],
         "more_lines": snippet.more_line_count,
     }
 
 
-def _rounded_timings(timings: dict[str, float]) -> dict[str, int]:
+def rounded_timings(timings: dict[str, float]) -> dict[str, int]:
     return {stage: round(milliseconds) for stage, milliseconds in timings.items()}
 
 
