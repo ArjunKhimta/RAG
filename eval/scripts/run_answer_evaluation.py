@@ -1,4 +1,4 @@
-"""Answer every question from three search setups and save the answer evaluation.
+"""Answer every question from two search setups and save the answer evaluation.
 
 Run from the repository root with the virtual environment active. The evaluation package is not
 installed, so its folder is put on the path for the command:
@@ -6,16 +6,19 @@ installed, so its folder is put on the path for the command:
     PYTHONPATH=eval/src python eval/scripts/run_answer_evaluation.py \
         eval/questions/pallets-flask-3.1.3.json
 
-For every question, including those with no answer in the code, finds sources with three setups
-(router, the previous default; vector, the default; vector + expand) and asks Gemini for an
-answer from each, then scores whether it cites the expected definitions and whether it refuses
-correctly (see `evaluation.answer_metrics`). The three setups run question by question, so a run
-cut short still compares them on the same questions. Writes `eval/results/<time>-answers.json`
-and `.md` and prints the table. A rejected reply's answer text and citations are kept in the JSON
-as `rejected_answer` and `rejected_citations`, next to the problems the check found, so the
-rejection can be diagnosed.
+For every question, including those with no answer in the code, finds sources with two setups
+(vector, the default; vector + expand) and asks Gemini for an answer from each, then scores
+whether it cites the expected definitions and whether it refuses correctly (see
+`evaluation.answer_metrics`). The router, the previous default, is no longer run here: it trailed
+vector in both answer runs, and the retrieval evaluation still compares it. The setups run
+question by question, so a run cut short still compares them on the same questions. Writes
+`eval/results/<time>-answers.json` and `.md` and prints the table. A rejected reply's answer text
+and citations are kept in the JSON as `rejected_answer` and `rejected_citations`, next to the
+problems the check found, so the rejection can be diagnosed. Each answered record also counts
+its sentences and the sentences that cite nothing, to show whether uncited sentences are being
+used to carry claims.
 
-Costs 3 generation requests per question (150 for 50 questions; more if a temporary failure is
+Costs 2 generation requests per question (100 for 50 questions; more if a temporary failure is
 retried), paced under the per-minute limit, and no embedding requests for questions already
 cached. A used-up daily quota stops the run: the questions finished so far are saved, marked
 incomplete, and the exit code is 1. Refuses to run on a mismatched or unready index (see
@@ -77,7 +80,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_OUTPUT_DIRECTORY = PROJECT_ROOT / "eval" / "results"
 
-ANSWER_SETUPS = [SearchSetup.ROUTER, SearchSetup.VECTOR, SearchSetup.VECTOR_EXPAND]
+ANSWER_SETUPS = [SearchSetup.VECTOR, SearchSetup.VECTOR_EXPAND]
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -237,6 +240,10 @@ def _generated_record(score: AnswerScore, generated: GeneratedAnswer) -> dict[st
         "cited_count": score.cited_count,
         "expected_count": score.expected_count,
         "found_in_sources_count": score.found_in_sources_count,
+        "sentence_count": len(generated.sentences),
+        "uncited_sentence_count": sum(
+            1 for sentence in generated.sentences if not sentence.citations
+        ),
         "prompt_tokens": generated.reply.prompt_tokens,
         "output_tokens": generated.reply.output_tokens,
         "request_count": generated.reply.attempt_count,

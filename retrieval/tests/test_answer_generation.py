@@ -13,6 +13,7 @@ from retrieval.answer_generation import (
     SYSTEM_INSTRUCTION,
     SYSTEM_INSTRUCTION_WITH_RELATED,
     AnswerRejectedError,
+    AnswerSentence,
     Citation,
     GeminiAnswerModel,
     GenerationRequestError,
@@ -20,8 +21,9 @@ from retrieval.answer_generation import (
     build_prompt,
     find_citation_problems,
     generate_answer,
-    marked_source_numbers,
     parse_reply,
+    render_answer,
+    self_written_markers,
 )
 from retrieval.search_results import SearchResult
 
@@ -60,11 +62,22 @@ OUTLINE_SOURCE = SearchResult(
 SOURCES = [METHOD_SOURCE, OUTLINE_SOURCE]
 
 
-def _reply(found_answer=True, answer="It signs with the secret key [1].", citations=None):
+def _reply(found_answer=True, text="It signs with the secret key.", citations=None):
     if citations is None:
         citations = [{"source": 1, "start_line": 303, "end_line": 305}]
-    reply_json = {"found_answer": found_answer, "answer": answer, "citations": citations}
+    reply_json = {
+        "found_answer": found_answer,
+        "sentences": [{"text": text, "citations": citations}],
+    }
     return ModelReply(text=json.dumps(reply_json))
+
+
+def _sentence(text: str, *citations: Citation) -> AnswerSentence:
+    return AnswerSentence(text=text, citations=list(citations))
+
+
+def _malformed(sentences: object) -> ModelReply:
+    return ModelReply(text=json.dumps({"found_answer": True, "sentences": sentences}))
 
 
 @dataclass
@@ -155,11 +168,15 @@ def test_the_question_comes_first():
 
 
 def test_a_well_formed_reply_is_parsed():
-    found_answer, answer, citations = parse_reply(_reply())
+    found_answer, sentences = parse_reply(_reply())
 
     assert found_answer is True
-    assert answer == "It signs with the secret key [1]."
-    assert citations == [Citation(source_number=1, start_line=303, end_line=305)]
+    assert sentences == [
+        _sentence(
+            "It signs with the secret key.",
+            Citation(source_number=1, start_line=303, end_line=305),
+        )
+    ]
 
 
 @pytest.mark.parametrize(
@@ -167,28 +184,29 @@ def test_a_well_formed_reply_is_parsed():
     [
         ModelReply(text=None, finish_reason="MAX_TOKENS"),
         ModelReply(text="not json"),
-        ModelReply(text=json.dumps({"answer": "x", "citations": []})),
-        ModelReply(text=json.dumps({"found_answer": "yes", "answer": "x", "citations": []})),
-        ModelReply(
-            text=json.dumps(
-                {
-                    "found_answer": True,
-                    "answer": "x",
-                    "citations": [{"source": 1, "start_line": 303.5, "end_line": 305}],
-                }
-            )
+        ModelReply(text=json.dumps({"sentences": []})),
+        ModelReply(text=json.dumps({"found_answer": "yes", "sentences": []})),
+        _malformed("It signs."),
+        _malformed([{"citations": []}]),
+        _malformed([{"text": 7, "citations": []}]),
+        _malformed(
+            [{"text": "x", "citations": [{"source": 1, "start_line": 303.5, "end_line": 305}]}]
         ),
-        ModelReply(
-            text=json.dumps(
-                {
-                    "found_answer": True,
-                    "answer": "x",
-                    "citations": [{"source": True, "start_line": 303, "end_line": 305}],
-                }
-            )
+        _malformed(
+            [{"text": "x", "citations": [{"source": True, "start_line": 303, "end_line": 305}]}]
         ),
     ],
-    ids=["no text", "not json", "missing field", "wrong type", "fraction", "boolean"],
+    ids=[
+        "no text",
+        "not json",
+        "missing field",
+        "wrong type",
+        "sentences not a list of objects",
+        "sentence without text",
+        "text not a string",
+        "fraction",
+        "boolean",
+    ],
 )
 def test_a_malformed_reply_is_rejected(reply):
     with pytest.raises(AnswerRejectedError):
@@ -200,99 +218,114 @@ def test_an_empty_reply_names_the_finish_reason():
         parse_reply(ModelReply(text=None, finish_reason="MAX_TOKENS"))
 
 
-def test_citations_inside_their_sources_pass():
-    citations = [Citation(1, 303, 304), Citation(2, 284, 385)]
+def test_each_cited_sentence_gets_a_marker_before_its_final_punctuation():
+    sentences = [
+        _sentence("Flask signs the cookie.", Citation(2, 303, 313)),
+        _sentence("There are two steps"),
+        _sentence(
+            "Both use the key!",
+            Citation(1, 303, 304),
+            Citation(2, 300, 301),
+            Citation(1, 305, 305),
+        ),
+        _sentence("  It ends without punctuation  ", Citation(3, 1, 2)),
+    ]
 
-    problems = find_citation_problems("Signed [1], in a class [2].", True, citations, SOURCES)
+    assert render_answer(sentences) == (
+        "Flask signs the cookie [2]. There are two steps Both use the key [1, 2]! "
+        "It ends without punctuation [3]"
+    )
+
+
+def test_citations_inside_their_sources_pass():
+    sentences = [
+        _sentence("Signed.", Citation(1, 303, 304)),
+        _sentence("In a class.", Citation(2, 284, 385)),
+    ]
+
+    problems = find_citation_problems(True, sentences, SOURCES)
 
     assert problems == []
 
 
-def test_a_marker_for_a_source_that_was_not_given_is_a_problem():
-    problems = find_citation_problems("Signed [1] [7].", True, [Citation(1, 303, 304)], SOURCES)
+def test_a_linking_sentence_without_citations_passes():
+    sentences = [_sentence("There are two ways."), _sentence("Signed.", Citation(1, 303, 304))]
 
-    assert problems == ["marks [7], but only sources 1 to 2 exist"]
-
-
-def test_a_marker_without_listed_lines_is_a_problem():
-    problems = find_citation_problems("Signed [1] [2].", True, [Citation(1, 303, 304)], SOURCES)
-
-    assert problems == ["marks [2] but lists no lines for it"]
+    assert find_citation_problems(True, sentences, SOURCES) == []
 
 
 def test_a_citation_for_a_source_that_was_not_given_is_a_problem():
-    citations = [Citation(1, 303, 304), Citation(3, 1, 2)]
+    sentences = [_sentence("Signed.", Citation(1, 303, 304), Citation(3, 1, 2))]
 
-    problems = find_citation_problems("Signed [1].", True, citations, SOURCES)
+    problems = find_citation_problems(True, sentences, SOURCES)
 
     assert problems == ["lists lines for source 3, which does not exist"]
 
 
 def test_lines_outside_the_source_are_a_problem():
-    problems = find_citation_problems("Signed [1].", True, [Citation(1, 300, 304)], SOURCES)
+    problems = find_citation_problems(True, [_sentence("Signed.", Citation(1, 300, 304))], SOURCES)
 
     assert problems == ["lists lines 300-304 for source 1, outside its lines 303-305"]
 
 
 def test_lines_that_end_before_they_start_are_a_problem():
-    problems = find_citation_problems("Signed [1].", True, [Citation(1, 305, 303)], SOURCES)
+    problems = find_citation_problems(True, [_sentence("Signed.", Citation(1, 305, 303))], SOURCES)
 
     assert problems == ["lists lines 305-303 for source 1, which end before they start"]
 
 
 def test_claiming_an_answer_without_citations_is_a_problem():
-    problems = find_citation_problems("It is signed.", True, [], SOURCES)
+    problems = find_citation_problems(True, [_sentence("It is signed.")], SOURCES)
 
-    assert problems == [
-        "says it found the answer but cites nothing",
-        "says it found the answer but marks no sources in the text",
-    ]
+    assert problems == ["says it found the answer but cites nothing"]
 
 
-def test_an_answer_with_citations_but_no_markers_is_a_problem():
-    problems = find_citation_problems("It is signed.", True, [Citation(1, 303, 304)], SOURCES)
+def test_claiming_an_answer_without_sentences_is_a_problem():
+    problems = find_citation_problems(True, [], SOURCES)
 
-    assert problems == [
-        "lists lines for source 1 but never marks [1]",
-        "says it found the answer but marks no sources in the text",
-    ]
+    assert problems == ["says it found the answer but gives no sentences"]
 
 
-def test_a_cited_source_that_is_never_marked_is_a_problem():
-    citations = [Citation(1, 303, 304), Citation(2, 284, 385)]
+def test_a_blank_sentence_is_a_problem():
+    sentences = [_sentence("Signed.", Citation(1, 303, 304)), _sentence("  ")]
 
-    problems = find_citation_problems("Signed [1].", True, citations, SOURCES)
+    problems = find_citation_problems(True, sentences, SOURCES)
 
-    assert problems == ["lists lines for source 2 but never marks [2]"]
+    assert problems == ["sentence 2 is blank"]
 
 
-def test_line_numbers_inside_a_marker_do_not_count_as_a_marker():
-    problems = find_citation_problems(
-        "Signed [1, 303-304].", True, [Citation(1, 303, 304)], SOURCES
-    )
+@pytest.mark.parametrize(
+    ("text", "marker"),
+    [
+        ("Signed [1].", "[1]"),
+        ("Signed [1, 2].", "[1, 2]"),
+        ("Signed [2, 407-423].", "[2, 407-423]"),
+        ("Signed [89].", "[89]"),
+    ],
+)
+def test_a_sentence_that_writes_its_own_marker_is_a_problem(text, marker):
+    problems = find_citation_problems(True, [_sentence(text, Citation(1, 303, 304))], SOURCES)
 
-    assert "says it found the answer but marks no sources in the text" in problems
+    assert problems == [f"sentence 1 writes its own marker {marker}"]
+
+
+def test_index_expressions_are_not_self_written_markers():
+    assert self_written_markers("Uses rv[0], items[1], `x[2]` and a[1][2] here.") == []
 
 
 def test_the_instruction_shows_an_example_reply_in_the_required_shape():
     example_json = SYSTEM_INSTRUCTION.split("Example reply:\n", 1)[1]
-
     example = json.loads(example_json)
 
-    assert set(example) == {"found_answer", "answer", "citations"}
-    assert marked_source_numbers(example["answer"]) == [2, 2]
+    assert set(example) == {"found_answer", "sentences"}
+    assert all(set(sentence) == {"text", "citations"} for sentence in example["sentences"])
+    assert all(not self_written_markers(sentence["text"]) for sentence in example["sentences"])
 
 
 def test_saying_the_sources_lack_the_answer_needs_no_citations():
-    problems = find_citation_problems("The sources do not show this.", False, [], SOURCES)
+    problems = find_citation_problems(False, [_sentence("The sources do not show this.")], SOURCES)
 
     assert problems == []
-
-
-def test_markers_with_several_numbers_are_read_and_index_expressions_are_not():
-    numbers = marked_source_numbers("Uses rv[0] and items[1] and `x[2]` here [1, 2] and [3].")
-
-    assert numbers == [1, 2, 3]
 
 
 def test_generate_answer_sends_the_instruction_prompt_and_schema():
@@ -305,7 +338,11 @@ def test_generate_answer_sends_the_instruction_prompt_and_schema():
     assert call["prompt"] == build_prompt("How is the cookie signed?", SOURCES)
     assert call["response_schema"] == ANSWER_RESPONSE_SCHEMA
     assert generated.found_answer
+    assert generated.answer == "It signs with the secret key [1]."
     assert generated.citations == [Citation(1, 303, 305)]
+    assert generated.sentences == [
+        _sentence("It signs with the secret key.", Citation(1, 303, 305))
+    ]
     assert generated.sources == SOURCES
 
 
@@ -320,14 +357,15 @@ def test_generate_answer_rejects_a_reply_with_made_up_lines():
 
 def test_a_rejected_reply_keeps_what_the_model_wrote_for_diagnosis():
     reply = _reply(
-        answer="It signs with the secret key.",
+        text="It signs with the secret key [2, 303-304].",
         citations=[{"source": 1, "start_line": 303, "end_line": 304}],
     )
 
     with pytest.raises(AnswerRejectedError) as raised:
         generate_answer("question", SOURCES, FakeAnswerModel(reply=reply))
 
-    assert raised.value.answer == "It signs with the secret key."
+    assert raised.value.problems == ["sentence 1 writes its own marker [2, 303-304]"]
+    assert raised.value.answer == "It signs with the secret key [2, 303-304] [1]."
     assert raised.value.citations == [Citation(1, 303, 304)]
 
 
@@ -414,7 +452,7 @@ def _response(text: str) -> SimpleNamespace:
 
 
 def test_gemini_is_asked_for_json_in_the_schema_with_low_thinking():
-    reply_text = '{"found_answer": false, "answer": "x", "citations": []}'
+    reply_text = '{"found_answer": false, "sentences": []}'
     models = FakeModels(response=_response(reply_text))
     rate_limiter = FakeRateLimiter()
     answer_model = GeminiAnswerModel(
@@ -497,7 +535,7 @@ def _retrying_model(models, sleeps: list[float], rate_limiter=None) -> GeminiAns
 
 
 def test_a_busy_reply_is_retried_after_a_backoff_and_counts_its_attempts():
-    reply_text = '{"found_answer": false, "answer": "x", "citations": []}'
+    reply_text = '{"found_answer": false, "sentences": []}'
     models = SequenceModels([_busy_error(), _response(reply_text)])
     sleeps: list[float] = []
     rate_limiter = FakeRateLimiter()
@@ -573,7 +611,7 @@ def test_the_suggested_wait_is_used_when_gemini_gives_one():
             ],
         }
     }
-    reply_text = '{"found_answer": false, "answer": "x", "citations": []}'
+    reply_text = '{"found_answer": false, "sentences": []}'
     models = SequenceModels([errors.ClientError(429, minute_limit_json), _response(reply_text)])
     sleeps: list[float] = []
 
