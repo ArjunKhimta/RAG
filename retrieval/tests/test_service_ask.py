@@ -130,9 +130,19 @@ def _forget_registered_secrets():
     clear_registered_secrets()
 
 
+class UnusedRunner:
+    def start(self, repository, version):
+        raise AssertionError("these tests never index")
+
+    def find_job(self, job_id):
+        raise AssertionError("these tests never index")
+
+
 def _client(asker: FakeAsker, now: datetime | None = None):
     clock = now or datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
-    return create_app(service_token=SERVICE_TOKEN, asker=asker, now=lambda: clock).test_client()
+    return create_app(
+        service_token=SERVICE_TOKEN, asker=asker, indexing_runner=UnusedRunner(), now=lambda: clock
+    ).test_client()
 
 
 def test_a_question_is_answered_with_sentences_sources_snippets_and_license():
@@ -350,7 +360,7 @@ def test_a_passing_failure_says_to_retry_shortly_and_hides_details(failure):
 
 def test_questions_are_answered_one_at_a_time():
     asker = FakeAsker(delay_seconds=0.05)
-    app = create_app(service_token=SERVICE_TOKEN, asker=asker)
+    app = create_app(service_token=SERVICE_TOKEN, asker=asker, indexing_runner=UnusedRunner())
 
     def ask_once():
         app.test_client().post("/ask", json=VALID_BODY, headers=AUTHORIZED)

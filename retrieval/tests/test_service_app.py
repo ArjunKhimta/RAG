@@ -25,9 +25,19 @@ class UnusedAsker:
         raise AssertionError("these tests never ask a question")
 
 
+class UnusedRunner:
+    def start(self, repository, version):
+        raise AssertionError("these tests never index")
+
+    def find_job(self, job_id):
+        raise AssertionError("these tests never index")
+
+
 @pytest.fixture
 def app():
-    return create_app(service_token=SERVICE_TOKEN, asker=UnusedAsker())
+    return create_app(
+        service_token=SERVICE_TOKEN, asker=UnusedAsker(), indexing_runner=UnusedRunner()
+    )
 
 
 @pytest.fixture
@@ -125,7 +135,7 @@ def test_a_short_token_stops_start_up_without_revealing_it():
     short_token = "short-token-123"
 
     with pytest.raises(WeakServiceTokenError) as raised:
-        create_app(service_token=short_token, asker=UnusedAsker())
+        create_app(service_token=short_token, asker=UnusedAsker(), indexing_runner=UnusedRunner())
 
     assert short_token not in str(raised.value)
     assert "RETRIEVAL_SERVICE_TOKEN" in str(raised.value)
@@ -143,6 +153,11 @@ def test_the_token_is_read_from_the_environment(monkeypatch):
     monkeypatch.setattr(service_app, "load_environment", lambda: None)
     monkeypatch.setenv("RETRIEVAL_SERVICE_TOKEN", SERVICE_TOKEN)
 
-    client = create_app(asker=UnusedAsker()).test_client()
+    client = create_app(asker=UnusedAsker(), indexing_runner=UnusedRunner()).test_client()
 
     assert client.get("/no-such-route", headers=_authorized()).status_code == 404
+
+
+def test_the_asker_and_the_runner_are_passed_together_or_not_at_all():
+    with pytest.raises(ValueError, match="both the asker and the indexing runner"):
+        create_app(service_token=SERVICE_TOKEN, asker=UnusedAsker())
