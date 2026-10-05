@@ -37,13 +37,7 @@ import textwrap
 
 from pymongo.errors import PyMongoError
 
-from retrieval.answer_generation import (
-    AnswerRejectedError,
-    Citation,
-    GeneratedAnswer,
-    is_outline,
-    source_code_lines,
-)
+from retrieval.answer_generation import AnswerRejectedError, Citation, GeneratedAnswer
 from retrieval.answer_sources import ExpandedSources
 from retrieval.asking import (
     HYBRID_SEARCH,
@@ -69,16 +63,13 @@ from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError
 from retrieval.reranking import QuestionTooLongError
 from retrieval.search_results import SearchRefusedError, SearchResult
+from retrieval.snippets import cited_snippet, github_line_link, unique_citations
 
 COMMIT_ID_DISPLAY_LENGTH = 12
 
 ANSWER_WRAP_WIDTH = 96
 
-MAX_SNIPPET_LINES = 12
-
 LABEL_WIDTH = 28
-
-GITHUB_LINE_LINK = "https://github.com/{repository}/blob/{commit_id}/{file_path}#L{start}-L{end}"
 
 
 EMBEDDING_STATUS = {
@@ -203,14 +194,10 @@ def _citation_lines(generated: GeneratedAnswer, repository: str, commit_id: str)
     if not generated.citations:
         return []
     lines = ["Cited code"]
-    for citation in _unique_citations(generated.citations):
+    for citation in unique_citations(generated.citations):
         source = generated.sources[citation.source_number - 1]
-        link = GITHUB_LINE_LINK.format(
-            repository=repository,
-            commit_id=commit_id,
-            file_path=source.file_path,
-            start=citation.start_line,
-            end=citation.end_line,
+        link = github_line_link(
+            repository, commit_id, source.file_path, citation.start_line, citation.end_line
         )
         lines.append(
             f"  [{citation.source_number}] {source.file_path}:"
@@ -251,30 +238,15 @@ def _describe_attempts(generated: GeneratedAnswer) -> str:
     return f"{attempt_count} requests: {attempt_count - 1} retried after a temporary failure"
 
 
-def _unique_citations(citations: list[Citation]) -> list[Citation]:
-    return list(dict.fromkeys(citations))
-
-
 def _snippet_lines(source: SearchResult, citation: Citation) -> list[str]:
-    """Show at most `MAX_SNIPPET_LINES` cited lines; outlines show their opening lines instead."""
-    code_lines = source_code_lines(source)
-    if is_outline(source):
-        shown_lines = code_lines[:MAX_SNIPPET_LINES]
-        remaining_count = len(code_lines) - len(shown_lines)
-        snippet = ["(class outline: method bodies hidden)", *shown_lines]
+    snippet = cited_snippet(source, citation)
+    if snippet.is_outline:
+        lines = ["(class outline: method bodies hidden)", *(line.text for line in snippet.lines)]
     else:
-        first_index = citation.start_line - source.start_line
-        last_index = citation.end_line - source.start_line
-        cited_lines = code_lines[first_index : last_index + 1]
-        shown_lines = cited_lines[:MAX_SNIPPET_LINES]
-        remaining_count = len(cited_lines) - len(shown_lines)
-        snippet = [
-            f"{line_number}| {line}"
-            for line_number, line in enumerate(shown_lines, start=citation.start_line)
-        ]
-    if remaining_count > 0:
-        snippet.append(f"... {remaining_count} more lines at the link")
-    return snippet
+        lines = [f"{line.number}| {line.text}" for line in snippet.lines]
+    if snippet.more_line_count > 0:
+        lines.append(f"... {snippet.more_line_count} more lines at the link")
+    return lines
 
 
 def _parse_arguments() -> argparse.Namespace:

@@ -72,7 +72,11 @@ SEARCH_CHOICES = [VECTOR_SEARCH, ROUTER_SEARCH, HYBRID_SEARCH]
 
 
 class NoSourcesFoundError(Exception):
-    """Raised when the search returns nothing to answer from."""
+    """Raised when the search returns nothing to answer from; keeps the version's record."""
+
+    def __init__(self, repository_record: dict[str, Any]) -> None:
+        super().__init__("No code matched the question")
+        self.repository_record = repository_record
 
 
 class EmbeddingUse(StrEnum):
@@ -147,7 +151,7 @@ class QuestionAsker:
             self._embedder.hit_count - hits_before, self._embedder.miss_count - misses_before
         )
         if not found.sources:
-            raise NoSourcesFoundError()
+            raise NoSourcesFoundError(repository_record)
         timings.update(found.timings)
         sources = found.sources
         related_notes: list[str | None] | None = None

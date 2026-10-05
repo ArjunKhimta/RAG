@@ -20,9 +20,14 @@ def _forget_registered_secrets():
     clear_registered_secrets()
 
 
+class UnusedAsker:
+    def ask(self, *arguments, **options):
+        raise AssertionError("these tests never ask a question")
+
+
 @pytest.fixture
 def app():
-    return create_app(service_token=SERVICE_TOKEN)
+    return create_app(service_token=SERVICE_TOKEN, asker=UnusedAsker())
 
 
 @pytest.fixture
@@ -120,7 +125,7 @@ def test_a_short_token_stops_start_up_without_revealing_it():
     short_token = "short-token-123"
 
     with pytest.raises(WeakServiceTokenError) as raised:
-        create_app(service_token=short_token)
+        create_app(service_token=short_token, asker=UnusedAsker())
 
     assert short_token not in str(raised.value)
     assert "RETRIEVAL_SERVICE_TOKEN" in str(raised.value)
@@ -138,6 +143,6 @@ def test_the_token_is_read_from_the_environment(monkeypatch):
     monkeypatch.setattr(service_app, "load_environment", lambda: None)
     monkeypatch.setenv("RETRIEVAL_SERVICE_TOKEN", SERVICE_TOKEN)
 
-    client = create_app().test_client()
+    client = create_app(asker=UnusedAsker()).test_client()
 
     assert client.get("/no-such-route", headers=_authorized()).status_code == 404
