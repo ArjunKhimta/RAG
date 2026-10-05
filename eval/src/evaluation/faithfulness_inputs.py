@@ -16,8 +16,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from pymongo.database import Database
 from retrieval.answer_generation import AnswerSentence, Citation
-from retrieval.search_results import RESULT_FIELDS, SearchResult, search_result_from
+from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
+from retrieval.search_results import (
+    RESULT_FIELDS,
+    SearchRefusedError,
+    SearchResult,
+    require_indexed_version,
+    search_result_from,
+)
 
 from evaluation.answer_metrics import AnswerOutcome
 from evaluation.faithfulness_judge import cited_lines
@@ -87,6 +95,32 @@ def sources_for(
     ]
     _require_citations_fit(answer, sources)
     return sources
+
+
+def fetch_answer_sources(
+    database: Database, answers_run_details: dict[str, Any], answers: list[AnswerToJudge]
+) -> list[list[SearchResult]]:
+    """Fetch and check every answer's sources, so a changed index stops a run before it starts."""
+    repository = answers_run_details["repository"]
+    version = answers_run_details["version"]
+    indexed_commit = answers_run_details["indexed_commit"]
+    record = MongoChunkStore(database).find_repository_record(repository, version)
+    require_indexed_version(record, repository, version)
+    if record["commit_id"] != indexed_commit:
+        raise SearchRefusedError(
+            f"The answers were written from commit {indexed_commit}, but the index is at "
+            f"{record['commit_id']}"
+        )
+    chunk_filter = {
+        "_id": {"$in": chunk_ids_of(answers)},
+        "repository": repository,
+        "version": version,
+    }
+    chunks_by_id = {
+        document["_id"]: document
+        for document in database[CHUNKS_COLLECTION].find(chunk_filter, CHUNK_PROJECTION)
+    }
+    return [sources_for(answer, chunks_by_id, indexed_commit) for answer in answers]
 
 
 def _require_judgeable(question_id: str, setup: str, record: dict[str, Any]) -> None:

@@ -37,7 +37,6 @@ from typing import Any
 
 from pymongo.errors import PyMongoError
 from retrieval.answer_generation import AnswerModel, GeminiAnswerModel
-from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
     ANSWER_REQUESTS_PER_MINUTE,
@@ -50,20 +49,14 @@ from retrieval.config import (
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
-from retrieval.search_results import (
-    SearchRefusedError,
-    SearchResult,
-    require_indexed_version,
-)
+from retrieval.search_results import SearchRefusedError, SearchResult
 
 from evaluation.faithfulness_inputs import (
-    CHUNK_PROJECTION,
     AnswerRunFormatError,
     AnswerToJudge,
     ChangedSourceError,
     answers_to_judge,
-    chunk_ids_of,
-    sources_for,
+    fetch_answer_sources,
 )
 from evaluation.faithfulness_judge import JudgmentRejectedError, judge_answer
 from evaluation.faithfulness_metrics import (
@@ -123,7 +116,8 @@ def _evaluate(
         answers = answers[:max_answers]
     if not answers:
         raise AnswerRunFormatError("The answers file has no answered replies to judge")
-    sources_by_answer = _fetch_sources(answer_run["run"], answers)
+    database = build_mongo_client()[MONGODB_DATABASE]
+    sources_by_answer = fetch_answer_sources(database, answer_run["run"], answers)
     judge_model = GeminiAnswerModel(
         build_gemini_client(), RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
     )
@@ -160,33 +154,6 @@ def _evaluate(
     )
     table_path.write_text(table, encoding="utf-8")
     return json_path, table_path, table, is_complete
-
-
-def _fetch_sources(
-    answers_run_details: dict[str, Any], answers: list[AnswerToJudge]
-) -> list[list[SearchResult]]:
-    """Fetch and check every answer's sources before any request is made."""
-    repository = answers_run_details["repository"]
-    version = answers_run_details["version"]
-    indexed_commit = answers_run_details["indexed_commit"]
-    database = build_mongo_client()[MONGODB_DATABASE]
-    record = MongoChunkStore(database).find_repository_record(repository, version)
-    require_indexed_version(record, repository, version)
-    if record["commit_id"] != indexed_commit:
-        raise SearchRefusedError(
-            f"The answers were written from commit {indexed_commit}, but the index is at "
-            f"{record['commit_id']}"
-        )
-    chunk_filter = {
-        "_id": {"$in": chunk_ids_of(answers)},
-        "repository": repository,
-        "version": version,
-    }
-    chunks_by_id = {
-        document["_id"]: document
-        for document in database[CHUNKS_COLLECTION].find(chunk_filter, CHUNK_PROJECTION)
-    }
-    return [sources_for(answer, chunks_by_id, indexed_commit) for answer in answers]
 
 
 def _judge(
