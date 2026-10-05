@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from retrieval.query_router import QueryRoute, route_query
+from retrieval.query_router import (
+    QueryRoute,
+    hybrid_without_router,
+    route_query,
+    vector_without_router,
+)
 
 
 @pytest.mark.parametrize(
@@ -56,3 +61,14 @@ def test_anything_else_goes_to_hybrid_search_unchanged(question):
 def test_each_decision_says_why():
     assert route_query("url_for").reason == "the question looks like a code name"
     assert route_query("How?").reason == "the question is not a single code name"
+
+
+def test_without_the_router_a_code_name_goes_to_the_chosen_search_unchanged():
+    vector_decision = vector_without_router("`url_for()`")
+    hybrid_decision = hybrid_without_router("`url_for()`")
+
+    assert vector_decision.route == QueryRoute.VECTOR
+    assert vector_decision.query == "`url_for()`"
+    assert vector_decision.reason == "every question goes to vector search"
+    assert hybrid_decision.route == QueryRoute.HYBRID
+    assert hybrid_decision.query == "`url_for()`"

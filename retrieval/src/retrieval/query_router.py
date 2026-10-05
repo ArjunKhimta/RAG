@@ -12,6 +12,10 @@ letters, digits, and underscores, not starting with a digit, optionally joined b
 word well, and one word has little meaning to embed. Anything containing a space goes to hybrid
 search, so "where is url_for defined?" is not treated as a name; picking names out of sentences
 is left out on purpose.
+
+The router is no longer the default for answers. On the 50-question Flask evaluation (two answer
+runs), plain vector search led it, so answers now use `vector_without_router` unless the router
+is asked for. The router never chooses the vector route itself.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ CALL_PARENTHESES = "()"
 class QueryRoute(StrEnum):
     KEYWORD = "keyword"
     HYBRID = "hybrid"
+    VECTOR = "vector"
 
 
 @dataclass(frozen=True)
@@ -37,7 +42,7 @@ class RouteDecision:
     """Where a question goes, why, and the text to search with.
 
     For the keyword route, `query` is the bare name, without backticks or `()`; for the hybrid
-    route, it is the question unchanged.
+    and vector routes, it is the question unchanged.
     """
 
     route: QueryRoute
@@ -64,6 +69,13 @@ def hybrid_without_router(question: str) -> RouteDecision:
     """The decision used when the router is turned off: every question goes to hybrid search."""
     return RouteDecision(
         route=QueryRoute.HYBRID, reason="the router is turned off", query=question
+    )
+
+
+def vector_without_router(question: str) -> RouteDecision:
+    """The default decision for answers: every question goes to vector search."""
+    return RouteDecision(
+        route=QueryRoute.VECTOR, reason="every question goes to vector search", query=question
     )
 
 

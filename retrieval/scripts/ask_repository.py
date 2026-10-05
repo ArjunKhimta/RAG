@@ -5,24 +5,27 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/ask_repository.py "How does Flask sign the session cookie?" \
         --repository pallets/flask --version 3.1.3
 
-A question that is a single code name, such as `url_for`, goes to keyword search, whose top 5 are
-used directly; anything else goes to hybrid search, whose top 30 are reranked by the local
-cross-encoder to the best 5. `--no-router` sends every question to hybrid search. Gemini then
-writes a short answer from the 5 sources with markers such as [2]. Every reference is checked
-against the code that was sent; a reply citing anything else is rejected, never shown. Prints the
-answer, then for each citation the file, lines, a short snippet, and a link to those lines on
-GitHub at the indexed commit, then the license, the tokens used, and the time for each stage.
-`--exclude-tests` leaves test files out of the search. `--expand` also adds the 3 callers or
-callees of those sources that the cross-encoder rates best for the question, found through the call
-graph; it is off by default until measured.
+By default every question goes to vector search, whose top 5 are used directly: on the
+50-question Flask evaluation it led the other setups in both answer runs. `--search router` uses
+the query router instead: a single code name, such as `url_for`, goes to keyword search, whose top
+5 are used directly, and anything else goes to hybrid search, whose top 30 are reranked by the
+local cross-encoder to the best 5. `--search hybrid` sends every question to hybrid search and the
+reranker. Gemini then writes a short answer from the 5 sources with markers such as [2]. Every
+reference is checked against the code that was sent; a reply citing anything else is rejected,
+never shown. Prints the answer, then for each citation the file, lines, a short snippet, and a
+link to those lines on GitHub at the indexed commit, then the license, the tokens used, and the
+time for each stage. `--exclude-tests` leaves test files out of the search. `--expand` also adds
+the 3 callers or callees of those sources that the cross-encoder rates best for the question,
+found through the call graph; it is off by default until measured.
 
-Costs one generation request, plus one embedding request for a hybrid-route question not asked
-before; a code name needs no embedding. A
-temporary Gemini failure is retried up to twice, and the report says how many requests were made.
-Stays under the per-minute generation limits and stops with a clear message when a daily quota is
-used up. Run `download_reranker_model.py` once first. Exits 0 when an answer is shown, including one
-saying the code does not contain the answer, and 1 on any refusal, rejection, or failure. Every
-printed line passes through the redaction module.
+Costs one generation request, plus one embedding request for a question not asked before; a code
+name sent to keyword search by the router needs no embedding. A temporary Gemini failure is
+retried up to twice, and the report says how many requests were made. Stays under the per-minute
+generation limits and stops with a clear message when a daily quota is used up. Run
+`download_reranker_model.py` once first if the reranker is needed (`--search router` or `hybrid`,
+or `--expand`). Exits 0 when an answer is shown, including one saying the code does not contain
+the answer, and 1 on any refusal, rejection, or failure. Every printed line passes through the
+redaction module.
 """
 
 from __future__ import annotations
@@ -69,6 +72,7 @@ from retrieval.query_router import (
     RouteDecision,
     hybrid_without_router,
     route_query,
+    vector_without_router,
 )
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
@@ -87,6 +91,14 @@ ANSWER_WRAP_WIDTH = 96
 MAX_SNIPPET_LINES = 12
 
 LABEL_WIDTH = 28
+
+VECTOR_SEARCH = "vector"
+
+ROUTER_SEARCH = "router"
+
+HYBRID_SEARCH = "hybrid"
+
+SEARCH_CHOICES = [VECTOR_SEARCH, ROUTER_SEARCH, HYBRID_SEARCH]
 
 GITHUB_LINE_LINK = "https://github.com/{repository}/blob/{commit_id}/{file_path}#L{start}-L{end}"
 
@@ -151,10 +163,7 @@ def _ask(
     chunks_collection = database[CHUNKS_COLLECTION]
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
     require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
-    if arguments.no_router:
-        route = hybrid_without_router(arguments.question)
-    else:
-        route = route_query(arguments.question)
+    route = _route_for(arguments.search, arguments.question)
     timings: dict[str, float] = {}
     scorer = None
     if route.route == QueryRoute.HYBRID or arguments.expand:
@@ -210,6 +219,14 @@ def _ask(
     )
 
 
+def _route_for(search: str, question: str) -> RouteDecision:
+    if search == ROUTER_SEARCH:
+        return route_query(question)
+    if search == HYBRID_SEARCH:
+        return hybrid_without_router(question)
+    return vector_without_router(question)
+
+
 def _report_lines(
     arguments: argparse.Namespace, repository_record: dict[str, Any], ask_run: AskRun
 ) -> list[str]:
@@ -261,6 +278,8 @@ def _report_lines(
 def _describe_retrieval(route: RouteDecision, searched_count: int) -> str:
     if route.route == QueryRoute.KEYWORD:
         return f"keyword search for {route.query} ({route.reason}), top {searched_count} sources"
+    if route.route == QueryRoute.VECTOR:
+        return f"vector search ({route.reason}), top {searched_count} sources"
     return (
         f"hybrid search ({route.reason}), top {RERANK_CANDIDATE_COUNT} reranked to "
         f"{searched_count} sources"
@@ -370,9 +389,14 @@ def _parse_arguments() -> argparse.Namespace:
         "--exclude-tests", action="store_true", help="leave out chunks from test files"
     )
     parser.add_argument(
-        "--no-router",
-        action="store_true",
-        help="send every question to hybrid search, even a single code name",
+        "--search",
+        choices=SEARCH_CHOICES,
+        default=VECTOR_SEARCH,
+        help=(
+            f"how to find the sources (default {VECTOR_SEARCH}): {VECTOR_SEARCH} search's top 5; "
+            f"the query {ROUTER_SEARCH}, keyword search for a code name and hybrid search with "
+            f"reranking otherwise; or {HYBRID_SEARCH} search with reranking for every question"
+        ),
     )
     parser.add_argument(
         "--expand",

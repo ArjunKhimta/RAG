@@ -1,12 +1,13 @@
 """The search setups compared by the evaluation, each built from the pipeline's own functions.
 
 Each setup turns a question into the sources the answer model would see:
-- vector, keyword, hybrid: one search method, its top 5 as they are
+- vector, keyword, hybrid: one search method, its top 5 as they are; vector is the default path
+  for answers, run through the same `find_sources` call as `ask_repository.py`
 - vector + rerank, hybrid + rerank: the method's top 30, reranked by the cross-encoder to 5
-- router: the default path, keyword top 5 for a code name, hybrid + rerank otherwise
+- router: the previous default path, keyword top 5 for a code name, hybrid + rerank otherwise
 - router + expand: the router's 5 plus the best 3 callers or callees from the call graph
 - vector + expand: vector's 5 plus the best 3 callers or callees, the fair comparison for
-  expansion if vector search becomes the default
+  expansion now that vector search is the default
 
 The two expand setups reuse their base setup's sources rather than searching again, and their
 time is the base setup's time plus the expansion's. Times are wall-clock milliseconds for the
@@ -27,7 +28,7 @@ from retrieval.config import RERANK_CANDIDATE_COUNT, RERANK_RESULT_COUNT
 from retrieval.embedders import QueryEmbedder
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
-from retrieval.query_router import hybrid_without_router, route_query
+from retrieval.query_router import hybrid_without_router, route_query, vector_without_router
 from retrieval.reranking import PairScorer, rerank
 from retrieval.search_results import SearchResult
 from retrieval.vector_search import SearchOptions, search_chunks
@@ -122,7 +123,16 @@ def _timed(
 
 
 def _vector_sources(context: SearchContext, question: str) -> list[SearchResult]:
-    return _vector_candidates(context, question, RERANK_RESULT_COUNT)
+    found = find_sources(
+        context.chunks_collection,
+        context.embedder,
+        context.scorer,
+        question,
+        context.repository,
+        context.version,
+        vector_without_router(question),
+    )
+    return found.sources
 
 
 def _keyword_sources(context: SearchContext, question: str) -> list[SearchResult]:

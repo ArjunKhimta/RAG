@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from retrieval.answer_sources import expand_sources, find_sources
-from retrieval.query_router import QueryRoute, route_query
+from retrieval.query_router import QueryRoute, route_query, vector_without_router
 from retrieval.reranking import PairScores
 from retrieval.search_results import SearchResult
 
@@ -170,6 +170,53 @@ def test_a_code_name_takes_keyword_search_top_5_without_embedding_or_reranking()
     search_stage = collection.pipelines[0][0]["$search"]
     assert "url_for" in str(search_stage)
     assert "`" not in str(search_stage)
+
+
+class RecordingEmbedder:
+    """Returns a fixed vector and records each question it embeds."""
+
+    model_id = "fake-model"
+    dimensions = 3
+    task_type = "CODE_RETRIEVAL_QUERY"
+
+    def __init__(self) -> None:
+        self.embedded_questions: list[str] = []
+
+    def embed_query(self, question: str) -> list[float]:
+        self.embedded_questions.append(question)
+        return [0.6, 0.0, 0.8]
+
+
+def test_the_vector_route_takes_vector_search_top_5_without_reranking():
+    vector_documents = [
+        {**_document(f"build_url_{index}", index * 10), "score": 0.9 - index / 10}
+        for index in range(5)
+    ]
+    collection = FakeCollection(vector_documents)
+    embedder = RecordingEmbedder()
+    question = "How are URLs built?"
+
+    found = find_sources(
+        collection,
+        embedder,
+        None,
+        question,
+        "owner/repo",
+        "1.0",
+        vector_without_router(question),
+        exclude_tests=True,
+    )
+
+    assert [source.qualified_name for source in found.sources] == [
+        f"build_url_{index}" for index in range(5)
+    ]
+    assert found.route.route == QueryRoute.VECTOR
+    assert embedder.embedded_questions == [question]
+    assert set(found.timings) == {"embed query", "vector search"}
+    search_stage = collection.pipelines[0][0]["$vectorSearch"]
+    assert search_stage["queryVector"] == [0.6, 0.0, 0.8]
+    assert search_stage["limit"] == 5
+    assert {"is_test_file": {"$eq": False}} in search_stage["filter"]["$and"]
 
 
 def test_the_hybrid_route_needs_the_reranker():

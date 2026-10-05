@@ -1,11 +1,14 @@
 """Choose the code an answer is written from: the searched sources, then optionally related code.
 
 Two steps, kept apart so their effect can be compared:
-1. `find_sources`: follows the query router's decision. A code name goes to keyword search, whose
-   top 5 are used as they are: on the 264 names defined once in Flask, keyword search ranked the
-   definition first for 98.5% of them, and reranking lowered that to 75%, because the
-   cross-encoder, trained on web search, favours tests that repeat the name. Anything else goes to
-   hybrid search for the top 30 candidates, and the cross-encoder keeps the best 5.
+1. `find_sources`: follows a route decision. The default, vector search, uses its top 5 as they
+   are: on the 50-question Flask evaluation it led the router and hybrid search with reranking in
+   both answer runs, and it needs no reranker. The router's decision is still followed when asked
+   for. A code name goes to keyword search, whose top 5 are used as they are: on the 264 names
+   defined once in Flask, keyword search ranked the definition first for 98.5% of them, and
+   reranking lowered that to 75%, because the cross-encoder, trained on web search, favours tests
+   that repeat the name. Anything else goes to hybrid search for the top 30 candidates, and the
+   cross-encoder keeps the best 5.
 2. `expand_sources`: the call graph lists the direct callers and callees of those 5. The first 30,
    in source rank order, are scored against the question by the same cross-encoder, and the best
    3 are added after the sources, each with a note such as "called by source 2".
@@ -36,6 +39,7 @@ from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keyw
 from retrieval.query_router import QueryRoute, RouteDecision
 from retrieval.reranking import PairScorer, rerank
 from retrieval.search_results import SearchResult
+from retrieval.vector_search import SearchOptions, search_chunks
 
 MILLISECONDS_PER_SECOND = 1000
 
@@ -81,6 +85,10 @@ def find_sources(
     """Find the answer's sources along `route`. The scorer is needed only for the hybrid route."""
     if route.route == QueryRoute.KEYWORD:
         return _keyword_sources(chunks_collection, route, repository, version, exclude_tests)
+    if route.route == QueryRoute.VECTOR:
+        return _vector_sources(
+            chunks_collection, embedder, route, repository, version, exclude_tests
+        )
     if scorer is None:
         raise ValueError("The hybrid route needs the reranker's scorer")
     search_options = HybridSearchOptions(limit=RERANK_CANDIDATE_COUNT, exclude_tests=exclude_tests)
@@ -95,6 +103,24 @@ def find_sources(
     reranked_results = rerank(question, candidates, scorer, RERANK_RESULT_COUNT)
     timings["rerank"] = _milliseconds_since(stage_started)
     sources = [reranked.result for reranked in reranked_results]
+    return FoundSources(sources=sources, timings=timings, route=route)
+
+
+def _vector_sources(
+    chunks_collection: Collection,
+    embedder: QueryEmbedder,
+    route: RouteDecision,
+    repository: str,
+    version: str,
+    exclude_tests: bool,
+) -> FoundSources:
+    options = SearchOptions(limit=RERANK_RESULT_COUNT, exclude_tests=exclude_tests)
+    stage_started = time.perf_counter()
+    query_vector = embedder.embed_query(route.query)
+    timings = {"embed query": _milliseconds_since(stage_started)}
+    stage_started = time.perf_counter()
+    sources = search_chunks(chunks_collection, query_vector, repository, version, options)
+    timings["vector search"] = _milliseconds_since(stage_started)
     return FoundSources(sources=sources, timings=timings, route=route)
 
 

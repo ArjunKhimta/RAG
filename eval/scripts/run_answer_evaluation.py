@@ -7,11 +7,11 @@ installed, so its folder is put on the path for the command:
         eval/questions/pallets-flask-3.1.3.json
 
 For every question, including those with no answer in the code, finds sources with three setups
-(router, the current default; vector; vector + expand) and asks Gemini for an answer from each,
-then scores whether it cites the expected definitions and whether it refuses correctly (see
-`evaluation.answer_metrics`). The three setups run question by question, so a run cut short
-still compares them on the same questions. Writes `eval/results/<time>-answers.json` and `.md`
-and prints the table.
+(router, the previous default; vector, the default; vector + expand) and asks Gemini for an
+answer from each, then scores whether it cites the expected definitions and whether it refuses
+correctly (see `evaluation.answer_metrics`). The three setups run question by question, so a run
+cut short still compares them on the same questions. Writes `eval/results/<time>-answers.json`
+and `.md` and prints the table.
 
 Costs 3 generation requests per question (150 for 50 questions; more if a temporary failure is
 retried), paced under the per-minute limit, and no embedding requests for questions already
