@@ -12,7 +12,11 @@ from retrieval.chunk_store import CHUNKS_COLLECTION, CachedEmbedding, IndexedVer
 from retrieval.github_urls import RepositoryReference
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import ClonedRepository, CloneMetadata, RepositoryNotPublicError
-from retrieval.repository_indexing import index_repository_version
+from retrieval.repository_indexing import (
+    IndexingStage,
+    TooManyChunksError,
+    index_repository_version,
+)
 from retrieval.search_indexes import SearchIndexChange
 
 REFERENCE = RepositoryReference(owner="owner", name="project")
@@ -201,3 +205,59 @@ def test_a_refused_clone_stops_before_any_embedding(tmp_path, ensured_search_ind
 
     assert embedder.embedded_batches == []
     assert RecordingChunkStore.instances == []
+
+
+def test_stages_are_announced_in_order_and_progress_is_reported(tmp_path, ensured_search_indexes):
+    stages: list[IndexingStage] = []
+    progress: list[tuple[int, int]] = []
+
+    index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, []),
+        on_stage=stages.append,
+        on_progress=lambda embedded, to_embed: progress.append((embedded, to_embed)),
+    )
+
+    assert stages == [
+        IndexingStage.CLONING,
+        IndexingStage.CHUNKING,
+        IndexingStage.CALL_GRAPH,
+        IndexingStage.EMBEDDING,
+    ]
+    assert progress == [(0, 3), (3, 3)]
+
+
+def test_too_many_chunks_is_refused_before_any_embedding(tmp_path, ensured_search_indexes):
+    embedder = FakeEmbedder()
+
+    with pytest.raises(TooManyChunksError, match="owner/project at 1.0.0 has 3 chunks"):
+        index_repository_version(
+            REFERENCE,
+            "1.0.0",
+            {CHUNKS_COLLECTION: "chunks collection"},
+            embedder,
+            RateLimiter(100, 30_000),
+            clone=_fake_clone(tmp_path, []),
+            max_chunk_count=2,
+        )
+
+    assert embedder.embedded_batches == []
+    assert RecordingChunkStore.instances == []
+
+
+def test_exactly_the_chunk_limit_is_allowed(tmp_path, ensured_search_indexes):
+    run = index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, []),
+        max_chunk_count=3,
+    )
+
+    assert run.report.chunk_count == 3

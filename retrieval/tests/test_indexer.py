@@ -479,3 +479,24 @@ def test_default_batches_fit_the_indexing_lane_per_minute():
 
     assert settings.batch_size == 80
     assert settings.batch_token_budget == 24_000
+
+
+def test_progress_counts_from_zero_after_the_cache_and_after_each_batch():
+    chunks = [_function_chunk(index) for index in range(5)]
+    store = InMemoryChunkStore()
+    _index(chunks[:1], FakeEmbedder(), store)
+    progress: list[tuple[int, int]] = []
+    active_clock = FakeClock()
+
+    index_chunks(
+        METADATA,
+        chunks,
+        FakeEmbedder(),
+        store,
+        RateLimiter(1000, 1_000_000, clock=active_clock.time, sleep=active_clock.sleep),
+        settings=IndexingSettings(batch_size=2, batch_token_budget=1_000_000),
+        sleep=active_clock.sleep,
+        on_progress=lambda embedded, to_embed: progress.append((embedded, to_embed)),
+    )
+
+    assert progress == [(0, 4), (2, 4), (4, 4)]

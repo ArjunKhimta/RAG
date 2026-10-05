@@ -11,6 +11,9 @@ The steps, in order:
    as soon as it returns, so an interrupted run resumes from the cache.
 4. Delete chunks of this version that no longer exist, then record the version.
 
+An optional progress hook hears how many inputs still needed embedding after the cache lookup, and
+the running count after each batch, so a caller can show "300 of 1,009".
+
 The model silently truncates inputs over its token limit, so an input whose pessimistic estimate
 is over the limit has its tokens counted exactly, and if it really is over, its chunks are marked
 `embedding_truncated` rather than hidden.
@@ -50,6 +53,8 @@ from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import CloneMetadata
 
 MAX_ATTEMPTS = 6
+
+ProgressHook = Callable[[int, int], None]
 
 
 @dataclass
@@ -92,8 +97,12 @@ def index_chunks(
     settings: IndexingSettings | None = None,
     sleep: Callable[[float], None] = time.sleep,
     jitter_fraction: Callable[[], float] = random.random,
+    on_progress: ProgressHook | None = None,
 ) -> IndexingReport:
-    """Embed and store `chunks` as the given repository version, and return what it cost."""
+    """Embed and store `chunks` as the given repository version, and return what it cost.
+
+    `on_progress`, if given, is called with (inputs embedded so far, inputs to embed).
+    """
     active_settings = settings or IndexingSettings()
     report = IndexingReport(chunk_count=len(chunks))
     chunk_ids = [chunk_id_for(metadata, chunk) for chunk in chunks]
@@ -131,6 +140,8 @@ def index_chunks(
         for embedding_key, input_text in unique_inputs.items()
         if embedding_key not in cached_embeddings
     ]
+    if on_progress is not None:
+        on_progress(0, len(pending_inputs))
     for batch in _batches(pending_inputs, active_settings):
         truncation_flags = [
             _is_over_token_limit(embedder, pending, active_settings.input_token_limit, report)
@@ -145,6 +156,8 @@ def index_chunks(
         }
         report.embedded_input_count += len(batch)
         store_chunks_for(batch_embeddings)
+        if on_progress is not None:
+            on_progress(report.embedded_input_count, len(pending_inputs))
     report.deleted_stale_chunk_count = store.delete_chunks_except(
         metadata.repository, metadata.version, set(chunk_ids)
     )

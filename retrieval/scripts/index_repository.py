@@ -41,7 +41,7 @@ from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.indexer import IndexingReport
 from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError
-from retrieval.repository_indexing import index_repository_version
+from retrieval.repository_indexing import TooManyChunksError, index_repository_version
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
@@ -70,6 +70,7 @@ def main() -> int:
     except (
         InvalidRepositoryUrlError,
         RepositoryError,
+        TooManyChunksError,
         MissingConfigError,
         PyMongoError,
     ) as error:
