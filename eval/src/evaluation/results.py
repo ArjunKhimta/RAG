@@ -118,9 +118,7 @@ def question_groups(questions: list[EvaluationQuestion]) -> list[QuestionGroup]:
     from_code = [question for question in questions if question.origin == WRITTEN_FROM_CODE]
     from_stack_overflow = [question for question in questions if question.origin == STACK_OVERFLOW]
     names = [question for question in questions if question.query_style == IDENTIFIER_STYLE]
-    plain_english = [
-        question for question in questions if question.query_style != IDENTIFIER_STYLE
-    ]
+    plain_english = [question for question in questions if question.query_style != IDENTIFIER_STYLE]
     one_expected = [question for question in questions if len(question.expected) == 1]
     several_expected = [question for question in questions if len(question.expected) >= 2]
     return [
