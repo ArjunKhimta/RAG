@@ -15,9 +15,9 @@ from google import genai
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import KEYWORD_INDEX_NAME, MONGODB_DATABASE, VECTOR_INDEX_NAME
-from retrieval.embedders import GeminiQueryEmbedder
+from retrieval.embedding_budget import build_query_embedder
 from retrieval.graph_expansion import require_call_graph
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.question_set import QuestionSet, load_question_set
 from retrieval.reranker_model import verified_reranker_files
 from retrieval.reranking import CrossEncoderScorer
@@ -50,10 +50,8 @@ def prepare_run(question_path: Path) -> PreparedRun:
             f"The questions were written for commit {question_set.commit_id}, but the index is at "
             f"{record['commit_id']}"
         )
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
     gemini_client = build_gemini_client()
-    embedder = CachingQueryEmbedder(GeminiQueryEmbedder(gemini_client), query_embedding_store)
+    embedder = build_query_embedder(database, gemini_client)
     require_searchable_version(record, repository, version, embedder)
     chunks_collection = database[CHUNKS_COLLECTION]
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)

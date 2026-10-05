@@ -9,6 +9,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 
 from retrieval.asking import EmbeddingUse, SearchRun
 from retrieval.embedders import EmbeddingRequestError
+from retrieval.embedding_budget import EmbeddingBudgetExhaustedError
 from retrieval.redaction import clear_registered_secrets
 from retrieval.search_results import SearchRefusedError, SearchResult
 from retrieval.service.app import create_app
@@ -349,3 +350,16 @@ def test_searches_and_questions_share_one_lock():
 
     assert sorted(call["method"] for call in asker.calls) == ["ask", "ask", "search", "search"]
     assert asker.most_active == 1
+
+
+def test_a_used_up_embedding_budget_says_to_wait_until_midnight_pacific():
+    eleven_pm_pacific = datetime(2026, 10, 6, 6, 0, tzinfo=UTC)
+    budget_error = EmbeddingBudgetExhaustedError("The daily embedding budget of 1000 is used up")
+
+    response = _client(FakeAsker(budget_error), now=eleven_pm_pacific).post(
+        "/search", json=VALID_BODY, headers=AUTHORIZED
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3600"
+    assert "daily quota" in response.get_json()["error"]

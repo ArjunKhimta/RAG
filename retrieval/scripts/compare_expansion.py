@@ -49,10 +49,9 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
-from retrieval.embedders import GeminiQueryEmbedder
+from retrieval.embedding_budget import build_query_embedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.graph_expansion import require_call_graph
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
 from retrieval.query_router import route_query
 from retrieval.question_set import (
     EvaluationQuestion,
@@ -141,10 +140,8 @@ def _compare_all(
             f"{question_set.repository} at {question_set.version} is indexed at "
             f"{record['commit_id']}"
         )
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
     gemini_client = build_gemini_client()
-    embedder = CachingQueryEmbedder(GeminiQueryEmbedder(gemini_client), query_embedding_store)
+    embedder = build_query_embedder(database, gemini_client)
     require_searchable_version(record, question_set.repository, question_set.version, embedder)
     chunks_collection = database[CHUNKS_COLLECTION]
     require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)

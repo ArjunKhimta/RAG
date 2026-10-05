@@ -10,6 +10,11 @@ import pytest
 from retrieval.chunk_store import CachedEmbedding, IndexedVersion, StoredChunk
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.embedders import EmbeddingRequestError
+from retrieval.embedding_budget import (
+    EmbeddingBudgetExhaustedError,
+    EmbeddingLane,
+    MeteredDocumentEmbedder,
+)
 from retrieval.indexer import IndexingSettings, index_chunks
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import CloneMetadata
@@ -385,9 +390,7 @@ def test_an_input_really_over_the_limit_is_embedded_and_marked_truncated():
     embedder.token_count_result = 500
     store = InMemoryChunkStore()
 
-    report = _index(
-        [long_chunk], embedder, store, settings=IndexingSettings(input_token_limit=60)
-    )
+    report = _index([long_chunk], embedder, store, settings=IndexingSettings(input_token_limit=60))
 
     stored = next(iter(store.chunks.values()))
     assert stored.embedding.is_truncated
@@ -428,3 +431,51 @@ def test_duplicate_chunk_ids_are_refused():
 
     with pytest.raises(ValueError):
         _index([chunk, chunk], FakeEmbedder(), InMemoryChunkStore())
+
+
+class SeatLimitedBudget:
+    def __init__(self, seats: int) -> None:
+        self.seats = seats
+        self.refusals = 0
+
+    def reserve(self, lane: EmbeddingLane, count: int) -> None:
+        if count > self.seats:
+            self.refusals += 1
+            raise EmbeddingBudgetExhaustedError("No room today")
+        self.seats -= count
+
+
+def test_a_used_up_budget_stops_at_once_keeps_what_is_stored_and_resumes_next_day():
+    chunks = [_function_chunk(index) for index in range(6)]
+    store = InMemoryChunkStore()
+    budget = SeatLimitedBudget(seats=4)
+    embedder = FakeEmbedder()
+
+    with pytest.raises(EmbeddingBudgetExhaustedError):
+        _index(
+            chunks,
+            MeteredDocumentEmbedder(embedder, budget),
+            store,
+            settings=IndexingSettings(batch_size=2),
+        )
+
+    assert budget.refusals == 1
+    assert len(store.chunks) == 4
+    assert store.repositories == []
+    next_day_embedder = FakeEmbedder()
+    report = _index(
+        chunks,
+        MeteredDocumentEmbedder(next_day_embedder, SeatLimitedBudget(seats=800)),
+        store,
+        settings=IndexingSettings(batch_size=2),
+    )
+    assert report.cache_hit_count == 4
+    assert sum(len(batch) for batch in next_day_embedder.embedded_batches) == 2
+    assert len(store.repositories) == 1
+
+
+def test_default_batches_fit_the_indexing_lane_per_minute():
+    settings = IndexingSettings()
+
+    assert settings.batch_size == 80
+    assert settings.batch_token_budget == 24_000

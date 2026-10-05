@@ -53,9 +53,9 @@ from retrieval.config import (
     KEYWORD_INDEX_NAME,
     VECTOR_INDEX_NAME,
 )
-from retrieval.embedders import GeminiQueryEmbedder
+from retrieval.embedding_budget import build_query_embedder
 from retrieval.graph_expansion import require_call_graph
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.query_router import (
     QueryRoute,
     RouteDecision,
@@ -236,10 +236,8 @@ class QuestionAsker:
 
 
 def build_question_asker(database: Database, gemini_client: genai.Client) -> QuestionAsker:
-    """Wire the real embedding cache, Gemini answer model, and local reranker."""
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
-    embedder = CachingQueryEmbedder(GeminiQueryEmbedder(gemini_client), query_embedding_store)
+    """Wire the real embedding cache and budget, Gemini answer model, and local reranker."""
+    embedder = build_query_embedder(database, gemini_client)
     answer_model = GeminiAnswerModel(
         gemini_client, RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
     )

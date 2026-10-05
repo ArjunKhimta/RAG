@@ -54,10 +54,11 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
-from retrieval.embedders import EmbeddingRequestError, GeminiQueryEmbedder
+from retrieval.embedders import EmbeddingRequestError
+from retrieval.embedding_budget import build_query_embedder
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.query_router import QueryRoute, route_query
 from retrieval.rank_fusion import FusedResult
 from retrieval.redaction import redact
@@ -260,11 +261,7 @@ def _run_hybrid_search(
 def _checked_query_embedder(
     arguments: argparse.Namespace, database: Database, repository_record: dict[str, Any]
 ) -> CachingQueryEmbedder:
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
-    embedder = CachingQueryEmbedder(
-        GeminiQueryEmbedder(build_gemini_client()), query_embedding_store
-    )
+    embedder = build_query_embedder(database, build_gemini_client())
     require_searchable_version(repository_record, arguments.repository, arguments.version, embedder)
     return embedder
 

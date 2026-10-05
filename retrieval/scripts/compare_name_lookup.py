@@ -46,12 +46,12 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
-from retrieval.embedders import GeminiQueryEmbedder
+from retrieval.embedding_budget import build_query_embedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
 from retrieval.keyword_search import KeywordSearchOptions, search_chunks_by_keywords
-from retrieval.query_cache import CachingQueryEmbedder, MongoQueryEmbeddingStore
+from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError, clone_repository
 from retrieval.repository_walker import chunk_source_files, find_python_files
@@ -139,10 +139,7 @@ def _compare(repository: str, version: str, sample_size: int) -> list[str]:
             keyword_rerank_results,
         )
     sample = random.Random(SAMPLE_SEED).sample(targets, min(sample_size, len(targets)))
-    query_embedding_store = MongoQueryEmbeddingStore(database)
-    query_embedding_store.ensure_indexes()
-    query_embedder = GeminiQueryEmbedder(build_gemini_client())
-    embedder = CachingQueryEmbedder(query_embedder, query_embedding_store)
+    embedder = build_query_embedder(database, build_gemini_client())
     require_searchable_version(record, repository, version, embedder)
     hybrid_results = RouteResults()
     for target in sample:

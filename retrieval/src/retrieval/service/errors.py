@@ -19,19 +19,18 @@ from flask import Flask, Response, jsonify
 from pymongo.errors import PyMongoError
 
 from retrieval.gemini_errors import GeminiRequestError
+from retrieval.quota_clock import seconds_until_daily_quota_reset
 from retrieval.redaction import redact, redact_exception
 from retrieval.search_results import SearchRefusedError
 from retrieval.service.request_fields import InvalidRequestError
-from retrieval.service.retry_after import (
-    TEMPORARY_FAILURE_RETRY_SECONDS,
-    seconds_until_daily_quota_reset,
-)
 
 BAD_REQUEST_STATUS = 400
 
 CONFLICT_STATUS = 409
 
 UNAVAILABLE_STATUS = 503
+
+TEMPORARY_FAILURE_RETRY_SECONDS = 30
 
 DAILY_QUOTA_MESSAGE = "Gemini's daily quota is used up; try again after it resets"
 

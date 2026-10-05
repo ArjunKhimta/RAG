@@ -23,18 +23,22 @@ from pymongo.errors import PyMongoError
 
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
-    EMBEDDING_REQUESTS_PER_MINUTE,
-    EMBEDDING_TOKENS_PER_MINUTE,
+    EMBEDDINGS_PER_DAY,
+    INDEXING_EMBEDDINGS_PER_DAY,
     KEYWORD_INDEX_NAME,
     MONGODB_DATABASE,
     VECTOR_INDEX_NAME,
     MissingConfigError,
     load_environment,
 )
-from retrieval.embedders import EmbeddingRequestError, GeminiDocumentEmbedder
+from retrieval.embedders import EmbeddingRequestError
+from retrieval.embedding_budget import (
+    MongoEmbeddingBudget,
+    build_document_embedder,
+    build_indexing_rate_limiter,
+)
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.indexer import IndexingReport
-from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError
 from retrieval.repository_indexing import index_repository_version
@@ -50,11 +54,11 @@ def main() -> int:
     try:
         reference = parse_github_url(arguments.url)
         database = build_mongo_client()[MONGODB_DATABASE]
-        embedder = GeminiDocumentEmbedder(build_gemini_client())
-        rate_limiter = RateLimiter(EMBEDDING_REQUESTS_PER_MINUTE, EMBEDDING_TOKENS_PER_MINUTE)
+        embedder = build_document_embedder(database, build_gemini_client())
         run = index_repository_version(
-            reference, arguments.version, database, embedder, rate_limiter
+            reference, arguments.version, database, embedder, build_indexing_rate_limiter()
         )
+        usage = MongoEmbeddingBudget(database).usage_today()
     except EmbeddingRequestError as error:
         if error.is_daily_quota_exhausted:
             _print(
@@ -87,6 +91,10 @@ def main() -> int:
         _row("Call graph edges", run.call_graph_edge_count),
         "",
         *_report_lines(run.report),
+        "",
+        f"Embedding budget for {usage.day} (Pacific)",
+        _row("Indexing", f"{usage.indexing} of {INDEXING_EMBEDDINGS_PER_DAY}"),
+        _row("All embeddings", f"{usage.total} of {EMBEDDINGS_PER_DAY}"),
         "",
         "Chunk collection in Atlas (all indexed versions)",
         _row("Documents", collection_statistics["count"]),

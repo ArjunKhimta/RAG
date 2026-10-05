@@ -6,8 +6,9 @@ The steps, in order:
 2. Look the keys up in the store. Chunks whose key is already there are written straight away with
    the stored vector, with no API call.
 3. Embed the remaining inputs in batches that fit both the batch size and the per-minute token
-   limit, pausing as the rate limiter requires. Each batch is written as soon as it returns, so an
-   interrupted run resumes from the cache.
+   limit of the indexing lane (80 texts and 24,000 tokens of Gemini's 100 and 30,000 a minute,
+   leaving the rest for questions), pausing as the rate limiter requires. Each batch is written
+   as soon as it returns, so an interrupted run resumes from the cache.
 4. Delete chunks of this version that no longer exist, then record the version.
 
 The model silently truncates inputs over its token limit, so an input whose pessimistic estimate
@@ -39,7 +40,8 @@ from retrieval.code_graph import edge_count_of
 from retrieval.config import (
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_INPUT_TOKEN_LIMIT,
-    EMBEDDING_TOKENS_PER_MINUTE,
+    INDEXING_EMBEDDING_TOKENS_PER_MINUTE,
+    INDEXING_EMBEDDINGS_PER_MINUTE,
 )
 from retrieval.embedders import DocumentEmbedder, EmbeddingRequestError
 from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
@@ -75,8 +77,8 @@ class _PendingInput:
 
 @dataclass(frozen=True)
 class IndexingSettings:
-    batch_size: int = EMBEDDING_BATCH_SIZE
-    batch_token_budget: int = EMBEDDING_TOKENS_PER_MINUTE
+    batch_size: int = min(EMBEDDING_BATCH_SIZE, INDEXING_EMBEDDINGS_PER_MINUTE)
+    batch_token_budget: int = INDEXING_EMBEDDING_TOKENS_PER_MINUTE
     input_token_limit: int = EMBEDDING_INPUT_TOKEN_LIMIT
     max_attempts: int = MAX_ATTEMPTS
 
