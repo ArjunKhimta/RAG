@@ -1,0 +1,2492 @@
+{
+  "run": {
+    "run_at": "2026-10-06T11:01:27+00:00",
+    "project_commit": "f0f464b777cbe22cceb51cef645c2bb5ecd53217",
+    "project_has_uncommitted_changes": false,
+    "judge_model": "gemini-3.5-flash-lite",
+    "answers_file": "eval/results/2026-10-06-1054-answers.json",
+    "answers_file_sha256": "5ad18a4d4eb401f342554acf8f319e7e806fc9af42f146635a79bc5c65e9e894",
+    "answers_run_at": "2026-10-06T10:54:07+00:00",
+    "answer_model": "gemini-3.5-flash-lite",
+    "repository": "pallets/flask",
+    "version": "3.1.3",
+    "indexed_commit": "22d924701a6ae2e4cd01e9a15bbaf3946094af65"
+  },
+  "complete": true,
+  "judged_answer_count": 91,
+  "answer_count": 91,
+  "answers": [
+    {
+      "id": "flask-001",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The get_signing_serializer method returns None if the application has no secret key.",
+          "reason": "Lines 304-305 explicitly return None when app.secret_key is falsy.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It constructs and returns a URLSafeTimedSerializer using fallback keys and the current secret key.",
+          "reason": "Lines 309-321 show extending keys with fallbacks, appending secret_key, and returning URLSafeTimedSerializer.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2191,
+      "output_tokens": 121,
+      "request_count": 1,
+      "judge_milliseconds": 1539.5
+    },
+    {
+      "id": "flask-001",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The get_signing_serializer method returns None if the application does not have a secret key.",
+          "reason": "Lines 304-305 explicitly return None when app.secret_key is falsy.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It constructs a URLSafeTimedSerializer using the secret key and any configured fallbacks.",
+          "reason": "Lines 307-313 collect keys from fallbacks and app.secret_key and pass them to URLSafeTimedSerializer.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3046,
+      "output_tokens": 122,
+      "request_count": 1,
+      "judge_milliseconds": 1410.7
+    },
+    {
+      "id": "flask-002",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The from_prefixed_env method loads environment variables starting with a given prefix into the config.",
+          "reason": "Cited lines describe loading environment variables starting with a prefix into the config.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It drops the prefix from the environment key and uses a loading function to convert values to specific types.",
+          "reason": "Cited lines state it drops the prefix and passes values to a loading function for type conversion.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "The default loading function is json.loads.",
+          "reason": "Cited lines state the default loading function is json.loads.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3505,
+      "output_tokens": 144,
+      "request_count": 1,
+      "judge_milliseconds": 1782.7
+    },
+    {
+      "id": "flask-002",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The from_prefixed_env method loads environment variables starting with a specified prefix into the configuration.",
+          "reason": "Cited lines show from_prefixed_env loading environment variables starting with a prefix.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Values are passed through a loading function, which defaults to json.loads, to convert them into specific types.",
+          "reason": "Cited lines show values are passed through a loading function defaulting to json.loads.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Double underscores in environment variable keys are used to separate keys for nested dictionaries.",
+          "reason": "Cited lines state double underscores separate keys for nested dicts.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3871,
+      "output_tokens": 145,
+      "request_count": 1,
+      "judge_milliseconds": 2043.8
+    },
+    {
+      "id": "flask-003",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask gets a signing serializer by checking for an application secret key and returning a URLSafeTimedSerializer.",
+          "reason": "Lines 304-305 check app.secret_key and line 313 returns a URLSafeTimedSerializer.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It adds any fallback keys and the current secret key to the serializer.",
+          "reason": "Lines 307-312 add fallback keys and the secret key to the keys list passed to the serializer.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "The serializer uses a salt, a serializer, and signer keyword arguments including key derivation and digest method.",
+          "reason": "Lines 315-320 pass salt, serializer, and signer_kwargs containing key derivation and digest method.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2918,
+      "output_tokens": 178,
+      "request_count": 1,
+      "judge_milliseconds": 1599.7
+    },
+    {
+      "id": "flask-003",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask uses an itsdangerous URLSafeTimedSerializer to sign session cookies.",
+          "reason": "Lines 313-321 in source 1 return a URLSafeTimedSerializer from itsdangerous, and source 2 states it is used for sessions.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The serializer is created with the application secret key and optional fallback keys.",
+          "reason": "Lines 307-312 show keys being populated with fallback keys and app.secret_key before being passed to the serializer.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "It uses a salt, a serializer, and signer keyword arguments including key derivation and digest methods.",
+          "reason": "Cited lines explicitly show salt, serializer, key_derivation, and digest_method being passed to initialize the serializer.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3897,
+      "output_tokens": 187,
+      "request_count": 1,
+      "judge_milliseconds": 1776.1
+    },
+    {
+      "id": "flask-004",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Environment variables starting with FLASK_ are loaded into the config by sorting them and dropping the prefix.",
+          "reason": "Lines 154 and 159 show sorting os.environ and removing the prefix.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Values are passed through a loading function to convert them to specific types.",
+          "reason": "Lines 161-162 show values being passed to the loads function.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Keys separated by double underscores are used to traverse and set values in nested dictionaries.",
+          "reason": "Lines 174-183 show splitting by double underscores and traversing/setting nested dictionaries.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3773,
+      "output_tokens": 160,
+      "request_count": 1,
+      "judge_milliseconds": 2503.1
+    },
+    {
+      "id": "flask-004",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Environment variables starting with FLASK_ are loaded into the config using the from_prefixed_env method.",
+          "reason": "Cited lines show from_prefixed_env loading environment variables starting with FLASK_.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The prefix is removed from the environment key for the config key.",
+          "reason": "Cited lines state dropping the prefix from the env key for the config key.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Values are passed through a loading function, which defaults to json.loads, to attempt type conversion.",
+          "reason": "Cited lines only show the purpose; source 1 definition (line 127) shows json.loads as default.",
+          "verdict": "miscited"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3708,
+      "output_tokens": 160,
+      "request_count": 1,
+      "judge_milliseconds": 1584.4
+    },
+    {
+      "id": "flask-005",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Handling an exception always sends the got_request_exception signal and causes a 500 InternalServerError.",
+          "reason": "Lines 812-816 state that handling an exception always causes a 500 InternalServerError and sends got_request_exception.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If PROPAGATE_EXCEPTIONS is true, the error is re-raised for the debugger.",
+          "reason": "Lines 818-821 state that if PROPAGATE_EXCEPTIONS is True, the error is re-raised for the debugger.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Otherwise, the original exception is logged and an InternalServerError is returned or handled by a registered error handler.",
+          "reason": "Lines 820-826 and 854-862 show logging, returning an InternalServerError, and checking for a registered error handler.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3106,
+      "output_tokens": 197,
+      "request_count": 1,
+      "judge_milliseconds": 14821.0
+    },
+    {
+      "id": "flask-005",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "When an unhandled exception occurs, the application calls handle_exception.",
+          "reason": "Lines 1512-1514 call handle_exception when an exception is caught.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "This sends a got_request_exception signal and checks if exceptions should be propagated.",
+          "reason": "Line 840 sends got_request_exception and line 841 checks PROPAGATE_EXCEPTIONS config.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If PROPAGATE_EXCEPTIONS is true, the error is re-raised.",
+          "reason": "Lines 846-852 re-raise the exception if propagate is true.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Otherwise, the exception is logged and an InternalServerError is created.",
+          "reason": "Lines 854-856 log the exception and instantiate InternalServerError.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 5,
+          "text": "If a registered error handler exists for the server error, it is used.",
+          "reason": "Lines 857-860 find and call the error handler if it exists.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 6,
+          "text": "Finally, the request is finalized and teardown contexts are called even if an unhandled error occurs.",
+          "reason": "Line 862 finalizes the request, and source 8 shows teardown contexts called via ctx.pop(error).",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5075,
+      "output_tokens": 317,
+      "request_count": 1,
+      "judge_milliseconds": 2051.0
+    },
+    {
+      "id": "flask-006",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The command line searches for common attribute names like app or application to find the Flask application.",
+          "reason": "Lines 48-52 search for app or application attributes to find the Flask application.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If not found, it checks for a single Flask instance or attempts to use app factory functions such as create_app or make_app.",
+          "reason": "Lines 54-58 find a single Flask instance and lines 67-75 check create_app or make_app factories.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If a specific app name or function call string is provided, it parses the expression and retrieves the corresponding variable or calls the function with arguments.",
+          "reason": "Cited lines show parsing the expression, getting the attribute, and calling it with args and kwargs if it is a function.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4527,
+      "output_tokens": 129,
+      "request_count": 1,
+      "judge_milliseconds": 1797.7
+    },
+    {
+      "id": "flask-006",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The command line searches for common attribute names like app or application in the module.",
+          "reason": "Lines 47-52 search for app or application and check if they are Flask instances.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It checks module values to find a single Flask instance if common names are not present.",
+          "reason": "Lines 54-58 check module values for a single Flask instance.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "It also searches for app factory functions like create_app or make_app.",
+          "reason": "Lines 66-75 search for create_app or make_app functions.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5040,
+      "output_tokens": 154,
+      "request_count": 1,
+      "judge_milliseconds": 1579.0
+    },
+    {
+      "id": "flask-007",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "A view function return value is converted to a response object by the make_response method.",
+          "reason": "Lines 1129-1131 show converting the return value of a view function to an instance of response_class.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Tuples are unpacked into body, status, and headers depending on their length.",
+          "reason": "Lines 1190-1208 show unpacking tuples based on their length.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Strings, bytes, and iterators are converted using the response class.",
+          "reason": "Lines 1219-1228 show converting strings, bytes, bytearrays, and iterators using self.response_class.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Dictionaries and lists are handled by the json response method.",
+          "reason": "Lines 1230-1231 show handling dict and list with self.json.response.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 5,
+          "text": "BaseResponse instances and callables are forced to the correct response type.",
+          "reason": "Lines 1232-1239 show forcing BaseResponse instances and callables to the correct response type.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 6163,
+      "output_tokens": 215,
+      "request_count": 1,
+      "judge_milliseconds": 1928.7
+    },
+    {
+      "id": "flask-007",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "A view function's return value is converted into a response object by the make_response method.",
+          "reason": "Lines 1129-1131 show make_response converting a view function's return value to response_class.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Strings, bytes, and iterators are used to create an instance of the response class with the provided status and headers.",
+          "reason": "Lines 1220-1228 show strings, bytes, bytearray, and iterators creating a response instance with status and headers.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Dictionaries and lists are converted into JSON responses.",
+          "reason": "Source 1 and source 2 show dict and list values being converted via self.json.response.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Tuples are unpacked into a body, status, or headers.",
+          "reason": "Lines 1190-1208 show tuples being unpacked into body, status, or headers.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 5,
+          "text": "Response instances or WSGI callables are coerced to the correct response class type.",
+          "reason": "Lines 1232-1239 show BaseResponse or callable being coerced using force_type.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 7811,
+      "output_tokens": 216,
+      "request_count": 1,
+      "judge_milliseconds": 1658.1
+    },
+    {
+      "id": "flask-008",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Teardown functions are called when the application context ends, right before it is popped.",
+          "reason": "Source 1 line 1364 and Source 2 lines 790-791 show teardown functions are called right before the app context is popped.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "This occurs after the request context when handling a request, at the end of CLI commands, or when a manually pushed context ends.",
+          "reason": "Source 1 lines 1366-1367 and Source 2 lines 781-783 fully support these conditions.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "The method do_teardown_appcontext calls all functions decorated with teardown_appcontext.",
+          "reason": "Source 1 lines 1381-1382 show do_teardown_appcontext calling all functions in self.teardown_appcontext_funcs.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3444,
+      "output_tokens": 206,
+      "request_count": 1,
+      "judge_milliseconds": 1976.0
+    },
+    {
+      "id": "flask-008",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Teardown functions are called when the application context ends, such as when a with block exits or ctx.pop is called.",
+          "reason": "Cited lines explicitly state teardown functions are called when with block exits or ctx.pop is called.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Application context teardown functions are executed right before the application context is popped.",
+          "reason": "Source 1 docstring confirms they are called right before the application context is popped.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "This occurs typically after the request context for each request, at the end of CLI commands, or after a manually pushed context ends.",
+          "reason": "Source 2 lines state the context is popped after the request context, at the end of CLI commands, or after manually pushed context ends.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "The app_ctx.pop method calls do_teardown_appcontext to invoke these functions.",
+          "reason": "Source 8 lines show AppContext.pop calling self.app.do_teardown_appcontext.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4272,
+      "output_tokens": 161,
+      "request_count": 1,
+      "judge_milliseconds": 22664.8
+    },
+    {
+      "id": "flask-009",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "When the app name is not provided, locate_app calls find_best_app on the module.",
+          "reason": "Lines 261-262 show locate_app calling find_best_app when app_name is None.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It first searches the module for common attribute names like app or application that are Flask instances.",
+          "reason": "Lines 47-52 search for 'app' and 'application' instances of Flask.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Next, it looks for any single object in the module that is a Flask instance.",
+          "reason": "Lines 54-58 find the single object that is a Flask instance.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Finally, it searches for app factory functions such as create_app or make_app and calls them without arguments to get the application.",
+          "reason": "Lines 66-75 search for create_app or make_app and call them without arguments.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4115,
+      "output_tokens": 158,
+      "request_count": 1,
+      "judge_milliseconds": 1612.8
+    },
+    {
+      "id": "flask-009",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "First, it checks for attributes named app or application that are Flask instances.",
+          "reason": "Lines 47-52 check for attributes named app or application that are Flask instances.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Next, it searches for a single object in the module that is a Flask instance.",
+          "reason": "Lines 54-58 find and return the only object that is a Flask instance.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Then, it checks for application factory functions named create_app or make_app that return a Flask instance when called without arguments.",
+          "reason": "Lines 66-75 check for create_app or make_app factories and return the Flask instance if called.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5049,
+      "output_tokens": 163,
+      "request_count": 1,
+      "judge_milliseconds": 1900.5
+    },
+    {
+      "id": "flask-010",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The finalize_request method converts the view return value into a response using make_response.",
+          "reason": "Line 939 shows finalize_request calling self.make_response(rv).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It then calls process_response to execute after-request functions and save the session.",
+          "reason": "Source 1 calls process_response, and Source 2 shows it running after-request functions and saving the session.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Finally, it sends the request_finished signal and returns the response.",
+          "reason": "Lines 942-944 send the request_finished signal and line 951 returns the response.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3351,
+      "output_tokens": 168,
+      "request_count": 1,
+      "judge_milliseconds": 2102.9
+    },
+    {
+      "id": "flask-010",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The finalize_request method converts the view's return value into a response using make_response.",
+          "reason": "Line 939 shows finalize_request calling self.make_response(rv).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It then processes the response by calling after-request functions and saving the session.",
+          "reason": "Source 2 shows process_response calling after-request functions and saving the session.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Finally, it sends the request_finished signal and returns the response.",
+          "reason": "Lines 942-944 send the request_finished signal and line 951 returns the response.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5760,
+      "output_tokens": 161,
+      "request_count": 1,
+      "judge_milliseconds": 1887.5
+    },
+    {
+      "id": "flask-011",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask searches for an error handler in a specific order: blueprint handler for a specific code, app handler for a specific code, blueprint handler for an exception class, and finally app handler for an exception class.",
+          "reason": "Source 2 docstring explicitly lists the exact search order for error handlers.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2964,
+      "output_tokens": 57,
+      "request_count": 1,
+      "judge_milliseconds": 1359.3
+    },
+    {
+      "id": "flask-011",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask searches for an error handler in a specific order: blueprint handler for a specific code, app handler for a specific code, blueprint handler for an exception class, and app handler for an exception class.",
+          "reason": "Docstring in source 2 describes the exact search order for error handlers.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It checks exception classes by traversing their method resolution order.",
+          "reason": "Lines 841-845 iterate through exc_class.__mro__ to find a handler.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4994,
+      "output_tokens": 77,
+      "request_count": 1,
+      "judge_milliseconds": 1669.0
+    },
+    {
+      "id": "flask-012",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "At the end of a request, process_response checks if the session is not a null session and then calls save_session on the session interface.",
+          "reason": "Lines 1321-1322 check if it is not a null session and call save_session.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If the session was accessed, a Vary: Cookie header is added to the response.",
+          "reason": "Lines 349-350 add a Vary Cookie header when session accessed is true.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If the session is empty and modified, the response deletes the cookie.",
+          "reason": "Lines 354-356 check if session is empty and modified, then delete the cookie.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Otherwise, if the session should set a cookie, the session is dumped using a signing serializer and saved into the response cookie along with expiration and security parameters.",
+          "reason": "Lines 369-384 check should_set_cookie, dump the session, and set the cookie with parameters.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3131,
+      "output_tokens": 223,
+      "request_count": 1,
+      "judge_milliseconds": 1296.0
+    },
+    {
+      "id": "flask-012",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "At the end of each request, process_response calls the save_session method of the session interface.",
+          "reason": "Cited lines 1321-1322 clearly show save_session being called if not a null session.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If the session was accessed, a vary cookie header is added to the response.",
+          "reason": "Cited lines show that if session.accessed is true, response.vary.add(\"Cookie\") is called.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If the session is empty and modified, the cookie is deleted from the response.",
+          "reason": "Cited lines show delete_cookie is called when session is empty and modified.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Otherwise, if the session should set a cookie, the session dictionary is serialized and signed, and then set as a cookie on the response.",
+          "reason": "Cited lines show it checks should_set_cookie, dumps the dictionary via signing serializer, and sets the cookie.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3639,
+      "output_tokens": 215,
+      "request_count": 1,
+      "judge_milliseconds": 2014.8
+    },
+    {
+      "id": "flask-013",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "A Method Not Allowed error happens when a request is made with a method that the route does not allow, such as posting to a route that only accepts GET.",
+          "reason": "Lines 141-142 show a post request to a route returning a 405 status code.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2059,
+      "output_tokens": 67,
+      "request_count": 1,
+      "judge_milliseconds": 14084.4
+    },
+    {
+      "id": "flask-013",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The methods parameter for a route defaults to GET only, so it rejects POST requests unless explicitly allowed.",
+          "reason": "Source 8 shows methods defaults to GET and adds HEAD and OPTIONS, so POST is rejected as shown in source 2.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3677,
+      "output_tokens": 67,
+      "request_count": 1,
+      "judge_milliseconds": 2592.5
+    },
+    {
+      "id": "flask-014",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The g object serves as a namespace for storing data during an application context.",
+          "reason": "Source 1 docstring explicitly states that _AppCtxGlobals is used as a namespace for storing data during an application context.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2675,
+      "output_tokens": 67,
+      "request_count": 1,
+      "judge_milliseconds": 1834.0
+    },
+    {
+      "id": "flask-014",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The g object is a plain object used as a namespace for storing data during an application context.",
+          "reason": "Source 1 docstring states it is a plain object used as a namespace for storing data during an application context.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2679,
+      "output_tokens": 45,
+      "request_count": 1,
+      "judge_milliseconds": 1110.6
+    },
+    {
+      "id": "flask-015",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask keeps a flashed message in the session.",
+          "reason": "Lines 340-342 show flashes being retrieved from, appended to, and stored back into the session.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2523,
+      "output_tokens": 67,
+      "request_count": 1,
+      "judge_milliseconds": 1879.3
+    },
+    {
+      "id": "flask-015",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask keeps flashed messages in the session under the `_flashes` key.",
+          "reason": "Lines 340-342 show flashes retrieved from and stored in session under _flashes.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3589,
+      "output_tokens": 64,
+      "request_count": 1,
+      "judge_milliseconds": 1590.9
+    },
+    {
+      "id": "flask-017",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask provides send_file to send the contents of a file to the client.",
+          "reason": "Lines 407-417 define send_file to send file contents to the client.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "You should never pass user-provided file paths directly to send_file.",
+          "reason": "Line 425 explicitly states never to pass file paths provided by a user.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Instead, use send_from_directory to safely serve user-requested paths from within a specific directory.",
+          "reason": "Lines 533-551 show send_from_directory is a secure way to serve user requests from a folder.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4471,
+      "output_tokens": 165,
+      "request_count": 1,
+      "judge_milliseconds": 22063.5
+    },
+    {
+      "id": "flask-017",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask provides send_file to send the contents of a file to the client.",
+          "reason": "Lines 407 and 417 show send_file sending the contents of a file to the client.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "You should never pass user-provided file paths directly to send_file.",
+          "reason": "Lines 425-426 explicitly state never to pass file paths provided by a user.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Instead, use send_from_directory to safely serve user-requested paths from within a directory.",
+          "reason": "Lines 427-428 and 548-551 show using send_from_directory to securely serve user-requested paths from a directory.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5333,
+      "output_tokens": 181,
+      "request_count": 1,
+      "judge_milliseconds": 2622.7
+    },
+    {
+      "id": "flask-018",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The as_view method converts a class into a view function that can be registered for a route.",
+          "reason": "Lines 89-90 state that as_view converts the class into a view function that can be registered for a route.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "All arguments passed to as_view except name are forwarded to the view class initializer.",
+          "reason": "Lines 98-99 state that except for name, all other arguments are forwarded to the view class __init__ method.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2763,
+      "output_tokens": 125,
+      "request_count": 1,
+      "judge_milliseconds": 1630.2
+    },
+    {
+      "id": "flask-018",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The as_view class method converts a view class into a route-compatible view function.",
+          "reason": "Cited lines explicitly state it converts the class into a view function that can be registered for a route.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Except for the name parameter, all other arguments passed to as_view are forwarded to the view class initialization method.",
+          "reason": "Cited lines state that except for name, all other arguments are forwarded to the view class __init__ method.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "By default, a new instance of the view class is created for every request.",
+          "reason": "Cited lines state the generated view creates a new instance for every request by default.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "If init_every_request is set to false, a single instance is used for every request.",
+          "reason": "Cited lines state that if init_every_request is False, the same instance is used for every request.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3188,
+      "output_tokens": 209,
+      "request_count": 1,
+      "judge_milliseconds": 1767.5
+    },
+    {
+      "id": "flask-019",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The after_this_request function executes a function after the current request.",
+          "reason": "Lines 120-122 state it executes a function after this request.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It raises a RuntimeError if used when no request context is active.",
+          "reason": "Lines 142-146 explicitly raise a RuntimeError when ctx is None.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "It appends the provided function to the request context's after request functions list.",
+          "reason": "Line 148 appends f to ctx._after_request_functions.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2031,
+      "output_tokens": 153,
+      "request_count": 1,
+      "judge_milliseconds": 2487.7
+    },
+    {
+      "id": "flask-019",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The after_this_request function executes a function after the current request.",
+          "reason": "Lines 120-122 state that it executes a function after this request.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It raises a RuntimeError if used when no request context is active.",
+          "reason": "Lines 142-145 explicitly raise RuntimeError when ctx is None.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "The function is appended to the request context after request functions list and returned.",
+          "reason": "Lines 148-149 append f to ctx._after_request_functions and return f.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2037,
+      "output_tokens": 115,
+      "request_count": 1,
+      "judge_milliseconds": 1249.4
+    },
+    {
+      "id": "flask-021",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can enable template auto reloading by setting the TEMPLATES_AUTO_RELOAD configuration option to True.",
+          "reason": "Lines 374-376 show that setting TEMPLATES_AUTO_RELOAD to True sets auto_reload to True.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Running the app with debug mode enabled also enables template auto reloading.",
+          "reason": "Lines 403-404 show that running the app with debug=True asserts that auto_reload is enabled.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 1755,
+      "output_tokens": 93,
+      "request_count": 1,
+      "judge_milliseconds": 1677.1
+    },
+    {
+      "id": "flask-021",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can set the TEMPLATES_AUTO_RELOAD configuration option to True or run the application in debug mode.",
+          "reason": "Cited tests show setting TEMPLATES_AUTO_RELOAD to True and running with debug=True enables auto_reload.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2250,
+      "output_tokens": 46,
+      "request_count": 1,
+      "judge_milliseconds": 1749.6
+    },
+    {
+      "id": "flask-022",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask can automatically serialize date objects.",
+          "reason": "Lines 109-110 check for date instances and return http_date(o).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It can also convert decimal and UUID objects to strings.",
+          "reason": "Lines 112-113 check for Decimal and UUID instances and return str(o).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Dataclasses are converted to dictionaries.",
+          "reason": "Lines 115-116 check if o is a dataclass and return its dictionary representation.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Objects with an html method are also supported.",
+          "reason": "Lines 118-119 check for __html__ attribute and return its string representation.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 1651,
+      "output_tokens": 160,
+      "request_count": 1,
+      "judge_milliseconds": 1353.9
+    },
+    {
+      "id": "flask-022",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask automatically serializes date objects into HTTP dates.",
+          "reason": "Lines 109-110 check for date and return http_date(o).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It also turns decimal.Decimal and uuid.UUID objects into strings.",
+          "reason": "Lines 112-113 check for decimal.Decimal and uuid.UUID and return str(o).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Dataclasses are converted into dictionaries.",
+          "reason": "Lines 115-116 check if it is a dataclass and return dataclasses.asdict(o).",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Objects with an __html__ method are serialized using the string return value of that method.",
+          "reason": "Lines 118-119 check for __html__ and return str(o.__html__()).",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2144,
+      "output_tokens": 226,
+      "request_count": 1,
+      "judge_milliseconds": 14977.7
+    },
+    {
+      "id": "flask-023",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can make the application context available inside a custom command by decorating it with with_appcontext.",
+          "reason": "Lines 308-310 show decorating a click command with with_appcontext.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Alternatively, using an AppGroup instead of a regular click group automatically wraps commands in with_appcontext.",
+          "reason": "Docstring in source 5 explicitly states AppGroup changes the command decorator to automatically wrap functions in with_appcontext.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2182,
+      "output_tokens": 115,
+      "request_count": 1,
+      "judge_milliseconds": 1737.2
+    },
+    {
+      "id": "flask-023",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can make the application context available inside a custom command by using the with_appcontext decorator.",
+          "reason": "Lines 308-311 show @with_appcontext used on a command accessing current_app.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Commands created using AppGroup automatically wrap functions in with_appcontext.",
+          "reason": "Source 5 docstring explicitly states AppGroup automatically wraps functions in with_appcontext.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3539,
+      "output_tokens": 113,
+      "request_count": 1,
+      "judge_milliseconds": 3774.2
+    },
+    {
+      "id": "flask-024",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The config method from_object only loads uppercase attributes from a class or module.",
+          "reason": "Lines 225-226 and 252-254 show loading only uppercase attributes from classes or modules.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If the class uses property attributes, it must be instantiated before being passed to from_object.",
+          "reason": "Lines 236-238 explicitly state that a class with property attributes needs to be instantiated first.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2552,
+      "output_tokens": 122,
+      "request_count": 1,
+      "judge_milliseconds": 1550.4
+    },
+    {
+      "id": "flask-024",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "from_object loads only the uppercase attributes of the module or class.",
+          "reason": "Lines 225-226 explicitly state that from_object loads only uppercase attributes.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If the class has property attributes, it needs to be instantiated before being passed to from_object.",
+          "reason": "Lines 236-238 explicitly state that if a class has property attributes, it needs to be instantiated before being passed.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2974,
+      "output_tokens": 119,
+      "request_count": 1,
+      "judge_milliseconds": 1160.3
+    },
+    {
+      "id": "flask-025",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Building URLs outside an active request requires setting SERVER_NAME so Flask knows what domain to use.",
+          "reason": "Source 4 docstring and source 5 exception message both state building URLs outside an active request requires SERVER_NAME.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "APPLICATION_ROOT and PREFERRED_URL_SCHEME should also be configured as needed.",
+          "reason": "Source 4 docstring and source 5 exception message both mention configuring APPLICATION_ROOT and PREFERRED_URL_SCHEME as needed.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3621,
+      "output_tokens": 123,
+      "request_count": 1,
+      "judge_milliseconds": 2253.6
+    },
+    {
+      "id": "flask-025",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask needs SERVER_NAME configured to build URLs outside an active request.",
+          "reason": "Lines 1089-1095 show a RuntimeError is raised if url_adapter is None when building outside a request, requiring SERVER_NAME.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "APPLICATION_ROOT and PREFERRED_URL_SCHEME should also be configured as needed.",
+          "reason": "Lines 1092-1094 in the exception message state that APPLICATION_ROOT and PREFERRED_URL_SCHEME should also be configured as needed.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4938,
+      "output_tokens": 139,
+      "request_count": 1,
+      "judge_milliseconds": 20274.7
+    },
+    {
+      "id": "flask-026",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "When used in a with statement, session_transaction opens a session transaction that can modify the session used by the test client.",
+          "reason": "Source 2 docstring explicitly states it opens a session transaction in a with statement to modify the session.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Once the with block is left, the session is stored back.",
+          "reason": "Source 2 docstring explicitly states that once the with block is left the session is stored back.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "This function accepts the same arguments as test_request_context.",
+          "reason": "Source 2 docstring states the function accepts the same arguments as test_request_context.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "If cookies are disabled, it raises a TypeError.",
+          "reason": "Source 2 checks if self._cookies is None and raises a TypeError.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 5,
+          "text": "If the session backend does not open a session, a RuntimeError is raised.",
+          "reason": "Source 2 checks if sess is None and raises a RuntimeError.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2404,
+      "output_tokens": 246,
+      "request_count": 1,
+      "judge_milliseconds": 2523.0
+    },
+    {
+      "id": "flask-026",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "When used with a with statement, session_transaction opens a session transaction that allows modifying the session used by the test client.",
+          "reason": "Cited lines explicitly state session_transaction opens a session transaction to modify the test client's session when used with a with statement.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Once the with block is left, the session is stored back.",
+          "reason": "Cited lines state that once the with block is left, the session is stored back.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Internally, this is implemented using a temporary test request context.",
+          "reason": "Cited lines state it is implemented by going through a temporary test request context.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "It accepts the same arguments as test_request_context.",
+          "reason": "Cited lines state the function accepts the same arguments as test_request_context.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 5,
+          "text": "If cookies are disabled, a TypeError is raised.",
+          "reason": "Cited lines raise a TypeError if self._cookies is None.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 6,
+          "text": "If the session backend does not open a session, a RuntimeError is raised.",
+          "reason": "Cited lines raise a RuntimeError if sess is None.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3511,
+      "output_tokens": 283,
+      "request_count": 1,
+      "judge_milliseconds": 2153.1
+    },
+    {
+      "id": "flask-027",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "copy_current_request_context is a helper function that decorates a function to retain the current request context.",
+          "reason": "Lines 155-157 state that copy_current_request_context is a helper function that decorates a function to retain the current request context.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It raises a RuntimeError if it is used when no request context is active.",
+          "reason": "Lines 181-185 show a RuntimeError is raised if ctx is None.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2509,
+      "output_tokens": 124,
+      "request_count": 1,
+      "judge_milliseconds": 1741.3
+    },
+    {
+      "id": "flask-027",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The copy_current_request_context function is a helper that decorates a function to retain the current request context, which is useful when working with greenlets.",
+          "reason": "Lines 155-157 state it is a helper function that decorates a function to retain the request context for greenlets.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "When the decorated function is called, a copy of the request context is pushed.",
+          "reason": "Lines 158-159 state a copy of the request context is created and pushed when the function is called.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If no request context is active when calling copy_current_request_context, a RuntimeError is raised.",
+          "reason": "Lines 181-185 show that a RuntimeError is raised if ctx is None.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3674,
+      "output_tokens": 175,
+      "request_count": 1,
+      "judge_milliseconds": 1376.7
+    },
+    {
+      "id": "flask-029",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Yes, you can put one blueprint inside another by registering the child blueprint on the parent blueprint.",
+          "reason": "Lines 830-831 show registering a child blueprint on a parent blueprint.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Flask combines the URL prefixes by stripping trailing slashes from the state URL prefix and leading slashes from the blueprint URL prefix, then joining them with a slash.",
+          "reason": "Lines 367-370 show rstrip on state.url_prefix and lstrip on bp_url_prefix, joined by a slash.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2989,
+      "output_tokens": 123,
+      "request_count": 1,
+      "judge_milliseconds": 1773.0
+    },
+    {
+      "id": "flask-029",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can put one blueprint inside another by registering the child blueprint on the parent blueprint.",
+          "reason": "Lines 830-831 show registering a child blueprint on a parent blueprint.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Flask combines the URL prefixes by stripping trailing slashes from the state URL prefix and leading slashes from the blueprint URL prefix, then joining them with a slash.",
+          "reason": "Lines 367-370 show stripping trailing slashes from state url prefix and leading slashes from blueprint url prefix, then joining with a slash.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2987,
+      "output_tokens": 91,
+      "request_count": 1,
+      "judge_milliseconds": 1770.1
+    },
+    {
+      "id": "flask-030",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can use stream_with_context to wrap a response generator function so that it runs inside the current request context.",
+          "reason": "Lines 66-69 state that stream_with_context wraps a response generator function to run inside the current request context.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It keeps request, session, and g available even after the request context would typically have ended.",
+          "reason": "Lines 67-69 state that it keeps request, session, and g available even after the request context would typically have ended.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3010,
+      "output_tokens": 126,
+      "request_count": 1,
+      "judge_milliseconds": 1504.9
+    },
+    {
+      "id": "flask-030",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can wrap your generator function or the created generator with stream_with_context.",
+          "reason": "Lines 63-100 demonstrate using stream_with_context as a decorator on a function and as a wrapper around a generator.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4230,
+      "output_tokens": 51,
+      "request_count": 1,
+      "judge_milliseconds": 1627.1
+    },
+    {
+      "id": "flask-031",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask ensures that async functions are synchronous for WSGI workers by wrapping them to run and wait for the response.",
+          "reason": "Lines 967-969 explicitly state ensuring functions are synchronous for WSGI workers by wrapping async def functions.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Flask uses an async-to-sync function to convert coroutine functions.",
+          "reason": "Lines 980-983 and 1001 show async_to_sync returning a sync function that runs the coroutine.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "This conversion requires the asgiref package, which triggers the requirement for the async extra.",
+          "reason": "Lines 994-999 show that failing to import asgiref raises a RuntimeError to install the async extra.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2245,
+      "output_tokens": 183,
+      "request_count": 1,
+      "judge_milliseconds": 14289.0
+    },
+    {
+      "id": "flask-031",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask ensures that async functions are synchronous for WSGI workers by wrapping them to run and wait for the response.",
+          "reason": "Lines 967-969 state that ensure_sync ensures functions are synchronous for WSGI workers by wrapping async def functions to run and wait for the response.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Flask converts async code to be synchronously callable using an asgiref package function.",
+          "reason": "Lines 995-1001 import and return asgiref.sync.async_to_sync(func).",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4290,
+      "output_tokens": 103,
+      "request_count": 1,
+      "judge_milliseconds": 1996.3
+    },
+    {
+      "id": "flask-032",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can set limits like max_content_length on a specific request to apply the limit to that specific view.",
+          "reason": "Lines 88-90 show the setter for max_content_length, and line 43 sets it on a request object.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2149,
+      "output_tokens": 51,
+      "request_count": 1,
+      "judge_milliseconds": 2081.0
+    },
+    {
+      "id": "flask-033",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask uses the send_static_file view function to serve files from the static_folder attribute.",
+          "reason": "Lines 308-312 document that send_static_file is used to serve files from static_folder.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "A route is automatically registered for this view at static_url_path if static_folder is set.",
+          "reason": "Lines 310-312 document that a route is automatically registered at static_url_path if static_folder is set.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 1797,
+      "output_tokens": 94,
+      "request_count": 1,
+      "judge_milliseconds": 3174.3
+    },
+    {
+      "id": "flask-033",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask serves static files using the send_static_file view function.",
+          "reason": "Cited lines explicitly state send_static_file is the view function used to serve files.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It expects static files to be located in the static_folder.",
+          "reason": "Cited lines state the function serves files from static_folder.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "A route is automatically registered for this view at static_url_path.",
+          "reason": "Cited lines state a route is automatically registered at static_url_path.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2953,
+      "output_tokens": 102,
+      "request_count": 1,
+      "judge_milliseconds": 1740.2
+    },
+    {
+      "id": "flask-034",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The redirect function creates a redirect response object.",
+          "reason": "Cited lines show the redirect function definition and docstring describing it as creating a redirect response object.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If current_app is available, it uses current_app.redirect; otherwise, it uses Werkzeug's redirect function.",
+          "reason": "Cited lines check if current_app is available to call its redirect, otherwise returning _wz_redirect.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "App.redirect is a method called by flask.redirect that creates a redirect response using the application's response class.",
+          "reason": "Cited lines show App.redirect creating a redirect using self.response_class.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2461,
+      "output_tokens": 113,
+      "request_count": 1,
+      "judge_milliseconds": 1068.0
+    },
+    {
+      "id": "flask-034",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The redirect function creates a redirect response object.",
+          "reason": "Docstring on lines 252 states it creates a redirect response object.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If current_app is available, it uses current_app.redirect; otherwise, it uses werkzeug.utils.redirect.",
+          "reason": "Lines 267-270 check current_app and call current_app.redirect or _wz_redirect.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2941,
+      "output_tokens": 114,
+      "request_count": 1,
+      "judge_milliseconds": 20954.1
+    },
+    {
+      "id": "flask-035",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The jsonify function serializes given arguments as JSON and returns a Response object with the application/json mimetype.",
+          "reason": "Source 1 docstring states jsonify serializes arguments as JSON and returns a Response object with application/json mimetype.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It requires an active request or application context and calls app.json.response.",
+          "reason": "Docstring notes it requires a context, and line 170 calls current_app.json.response.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2052,
+      "output_tokens": 117,
+      "request_count": 1,
+      "judge_milliseconds": 2553.2
+    },
+    {
+      "id": "flask-035",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The jsonify function serializes given arguments as JSON and returns a Response object with the application/json mimetype.",
+          "reason": "Cited lines from the docstring describe the function's purpose.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It requires an active request or application context and calls current_app.json.response.",
+          "reason": "Line 170 calls current_app.json.response, and lines 144-145 describe the context requirement.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Either positional or keyword arguments can be given, but not both, and if none are given, None is serialized.",
+          "reason": "Docstring lines 150-151 explicitly state that arguments cannot both be positional and keyword, and None is serialized if none are given.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2582,
+      "output_tokens": 129,
+      "request_count": 1,
+      "judge_milliseconds": 1497.8
+    },
+    {
+      "id": "flask-037",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The default endpoint for a given function is always the function name.",
+          "reason": "Lines 701-706 show the function returning view_func.__name__ as the default endpoint.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2226,
+      "output_tokens": 66,
+      "request_count": 1,
+      "judge_milliseconds": 2026.7
+    },
+    {
+      "id": "flask-037",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "An endpoint is a name associated with a view function.",
+          "reason": "Cited lines show the endpoint decorator associating an endpoint name with a view function.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If an endpoint is not provided for a route, Flask uses the view function's name as the default endpoint.",
+          "reason": "Cited lines show _endpoint_from_view_func returns the view function name when endpoint is None.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3870,
+      "output_tokens": 75,
+      "request_count": 1,
+      "judge_milliseconds": 2517.4
+    },
+    {
+      "id": "flask-038",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Functions registered with before_request run before each request by being called during request preprocessing.",
+          "reason": "Source 1 shows registration and Source 2 shows them being called during preprocessing.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If a before_request function returns a non-None value, further request handling is stopped.",
+          "reason": "Both source 1 and source 2 explicitly state that non-None return values stop further request handling.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2281,
+      "output_tokens": 76,
+      "request_count": 1,
+      "judge_milliseconds": 1433.4
+    },
+    {
+      "id": "flask-038",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask runs before-request functions during request preprocessing before the request is dispatched.",
+          "reason": "Lines 1271-1275 state that preprocess_request is called before the request is dispatched and calls before_request_funcs.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Functions registered with before_request are called without arguments, and if they return a non-None value, further request handling stops and that value is treated as the view response.",
+          "reason": "Source 1 and source 2 docstrings explicitly state that before_request functions are called without arguments and stop further request handling if they return non-None.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2718,
+      "output_tokens": 134,
+      "request_count": 1,
+      "judge_milliseconds": 1515.1
+    },
+    {
+      "id": "flask-039",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask checks the main application loader for templates before checking any blueprint loaders.",
+          "reason": "Lines 103-105 yield the app loader first, and lines 107-110 check blueprint loaders after.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The template loading iteration yields the main application loader first and blueprints afterward.",
+          "reason": "Lines 103-105 yield the main app loader and lines 107-110 yield blueprint loaders afterward.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 1701,
+      "output_tokens": 130,
+      "request_count": 1,
+      "judge_milliseconds": 1962.3
+    },
+    {
+      "id": "flask-039",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask uses a dispatching Jinja loader that first checks the main application's loader before checking any blueprint loaders.",
+          "reason": "Lines 103-105 check the app jinja_loader first, then lines 107-110 iterate over blueprints.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2112,
+      "output_tokens": 54,
+      "request_count": 1,
+      "judge_milliseconds": 1690.7
+    },
+    {
+      "id": "flask-040",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Teardown functions are called right before the request context is popped, after the request is dispatched and the response is returned.",
+          "reason": "Lines 1330-1331 of source 1 state the function is called after the request is dispatched and response returned, right before the request context is popped.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "During teardown functions, you can still access the request object because the request context has not yet been made inactive.",
+          "reason": "Source 4 lines 518-520 state that teardown functions are called just before the request context is made inactive, supporting the statement.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2516,
+      "output_tokens": 140,
+      "request_count": 1,
+      "judge_milliseconds": 13982.0
+    },
+    {
+      "id": "flask-040",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Teardown functions are called after the request is dispatched and the response is returned, right before the request context is popped.",
+          "reason": "Cited lines 1330-1331 directly state that teardown functions are called after the request is dispatched and before the request context is popped.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "They execute when the request context is popped.",
+          "reason": "Cited lines 509-510 state that these functions are called when the request context is popped.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3219,
+      "output_tokens": 127,
+      "request_count": 1,
+      "judge_milliseconds": 2147.5
+    },
+    {
+      "id": "flask-041",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can use the --cert option to specify a certificate file to use HTTPS with the run command.",
+          "reason": "Lines 893-898 define the --cert option with the help text specifying a certificate file to use HTTPS.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3049,
+      "output_tokens": 68,
+      "request_count": 1,
+      "judge_milliseconds": 1406.0
+    },
+    {
+      "id": "flask-041",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can run the development server over HTTPS by using the --cert option with the flask run command.",
+          "reason": "Lines 890-898 show the run command with the --cert option specifying a certificate file to use HTTPS.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4100,
+      "output_tokens": 48,
+      "request_count": 1,
+      "judge_milliseconds": 3838.2
+    },
+    {
+      "id": "flask-042",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can make a user's session survive closing the browser by setting the session as permanent.",
+          "reason": "Source 1 docstring and code show a permanent session gets an expiration time instead of None.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The session lasts for the current time plus the permanent session lifetime configured on the application.",
+          "reason": "Source 1 line 230 explicitly returns current time plus app.permanent_session_lifetime.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2703,
+      "output_tokens": 111,
+      "request_count": 1,
+      "judge_milliseconds": 1672.6
+    },
+    {
+      "id": "flask-042",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "To make a session survive closing the browser, you must set the session as permanent.",
+          "reason": "Source 1 shows that expiration time is only returned if session.permanent is True, matching browser session survival.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "A permanent session lasts for the current time plus the permanent session lifetime configured on the application.",
+          "reason": "Line 230 explicitly calculates the expiration time as datetime.now(timezone.utc) + app.permanent_session_lifetime.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3813,
+      "output_tokens": 121,
+      "request_count": 1,
+      "judge_milliseconds": 1788.2
+    },
+    {
+      "id": "flask-043",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The url_for function generates a URL to the given endpoint with the provided values.",
+          "reason": "Lines 195-204 show the function definition and docstring stating it generates a URL to the given endpoint with the given values.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It requires an active request or application context and calls current_app.url_for.",
+          "reason": "Lines 206-208 in the docstring state it requires an active request or application context and calls current_app.url_for.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4070,
+      "output_tokens": 133,
+      "request_count": 1,
+      "judge_milliseconds": 19699.2
+    },
+    {
+      "id": "flask-043",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The url_for function generates a URL to the given endpoint with the provided values.",
+          "reason": "Lines 195-204 show the signature and docstring indicating url_for generates a URL to the given endpoint with the given values.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "When not in an active request, URLs are external by default.",
+          "reason": "Lines 220-221 in the docstring state that when not in an active request, URLs are external by default.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 5695,
+      "output_tokens": 98,
+      "request_count": 1,
+      "judge_milliseconds": 3188.7
+    },
+    {
+      "id": "flask-044",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The abort function raises an HTTPException for a given status code.",
+          "reason": "Docstring on lines 274-275 states it raises an HTTPException.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If current_app is available, it calls its aborter object.",
+          "reason": "Lines 290-291 call current_app.aborter when current_app is available.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Otherwise, it uses Werkzeug's default abort function.",
+          "reason": "Line 293 calls _wz_abort, which is imported as werkzeug's abort.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2032,
+      "output_tokens": 119,
+      "request_count": 1,
+      "judge_milliseconds": 1606.9
+    },
+    {
+      "id": "flask-044",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The abort function raises an HTTPException for a given status code.",
+          "reason": "Lines 273-275 document and define raising an HTTPException for the status code.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If current_app is available, it calls its aborter object, otherwise it uses Werkzeug's default abort.",
+          "reason": "Lines 290-293 check current_app and call current_app.aborter or _wz_abort accordingly.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3424,
+      "output_tokens": 88,
+      "request_count": 1,
+      "judge_milliseconds": 1692.0
+    },
+    {
+      "id": "flask-045",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can register a template context processor function using the context_processor method.",
+          "reason": "Lines 541-555 define context_processor which registers a function.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The keys of the dictionary returned by this function are added as variables available in the template.",
+          "reason": "Lines 546-548 state that the keys of the returned dict are added as variables available in the template.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "When used on an app, it is called for every rendered template.",
+          "reason": "Lines 550-552 state that when used on an app, it is called for every rendered template.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2366,
+      "output_tokens": 169,
+      "request_count": 1,
+      "judge_milliseconds": 2201.6
+    },
+    {
+      "id": "flask-045",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can register a template context processor function using the context_processor decorator on an app or blueprint.",
+          "reason": "Source 2 shows the context_processor decorator registering a context processor.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The keys of the dictionary returned by this function are added as variables available in the template.",
+          "reason": "Source 2 docstring states keys of the returned dict are added as variables.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "To register with a blueprint and affect every template, you can use app_context_processor.",
+          "reason": "Source 3 docstring explains app_context_processor affects every template.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3203,
+      "output_tokens": 102,
+      "request_count": 1,
+      "judge_milliseconds": 1359.3
+    },
+    {
+      "id": "flask-046",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask sorts dictionary keys because sort_keys is enabled by default in the DefaultJSONProvider.",
+          "reason": "Source 4 shows sort_keys = True defined in DefaultJSONProvider.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "You can disable this by setting app.json.sort_keys to False.",
+          "reason": "Cited lines assert sort_keys is True, but do not show disabling it.",
+          "verdict": "unsupported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3693,
+      "output_tokens": 103,
+      "request_count": 1,
+      "judge_milliseconds": 1980.6
+    },
+    {
+      "id": "flask-046",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Flask sorts dictionary keys by default because `sort_keys` is set to `True` in `DefaultJSONProvider`.",
+          "reason": "Source 4 shows sort_keys = True in DefaultJSONProvider.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "You can keep your own order by disabling key sorting.",
+          "reason": "Source 4 shows sort_keys can be disabled for better performance.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4312,
+      "output_tokens": 67,
+      "request_count": 1,
+      "judge_milliseconds": 1218.3
+    },
+    {
+      "id": "flask-047",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The load_dotenv function requires python-dotenv to be installed to load dotenv files.",
+          "reason": "Lines 740-751 show load_dotenv returns early if python-dotenv cannot be imported.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Values from dotenv files are only set if the key is not already present in os.environ.",
+          "reason": "Lines 765-769 check if the key is in os.environ before setting it.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2721,
+      "output_tokens": 116,
+      "request_count": 1,
+      "judge_milliseconds": 2002.7
+    },
+    {
+      "id": "flask-047",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Loading dotenv files requires the python-dotenv library to be installed.",
+          "reason": "Lines 714 and 740-751 show load_dotenv is a no-op if python-dotenv is missing.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "If a key already exists in os.environ, values from .flaskenv will not overwrite it.",
+          "reason": "Lines 765-769 show keys already in os.environ are skipped and not overwritten.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 4071,
+      "output_tokens": 91,
+      "request_count": 1,
+      "judge_milliseconds": 13820.4
+    },
+    {
+      "id": "flask-048",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "You can create a test CLI runner from your Flask app using test_cli_runner().",
+          "reason": "Line 344 calls app.test_cli_runner() to create the runner.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Then you can invoke the custom command by passing its name in the arguments list to the runner's invoke method.",
+          "reason": "Line 346 invokes the runner passing args with the command name.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "You can also invoke the command directly by passing the command object.",
+          "reason": "Line 349 invokes the runner passing the command object directly.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 4,
+          "text": "Finally, you can check the output of the command using the output attribute of the result.",
+          "reason": "Line 28 checks result.output to verify the command output.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 1637,
+      "output_tokens": 135,
+      "request_count": 1,
+      "judge_milliseconds": 2380.6
+    },
+    {
+      "id": "flask-048",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "Create a CLI runner for the app using test_cli_runner.",
+          "reason": "Lines 727-728 show test_cli_runner creates a CLI runner for the app.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Invoke the custom command by passing its name in the args list to the runner's invoke method.",
+          "reason": "Lines 344-346 show invoking the command by passing args with its name.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "Check the output of the command using the output attribute of the result object returned by invoke.",
+          "reason": "Lines 346-347 check the result output attribute.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2874,
+      "output_tokens": 114,
+      "request_count": 1,
+      "judge_milliseconds": 2079.7
+    },
+    {
+      "id": "flask-049",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The test_request_context method creates a RequestContext for a WSGI environment from given values.",
+          "reason": "Lines 1423-1425 state it creates a RequestContext for a WSGI environment from given values.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It takes the same arguments as Werkzeug's EnvironBuilder, along with application defaults.",
+          "reason": "Lines 1446-1448 state it takes the same arguments as Werkzeug's EnvironBuilder with application defaults.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "A with block can be used to push the context and make request point to the created environment.",
+          "reason": "Lines 1431-1433 state a with block pushes the context and makes request point to the created environment.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2460,
+      "output_tokens": 181,
+      "request_count": 1,
+      "judge_milliseconds": 3188.8
+    },
+    {
+      "id": "flask-049",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The test_request_context method creates a RequestContext for a WSGI environment created from given values.",
+          "reason": "Cited lines explicitly state it creates a RequestContext for a WSGI environment created from given values.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "It takes the same arguments as Werkzeug's EnvironBuilder, along with application defaults.",
+          "reason": "Cited lines explicitly state it takes the same arguments as Werkzeug's EnvironBuilder with application defaults.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3752,
+      "output_tokens": 78,
+      "request_count": 1,
+      "judge_milliseconds": 1690.3
+    },
+    {
+      "id": "flask-050",
+      "setup": "vector",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The after_request decorator registers a function to run after each request to an object.",
+          "reason": "Cited lines explicitly state that after_request registers a function to run after each request.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "The registered function receives the response object and must return a response object.",
+          "reason": "Cited lines show the function is called with the response object and must return one.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If an after_request function raises an exception, remaining functions are not called.",
+          "reason": "Cited lines clearly state remaining functions will not be called if an exception is raised.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 2273,
+      "output_tokens": 149,
+      "request_count": 1,
+      "judge_milliseconds": 1890.2
+    },
+    {
+      "id": "flask-050",
+      "setup": "vector + expand",
+      "outcome": "judged",
+      "verdicts": [
+        {
+          "sentence": 1,
+          "text": "The after_request decorator registers a function to run after each request to an object.",
+          "reason": "Lines 486-488 show after_request registering a function to run after each request.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 2,
+          "text": "Registered after_request functions are called in reverse order of registration.",
+          "reason": "Lines 1318-1319 show after_request functions being called in reverse order.",
+          "verdict": "supported"
+        },
+        {
+          "sentence": 3,
+          "text": "If an after_request function raises an exception, remaining functions will not be called.",
+          "reason": "Lines 494-495 state that remaining after_request functions will not be called if an exception is raised.",
+          "verdict": "supported"
+        }
+      ],
+      "uncited_sentence_count": 0,
+      "prompt_tokens": 3191,
+      "output_tokens": 170,
+      "request_count": 1,
+      "judge_milliseconds": 19708.2
+    }
+  ]
+}
