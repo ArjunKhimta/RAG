@@ -21,17 +21,30 @@ The keyword mapping is not dynamic, so only the listed fields are indexed; the e
 leaves it alone. An update rebuilds the index, so "differs" means the stored definition lacks
 something set here; defaults Atlas adds to the stored copy are ignored. A free M0 cluster allows
 three search indexes, and these two use two of them.
+
+`IndexReadiness` remembers for five minutes that an index answered as queryable, because asking
+Atlas took 240 to 870 ms a time (measured 2026-10-05) against about 40 ms for a search. Only
+"ready" is remembered; a missing or building index is asked about on every search. Atlas answers a
+vector search on a missing index with no results rather than an error, so callers re-check with
+`recheck` whenever a search finds nothing, and a deleted index is never mistaken for no match.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
 
 from pymongo.collection import Collection
 from pymongo.operations import SearchIndexModel
 
-from retrieval.config import CODE_ANALYZER_NAME, KEYWORD_INDEX_NAME, VECTOR_INDEX_NAME
+from retrieval.config import (
+    CODE_ANALYZER_NAME,
+    INDEX_READY_SECONDS,
+    KEYWORD_INDEX_NAME,
+    VECTOR_INDEX_NAME,
+)
 from retrieval.search_results import SearchRefusedError
 
 VECTOR_SEARCH_INDEX_TYPE = "vectorSearch"
@@ -140,6 +153,33 @@ def require_queryable_index(chunks_collection: Collection, name: str) -> None:
         raise SearchRefusedError(
             f"The search index {name} is still building (status {status}); try again in a minute"
         )
+
+
+class IndexReadiness:
+    """Checks that search indexes are queryable, remembering a ready answer for a short time."""
+
+    def __init__(
+        self,
+        chunks_collection: Collection,
+        ready_seconds: float = INDEX_READY_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._chunks_collection = chunks_collection
+        self._ready_seconds = ready_seconds
+        self._clock = clock
+        self._ready_until: dict[str, float] = {}
+
+    def require_queryable(self, name: str) -> None:
+        ready_until = self._ready_until.get(name)
+        if ready_until is not None and self._clock() < ready_until:
+            return
+        require_queryable_index(self._chunks_collection, name)
+        self._ready_until[name] = self._clock() + self._ready_seconds
+
+    def recheck(self, name: str) -> None:
+        """Forget any remembered answer and ask Atlas again."""
+        self._ready_until.pop(name, None)
+        self.require_queryable(name)
 
 
 def definition_contains(stored: Any, wanted: Any) -> bool:

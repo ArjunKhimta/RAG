@@ -6,6 +6,7 @@ import pytest
 
 from retrieval.config import CODE_ANALYZER_NAME, KEYWORD_INDEX_NAME, VECTOR_INDEX_NAME
 from retrieval.search_indexes import (
+    IndexReadiness,
     SearchIndexChange,
     definition_contains,
     ensure_keyword_index,
@@ -22,8 +23,10 @@ class FakeChunksCollection:
         self.search_indexes = search_indexes or []
         self.created_models = []
         self.updated_definitions = []
+        self.lookup_count = 0
 
     def list_search_indexes(self, name):
+        self.lookup_count += 1
         return [index for index in self.search_indexes if index["name"] == name]
 
     def create_search_index(self, model):
@@ -187,3 +190,69 @@ def test_a_queryable_index_is_accepted():
     )
 
     require_queryable_index(collection, VECTOR_INDEX_NAME)
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _ready_vector_index():
+    return _stored_index(VECTOR_INDEX_NAME, {}, queryable=True, status="READY")
+
+
+def test_a_ready_index_is_remembered_until_the_window_ends():
+    collection = FakeChunksCollection(search_indexes=[_ready_vector_index()])
+    clock = FakeClock()
+    readiness = IndexReadiness(collection, ready_seconds=300, clock=clock)
+
+    readiness.require_queryable(VECTOR_INDEX_NAME)
+    clock.now += 299
+    readiness.require_queryable(VECTOR_INDEX_NAME)
+    assert collection.lookup_count == 1
+
+    clock.now += 1
+    readiness.require_queryable(VECTOR_INDEX_NAME)
+    assert collection.lookup_count == 2
+
+
+def test_a_building_or_missing_index_is_asked_about_every_time():
+    building = _stored_index(VECTOR_INDEX_NAME, {}, queryable=False, status="PENDING")
+    collection = FakeChunksCollection(search_indexes=[building])
+    readiness = IndexReadiness(collection, clock=FakeClock())
+
+    for _ in range(2):
+        with pytest.raises(SearchRefusedError, match="still building"):
+            readiness.require_queryable(VECTOR_INDEX_NAME)
+    collection.search_indexes = []
+    with pytest.raises(SearchRefusedError, match="does not exist"):
+        readiness.require_queryable(VECTOR_INDEX_NAME)
+
+    assert collection.lookup_count == 3
+
+
+def test_each_index_is_remembered_separately():
+    collection = FakeChunksCollection(search_indexes=[_ready_vector_index()])
+    readiness = IndexReadiness(collection, clock=FakeClock())
+
+    readiness.require_queryable(VECTOR_INDEX_NAME)
+    with pytest.raises(SearchRefusedError, match="does not exist"):
+        readiness.require_queryable(KEYWORD_INDEX_NAME)
+
+
+def test_a_recheck_asks_again_and_catches_an_index_deleted_since():
+    collection = FakeChunksCollection(search_indexes=[_ready_vector_index()])
+    readiness = IndexReadiness(collection, clock=FakeClock())
+    readiness.require_queryable(VECTOR_INDEX_NAME)
+
+    readiness.recheck(VECTOR_INDEX_NAME)
+    assert collection.lookup_count == 2
+
+    collection.search_indexes = []
+    with pytest.raises(SearchRefusedError, match="does not exist"):
+        readiness.recheck(VECTOR_INDEX_NAME)
+    with pytest.raises(SearchRefusedError, match="does not exist"):
+        readiness.require_queryable(VECTOR_INDEX_NAME)

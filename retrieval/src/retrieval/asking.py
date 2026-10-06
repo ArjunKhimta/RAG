@@ -6,8 +6,11 @@ query-embedding cache, and the answer model with its rate limiter, which must be
 question counts against the same per-minute limits; a limiter made per question would never stop
 anything. The reranker is loaded on first use and then kept, so a process that only ever uses
 vector search never spends the memory on it. For each question: check the version is indexed,
-can link its license file, and is searchable, find the sources along the chosen search, optionally
-add callers and callees from the call graph, and ask the answer model, timing each stage.
+can link its license file, and is searchable, check the search indexes the chosen search uses,
+find the sources along it, optionally add callers and callees from the call graph, and ask the
+answer model, timing each stage. The checks are timed together as `checks`. Index readiness is
+remembered for a few minutes and re-checked whenever a search finds nothing (see
+`search_indexes.IndexReadiness`).
 
 `search` is the same lookup without an answer: the same version checks, then vector search for a
 chosen number of results. It never loads the reranker and never asks the answer model, so it
@@ -66,7 +69,7 @@ from retrieval.query_router import (
 from retrieval.rate_limiter import RateLimiter
 from retrieval.reranker_model import verified_reranker_files
 from retrieval.reranking import CrossEncoderScorer, PairScorer
-from retrieval.search_indexes import require_queryable_index
+from retrieval.search_indexes import IndexReadiness
 from retrieval.search_results import SearchResult, require_indexed_version
 from retrieval.vector_search import SearchOptions, require_searchable_version
 
@@ -122,8 +125,10 @@ class QuestionAsker:
         embedder: CachingQueryEmbedder,
         answer_model: AnswerModel,
         load_scorer: Callable[[], PairScorer],
+        index_readiness: IndexReadiness | None = None,
     ) -> None:
         self._database = database
+        self._index_readiness = index_readiness or IndexReadiness(database[CHUNKS_COLLECTION])
         self._embedder = embedder
         self._answer_model = answer_model
         self._load_scorer = load_scorer
@@ -138,14 +143,16 @@ class QuestionAsker:
         exclude_tests: bool = False,
         expand: bool = False,
     ) -> AskRun:
+        checks_started = time.perf_counter()
         repository_record = self._searchable_record(repository, version)
         if expand:
             require_call_graph(repository_record, repository, version)
-        chunks_collection = self._database[CHUNKS_COLLECTION]
-        require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
-        require_queryable_index(chunks_collection, KEYWORD_INDEX_NAME)
         route = route_for(search, question)
-        timings: dict[str, float] = {}
+        index_names = indexes_for(route.route)
+        for index_name in index_names:
+            self._index_readiness.require_queryable(index_name)
+        timings = {"checks": _milliseconds_since(checks_started)}
+        chunks_collection = self._database[CHUNKS_COLLECTION]
         scorer = None
         if route.route == QueryRoute.HYBRID or expand:
             scorer = self._scorer_timed_into(timings)
@@ -163,6 +170,8 @@ class QuestionAsker:
         )
         embedding_use = self._embedding_use_since(hits_before, misses_before)
         if not found.sources:
+            for index_name in index_names:
+                self._index_readiness.recheck(index_name)
             raise NoSourcesFoundError(repository_record)
         timings.update(found.timings)
         sources = found.sources
@@ -196,17 +205,23 @@ class QuestionAsker:
         exclude_tests: bool = False,
     ) -> SearchRun:
         options = SearchOptions(limit=limit, exclude_tests=exclude_tests)
+        checks_started = time.perf_counter()
         repository_record = self._searchable_record(repository, version)
+        self._index_readiness.require_queryable(VECTOR_INDEX_NAME)
+        checks_milliseconds = _milliseconds_since(checks_started)
         chunks_collection = self._database[CHUNKS_COLLECTION]
-        require_queryable_index(chunks_collection, VECTOR_INDEX_NAME)
         hits_before = self._embedder.hit_count
         misses_before = self._embedder.miss_count
-        results, timings = find_vector_results(
+        results, search_timings = find_vector_results(
             chunks_collection, self._embedder, query, repository, version, options
         )
+        if not results:
+            recheck_started = time.perf_counter()
+            self._index_readiness.recheck(VECTOR_INDEX_NAME)
+            checks_milliseconds += _milliseconds_since(recheck_started)
         return SearchRun(
             results=results,
-            timings=timings,
+            timings={"checks": checks_milliseconds, **search_timings},
             embedding_use=self._embedding_use_since(hits_before, misses_before),
             repository_record=repository_record,
         )
@@ -256,6 +271,15 @@ def route_for(search: str, question: str) -> RouteDecision:
     if search == VECTOR_SEARCH:
         return vector_without_router(question)
     raise ValueError(f"Unknown search {search!r}; use one of {', '.join(SEARCH_CHOICES)}")
+
+
+def indexes_for(route: QueryRoute) -> list[str]:
+    """The search indexes a route searches: vector, keyword, or both for hybrid."""
+    if route == QueryRoute.VECTOR:
+        return [VECTOR_INDEX_NAME]
+    if route == QueryRoute.KEYWORD:
+        return [KEYWORD_INDEX_NAME]
+    return [VECTOR_INDEX_NAME, KEYWORD_INDEX_NAME]
 
 
 def _embedding_use(new_hits: int, new_misses: int) -> EmbeddingUse:

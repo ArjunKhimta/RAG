@@ -116,6 +116,8 @@ SERVICE_MAX_REQUEST_BYTES = 16 * 1024
 
 INDEXING_JOB_TTL_SECONDS = 30 * 24 * 60 * 60
 
+INDEX_READY_SECONDS = 5 * 60
+
 
 class MissingConfigError(RuntimeError):
     """Raised when a required environment variable is absent or empty."""

@@ -13,7 +13,7 @@ from retrieval.asking import (
     route_for,
 )
 from retrieval.chunk_store import CHUNKS_COLLECTION
-from retrieval.config import VECTOR_INDEX_NAME
+from retrieval.config import KEYWORD_INDEX_NAME, VECTOR_INDEX_NAME
 from retrieval.query_router import QueryRoute
 from retrieval.search_results import SearchRefusedError, SearchResult
 
@@ -59,6 +59,19 @@ class Calls:
     generate_answer: list[dict] = field(default_factory=list)
     call_graph_checks: int = 0
     scorer_loads: int = 0
+    checked_indexes: list[str] = field(default_factory=list)
+    rechecked_indexes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class FakeIndexReadiness:
+    calls: Calls
+
+    def require_queryable(self, name):
+        self.calls.checked_indexes.append(name)
+
+    def recheck(self, name):
+        self.calls.rechecked_indexes.append(name)
 
 
 @pytest.fixture
@@ -67,7 +80,6 @@ def calls(monkeypatch) -> Calls:
     monkeypatch.setattr(asking, "MongoChunkStore", FakeStore)
     monkeypatch.setattr(asking, "require_indexed_version", lambda *arguments: None)
     monkeypatch.setattr(asking, "require_searchable_version", lambda *arguments: None)
-    monkeypatch.setattr(asking, "require_queryable_index", lambda *arguments: None)
 
     def require_call_graph(*arguments):
         recorded.call_graph_checks += 1
@@ -115,6 +127,7 @@ def _asker(calls: Calls, embedder: FakeEmbedder | None = None) -> QuestionAsker:
         embedder or FakeEmbedder(),
         "answer model",
         load_scorer,
+        FakeIndexReadiness(calls),
     )
 
 
@@ -198,6 +211,28 @@ def test_no_sources_stops_before_the_answer_model(monkeypatch, calls):
         _asker(calls).ask("question", "pallets/flask", "3.1.3")
 
     assert calls.generate_answer == []
+    assert calls.rechecked_indexes == [VECTOR_INDEX_NAME]
+
+
+@pytest.mark.parametrize(
+    "search, question, expected_indexes",
+    [
+        ("vector", "How is the cookie signed?", [VECTOR_INDEX_NAME]),
+        ("router", "url_for", [KEYWORD_INDEX_NAME]),
+        ("router", "How is the cookie signed?", [VECTOR_INDEX_NAME, KEYWORD_INDEX_NAME]),
+        ("hybrid", "url_for", [VECTOR_INDEX_NAME, KEYWORD_INDEX_NAME]),
+    ],
+)
+def test_a_question_checks_only_the_indexes_its_search_uses(
+    monkeypatch, calls, search, question, expected_indexes
+):
+    monkeypatch.setattr(asking, "find_sources", _find_sources_returning(calls, [SOURCE]))
+
+    run = _asker(calls).ask(question, "pallets/flask", "3.1.3", search=search)
+
+    assert calls.checked_indexes == expected_indexes
+    assert calls.rechecked_indexes == []
+    assert list(run.timings)[0] == "checks"
 
 
 def test_options_reach_the_search_and_the_call_graph_check(monkeypatch, calls):
@@ -245,24 +280,19 @@ def test_a_version_indexed_before_license_paths_is_refused(monkeypatch, calls):
 @dataclass
 class SearchCalls:
     vector_searches: list[dict] = field(default_factory=list)
-    checked_indexes: list[str] = field(default_factory=list)
+    results: list[SearchResult] = field(default_factory=lambda: [SOURCE])
 
 
 @pytest.fixture
 def search_calls(monkeypatch, calls) -> SearchCalls:
     recorded = SearchCalls()
 
-    def require_queryable_index(collection, index_name):
-        recorded.checked_indexes.append(index_name)
-
-    monkeypatch.setattr(asking, "require_queryable_index", require_queryable_index)
-
     def find_vector_results(chunks_collection, embedder, query, repository, version, options):
         recorded.vector_searches.append(
             {"collection": chunks_collection, "query": query, "options": options}
         )
         embedder.hit_count += 1
-        return [SOURCE], {"embed query": 30.0, "vector search": 45.0}
+        return recorded.results, {"embed query": 30.0, "vector search": 45.0}
 
     monkeypatch.setattr(asking, "find_vector_results", find_vector_results)
     return recorded
@@ -274,7 +304,9 @@ def test_search_uses_vector_search_without_the_reranker_or_the_answer_model(call
     )
 
     assert run.results == [SOURCE]
-    assert run.timings == {"embed query": 30.0, "vector search": 45.0}
+    assert list(run.timings) == ["checks", "embed query", "vector search"]
+    assert run.timings["embed query"] == 30.0
+    assert run.timings["vector search"] == 45.0
     assert run.embedding_use == EmbeddingUse.FROM_CACHE
     assert run.repository_record == REPOSITORY_RECORD
     search = search_calls.vector_searches[0]
@@ -289,7 +321,17 @@ def test_search_uses_vector_search_without_the_reranker_or_the_answer_model(call
 def test_search_checks_only_the_vector_index(calls, search_calls):
     _asker(calls).search("query", "pallets/flask", "3.1.3")
 
-    assert search_calls.checked_indexes == [VECTOR_INDEX_NAME]
+    assert calls.checked_indexes == [VECTOR_INDEX_NAME]
+    assert calls.rechecked_indexes == []
+
+
+def test_a_search_that_finds_nothing_rechecks_the_vector_index(calls, search_calls):
+    search_calls.results = []
+
+    run = _asker(calls).search("query", "pallets/flask", "3.1.3")
+
+    assert run.results == []
+    assert calls.rechecked_indexes == [VECTOR_INDEX_NAME]
 
 
 def test_search_defaults_to_ten_results_with_tests_included(calls, search_calls):
