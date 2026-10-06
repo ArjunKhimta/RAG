@@ -1,0 +1,252 @@
+{
+  "faithfulness_file": "eval/results/2026-10-06-1101-faithfulness.json",
+  "faithfulness_file_sha256": "7097e276ffb36d58053776751014cc5c747a1353053a3202b1e9629230837172",
+  "worksheet": "data/hand_checks/2026-10-06-1107-worksheet.md",
+  "allowed_labels": [
+    "supported",
+    "miscited",
+    "unsupported"
+  ],
+  "items": [
+    {
+      "item": 1,
+      "sentence": "If cookies are disabled, a TypeError is raised.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 2,
+      "sentence": "Dictionaries and lists are handled by the json response method.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 3,
+      "sentence": "A route is automatically registered for this view at static_url_path.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 4,
+      "sentence": "It requires an active request or application context and calls app.json.response.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 5,
+      "sentence": "When an unhandled exception occurs, the application calls handle_exception.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 6,
+      "sentence": "The get_signing_serializer method returns None if the application does not have a secret key.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 7,
+      "sentence": "Flask combines the URL prefixes by stripping trailing slashes from the state URL prefix and leading slashes from the blueprint URL prefix, then joining them with a slash.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 8,
+      "sentence": "The copy_current_request_context function is a helper that decorates a function to retain the current request context, which is useful when working with greenlets.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 9,
+      "sentence": "It can also convert decimal and UUID objects to strings.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 10,
+      "sentence": "Otherwise, it uses Werkzeug's default abort function.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 11,
+      "sentence": "If init_every_request is set to false, a single instance is used for every request.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 12,
+      "sentence": "If a registered error handler exists for the server error, it is used.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 13,
+      "sentence": "Alternatively, using an AppGroup instead of a regular click group automatically wraps commands in with_appcontext.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 14,
+      "sentence": "It raises a RuntimeError if used when no request context is active.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 15,
+      "sentence": "The g object serves as a namespace for storing data during an application context.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 16,
+      "sentence": "If the session was accessed, a Vary: Cookie header is added to the response.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 17,
+      "sentence": "Strings, bytes, and iterators are converted using the response class.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 18,
+      "sentence": "Next, it searches for a single object in the module that is a Flask instance.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 19,
+      "sentence": "By default, a new instance of the view class is created for every request.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 20,
+      "sentence": "Otherwise, if the session should set a cookie, the session is dumped using a signing serializer and saved into the response cookie along with expiration and security parameters.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 21,
+      "sentence": "Values are passed through a loading function, which defaults to json.loads, to attempt type conversion.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 22,
+      "sentence": "It appends the provided function to the request context's after request functions list.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 23,
+      "sentence": "Flask searches for an error handler in a specific order: blueprint handler for a specific code, app handler for a specific code, blueprint handler for an exception class, and finally app handler for an exception class.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 24,
+      "sentence": "Teardown functions are called after the request is dispatched and the response is returned, right before the request context is popped.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 25,
+      "sentence": "Running the app with debug mode enabled also enables template auto reloading.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 26,
+      "sentence": "Flask uses an itsdangerous URLSafeTimedSerializer to sign session cookies.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 27,
+      "sentence": "It drops the prefix from the environment key and uses a loading function to convert values to specific types.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 28,
+      "sentence": "BaseResponse instances and callables are forced to the correct response type.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 29,
+      "sentence": "You can run the development server over HTTPS by using the --cert option with the flask run command.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 30,
+      "sentence": "Flask ensures that async functions are synchronous for WSGI workers by wrapping them to run and wait for the response.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 31,
+      "sentence": "You can set the TEMPLATES_AUTO_RELOAD configuration option to True or run the application in debug mode.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 32,
+      "sentence": "If the session is empty and modified, the cookie is deleted from the response.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 33,
+      "sentence": "Otherwise, the original exception is logged and an InternalServerError is returned or handled by a registered error handler.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 34,
+      "sentence": "To register with a blueprint and affect every template, you can use app_context_processor.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 35,
+      "sentence": "You can use the --cert option to specify a certificate file to use HTTPS with the run command.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 36,
+      "sentence": "At the end of each request, process_response calls the save_session method of the session interface.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 37,
+      "sentence": "You can disable this by setting app.json.sort_keys to False.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 38,
+      "sentence": "The url_for function generates a URL to the given endpoint with the provided values.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 39,
+      "sentence": "The load_dotenv function requires python-dotenv to be installed to load dotenv files.",
+      "label": null,
+      "note": ""
+    },
+    {
+      "item": 40,
+      "sentence": "Next, it looks for any single object in the module that is a Flask instance.",
+      "label": null,
+      "note": ""
+    }
+  ]
+}

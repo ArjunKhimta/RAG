@@ -1,0 +1,417 @@
+{
+  "faithfulness_file": "eval/results/2026-10-06-1101-faithfulness.json",
+  "faithfulness_file_sha256": "7097e276ffb36d58053776751014cc5c747a1353053a3202b1e9629230837172",
+  "seed": 20261005,
+  "target_item_count": 40,
+  "group_cap": 12,
+  "judged_sentence_count": 230,
+  "group_sizes": {
+    "judged not supported": 2,
+    "names code no source shows": 0,
+    "random supported": 228
+  },
+  "sentences_with_a_name_in_no_source": 0,
+  "sentences_with_a_name_not_defined": 65,
+  "items": [
+    {
+      "item": 1,
+      "group": "random supported",
+      "question_id": "flask-026",
+      "setup": "vector + expand",
+      "sentence": 5,
+      "verdict": "supported",
+      "reason": "Cited lines raise a TypeError if self._cookies is None.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 2,
+      "group": "random supported",
+      "question_id": "flask-007",
+      "setup": "vector",
+      "sentence": 4,
+      "verdict": "supported",
+      "reason": "Lines 1230-1231 show handling dict and list with self.json.response.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 3,
+      "group": "random supported",
+      "question_id": "flask-033",
+      "setup": "vector + expand",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Cited lines state a route is automatically registered at static_url_path.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 4,
+      "group": "random supported",
+      "question_id": "flask-035",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Docstring notes it requires a context, and line 170 calls current_app.json.response.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 5,
+      "group": "random supported",
+      "question_id": "flask-005",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 1512-1514 call handle_exception when an exception is caught.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 6,
+      "group": "random supported",
+      "question_id": "flask-001",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 304-305 explicitly return None when app.secret_key is falsy.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 7,
+      "group": "random supported",
+      "question_id": "flask-029",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 367-370 show rstrip on state.url_prefix and lstrip on bp_url_prefix, joined by a slash.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 8,
+      "group": "random supported",
+      "question_id": "flask-027",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 155-157 state it is a helper function that decorates a function to retain the request context for greenlets.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 9,
+      "group": "random supported",
+      "question_id": "flask-022",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 112-113 check for Decimal and UUID instances and return str(o).",
+      "names_in_no_source": []
+    },
+    {
+      "item": 10,
+      "group": "random supported",
+      "question_id": "flask-044",
+      "setup": "vector",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Line 293 calls _wz_abort, which is imported as werkzeug's abort.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 11,
+      "group": "random supported",
+      "question_id": "flask-018",
+      "setup": "vector + expand",
+      "sentence": 4,
+      "verdict": "supported",
+      "reason": "Cited lines state that if init_every_request is False, the same instance is used for every request.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 12,
+      "group": "random supported",
+      "question_id": "flask-005",
+      "setup": "vector + expand",
+      "sentence": 5,
+      "verdict": "supported",
+      "reason": "Lines 857-860 find and call the error handler if it exists.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 13,
+      "group": "random supported",
+      "question_id": "flask-023",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Docstring in source 5 explicitly states AppGroup changes the command decorator to automatically wrap functions in with_appcontext.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 14,
+      "group": "random supported",
+      "question_id": "flask-019",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 142-146 explicitly raise a RuntimeError when ctx is None.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 15,
+      "group": "random supported",
+      "question_id": "flask-014",
+      "setup": "vector",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Source 1 docstring explicitly states that _AppCtxGlobals is used as a namespace for storing data during an application context.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 16,
+      "group": "random supported",
+      "question_id": "flask-012",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 349-350 add a Vary Cookie header when session accessed is true.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 17,
+      "group": "random supported",
+      "question_id": "flask-007",
+      "setup": "vector",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Lines 1219-1228 show converting strings, bytes, bytearrays, and iterators using self.response_class.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 18,
+      "group": "random supported",
+      "question_id": "flask-009",
+      "setup": "vector + expand",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 54-58 find and return the only object that is a Flask instance.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 19,
+      "group": "random supported",
+      "question_id": "flask-018",
+      "setup": "vector + expand",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Cited lines state the generated view creates a new instance for every request by default.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 20,
+      "group": "random supported",
+      "question_id": "flask-012",
+      "setup": "vector",
+      "sentence": 4,
+      "verdict": "supported",
+      "reason": "Lines 369-384 check should_set_cookie, dump the session, and set the cookie with parameters.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 21,
+      "group": "judged not supported",
+      "question_id": "flask-004",
+      "setup": "vector + expand",
+      "sentence": 3,
+      "verdict": "miscited",
+      "reason": "Cited lines only show the purpose; source 1 definition (line 127) shows json.loads as default.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 22,
+      "group": "random supported",
+      "question_id": "flask-019",
+      "setup": "vector",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Line 148 appends f to ctx._after_request_functions.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 23,
+      "group": "random supported",
+      "question_id": "flask-011",
+      "setup": "vector",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Source 2 docstring explicitly lists the exact search order for error handlers.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 24,
+      "group": "random supported",
+      "question_id": "flask-040",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Cited lines 1330-1331 directly state that teardown functions are called after the request is dispatched and before the request context is popped.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 25,
+      "group": "random supported",
+      "question_id": "flask-021",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Lines 403-404 show that running the app with debug=True asserts that auto_reload is enabled.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 26,
+      "group": "random supported",
+      "question_id": "flask-003",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 313-321 in source 1 return a URLSafeTimedSerializer from itsdangerous, and source 2 states it is used for sessions.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 27,
+      "group": "random supported",
+      "question_id": "flask-002",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "supported",
+      "reason": "Cited lines state it drops the prefix and passes values to a loading function for type conversion.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 28,
+      "group": "random supported",
+      "question_id": "flask-007",
+      "setup": "vector",
+      "sentence": 5,
+      "verdict": "supported",
+      "reason": "Lines 1232-1239 show forcing BaseResponse instances and callables to the correct response type.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 29,
+      "group": "random supported",
+      "question_id": "flask-041",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 890-898 show the run command with the --cert option specifying a certificate file to use HTTPS.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 30,
+      "group": "random supported",
+      "question_id": "flask-031",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 967-969 state that ensure_sync ensures functions are synchronous for WSGI workers by wrapping async def functions to run and wait for the response.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 31,
+      "group": "random supported",
+      "question_id": "flask-021",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Cited tests show setting TEMPLATES_AUTO_RELOAD to True and running with debug=True enables auto_reload.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 32,
+      "group": "random supported",
+      "question_id": "flask-012",
+      "setup": "vector + expand",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Cited lines show delete_cookie is called when session is empty and modified.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 33,
+      "group": "random supported",
+      "question_id": "flask-005",
+      "setup": "vector",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Lines 820-826 and 854-862 show logging, returning an InternalServerError, and checking for a registered error handler.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 34,
+      "group": "random supported",
+      "question_id": "flask-045",
+      "setup": "vector + expand",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Source 3 docstring explains app_context_processor affects every template.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 35,
+      "group": "random supported",
+      "question_id": "flask-041",
+      "setup": "vector",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 893-898 define the --cert option with the help text specifying a certificate file to use HTTPS.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 36,
+      "group": "random supported",
+      "question_id": "flask-012",
+      "setup": "vector + expand",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Cited lines 1321-1322 clearly show save_session being called if not a null session.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 37,
+      "group": "judged not supported",
+      "question_id": "flask-046",
+      "setup": "vector",
+      "sentence": 2,
+      "verdict": "unsupported",
+      "reason": "Cited lines assert sort_keys is True, but do not show disabling it.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 38,
+      "group": "random supported",
+      "question_id": "flask-043",
+      "setup": "vector",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 195-204 show the function definition and docstring stating it generates a URL to the given endpoint with the given values.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 39,
+      "group": "random supported",
+      "question_id": "flask-047",
+      "setup": "vector",
+      "sentence": 1,
+      "verdict": "supported",
+      "reason": "Lines 740-751 show load_dotenv returns early if python-dotenv cannot be imported.",
+      "names_in_no_source": []
+    },
+    {
+      "item": 40,
+      "group": "random supported",
+      "question_id": "flask-009",
+      "setup": "vector",
+      "sentence": 3,
+      "verdict": "supported",
+      "reason": "Lines 54-58 find the single object that is a Flask instance.",
+      "names_in_no_source": []
+    }
+  ]
+}
