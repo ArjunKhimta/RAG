@@ -301,8 +301,8 @@ def test_a_checkout_the_job_cloned_is_deleted_whatever_the_outcome(tmp_path, out
     runner.start("pallets/itsdangerous", "2.2.0")
     threads.run_all()
 
-    assert not (tmp_path / "pallets" / "itsdangerous" / "2.2.0").exists()
-    assert (tmp_path / "pallets" / "itsdangerous").is_dir()
+    assert not (tmp_path / "pallets").exists()
+    assert tmp_path.is_dir()
 
 
 def test_a_checkout_that_already_existed_is_kept(tmp_path):

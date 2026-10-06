@@ -240,7 +240,11 @@ def find_license_file(source_directory: Path) -> str:
 
 
 def remove_directory_inside(directory: Path, root: Path) -> None:
-    """Delete `directory`, but only if it sits strictly inside `root` and is not a symlink."""
+    """Delete `directory`, but only if it sits strictly inside `root` and is not a symlink.
+
+    Folders between it and `root` that the deletion leaves empty are removed too, so a deleted
+    checkout leaves no empty owner and repository folders behind.
+    """
     if directory.is_symlink():
         raise UnsafeDeletionError(f"Refusing to delete {directory}: it is a symlink")
     resolved_directory = directory.resolve()
@@ -250,6 +254,21 @@ def remove_directory_inside(directory: Path, root: Path) -> None:
     if not is_inside_root or is_root_itself:
         raise UnsafeDeletionError(f"Refusing to delete {directory}: it is not inside {root}")
     shutil.rmtree(resolved_directory)
+    _remove_empty_parents(resolved_directory, resolved_root)
+
+
+def _remove_empty_parents(directory: Path, root: Path) -> None:
+    """Remove empty folders above `directory`, stopping at `root` or the first non-empty one.
+
+    `rmdir` only ever removes an empty folder, so a folder another clone is using stays.
+    """
+    for parent in directory.parents:
+        if parent == root:
+            return
+        try:
+            parent.rmdir()
+        except OSError:
+            return
 
 
 def _repository_details_from_json(repository_json: dict) -> RepositoryDetails:

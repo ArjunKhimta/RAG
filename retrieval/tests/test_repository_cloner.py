@@ -419,6 +419,46 @@ def test_deletion_inside_the_root_is_allowed(repositories_directory):
     assert not inner_directory.exists()
 
 
+def test_deletion_removes_the_folders_it_leaves_empty_but_not_the_root(repositories_directory):
+    inner_directory = repositories_directory / "owner" / "project" / RELEASE_TAG / "source"
+    inner_directory.mkdir(parents=True)
+
+    remove_directory_inside(inner_directory.parent, repositories_directory)
+
+    assert list(repositories_directory.iterdir()) == []
+    assert repositories_directory.is_dir()
+
+
+def test_deletion_keeps_parent_folders_that_hold_other_clones(repositories_directory):
+    owner_directory = repositories_directory / "owner"
+    deleted_version = owner_directory / "project" / RELEASE_TAG
+    other_version = owner_directory / "project" / "2.0.0"
+    other_project = owner_directory / "other-project" / RELEASE_TAG
+    for directory in (deleted_version, other_version, other_project):
+        directory.mkdir(parents=True)
+
+    remove_directory_inside(deleted_version, repositories_directory)
+
+    assert not deleted_version.exists()
+    assert other_version.is_dir()
+    assert other_project.is_dir()
+
+
+def test_a_failed_clone_leaves_no_empty_folders(tmp_path, repositories_directory):
+    source_directory = tmp_path / "missing-version-source"
+    source_directory.mkdir()
+    _git(source_directory, "init", "--quiet")
+    _commit_file(source_directory, PUBLIC_FIRST_SOURCE, "first")
+    missing_version = LocalSourceReference(
+        owner="owner", name="project", source_url=source_directory.as_uri()
+    )
+
+    with pytest.raises(CloneFailedError):
+        _clone(missing_version, repositories_directory, "9.9.9")
+
+    assert list(repositories_directory.iterdir()) == []
+
+
 def test_deletion_outside_the_root_is_refused(tmp_path, repositories_directory):
     outside_directory = tmp_path / "outside"
     outside_directory.mkdir()
