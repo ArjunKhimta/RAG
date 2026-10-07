@@ -11,7 +11,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "jest",
+    "test": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js",
+    "test:integration": "node --experimental-vm-modules --disable-warning=ExperimentalWarning node_modules/jest/bin/jest.js --testPathIgnorePatterns=/node_modules/ --testMatch=\"<rootDir>/tests/**/*.integration.test.js\" --runInBand",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -31,6 +32,10 @@
     "testEnvironment": "node",
     "testMatch": [
       "<rootDir>/tests/**/*.test.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.integration\\.test\\.js$"
     ]
   }
 }

@@ -1,7 +1,12 @@
 const request = require("supertest");
 
-const { MAX_REQUEST_BYTES, createApp } = require("../src/app");
+const { MAX_REQUEST_BYTES } = require("../src/app");
 const { INVALID_JSON_MESSAGE, NOT_FOUND_MESSAGE } = require("../src/errors");
+const { buildTestApp } = require("./support/testApp");
+
+function createApp() {
+  return buildTestApp().app;
+}
 
 test("the health check answers ok", async () => {
   const response = await request(createApp()).get("/health");

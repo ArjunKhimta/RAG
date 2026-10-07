@@ -30,6 +30,12 @@ const RETRIEVAL_SERVICE_URL_VARIABLE = "RETRIEVAL_SERVICE_URL";
 
 const RETRIEVAL_SERVICE_TOKEN_VARIABLE = "RETRIEVAL_SERVICE_TOKEN";
 
+const SESSION_SECRET_VARIABLE = "SESSION_SECRET";
+
+const APP_ORIGIN_VARIABLE = "APP_ORIGIN";
+
+const MONGODB_URI_VARIABLE = "MONGODB_URI";
+
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 class MissingConfigError extends Error {
@@ -107,25 +113,70 @@ function readRetrievalServiceSettings(environment) {
 
 /** @param {string} text */
 function requireSafeServiceUrl(text) {
-  let url;
-  try {
-    url = new URL(text);
-  } catch {
-    throw new InvalidConfigError(RETRIEVAL_SERVICE_URL_VARIABLE, "must be a URL");
-  }
-  const isLocal = LOCAL_HOSTNAMES.has(url.hostname);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) {
-    throw new InvalidConfigError(
-      RETRIEVAL_SERVICE_URL_VARIABLE,
-      "must use https unless it points at this machine",
-    );
-  }
+  const url = readSafeUrl(RETRIEVAL_SERVICE_URL_VARIABLE, text);
   if (url.username || url.password || url.search || url.hash) {
     throw new InvalidConfigError(
       RETRIEVAL_SERVICE_URL_VARIABLE,
       "must not include a user name, password, query, or fragment",
     );
   }
+}
+
+/**
+ * Read what signs sessions and where the site lives. `APP_ORIGIN` is the address people open in
+ * the browser (scheme, host, and port only); requests that change something must come from it, and
+ * session cookies are marked `Secure` when it uses https.
+ * @param {NodeJS.ProcessEnv} environment
+ * @returns {{ sessionSecret: string, appOrigin: string }}
+ */
+function readSessionSettings(environment) {
+  const sessionSecret = readRequiredSecret(environment, SESSION_SECRET_VARIABLE);
+  const appOrigin = readAppOrigin(environment);
+  return { sessionSecret, appOrigin };
+}
+
+/** @param {NodeJS.ProcessEnv} environment */
+function readAppOrigin(environment) {
+  const text = readRequired(environment, APP_ORIGIN_VARIABLE);
+  const url = readSafeUrl(APP_ORIGIN_VARIABLE, text);
+  if (url.origin !== text.replace(/\/$/, "")) {
+    throw new InvalidConfigError(
+      APP_ORIGIN_VARIABLE,
+      "must be only a scheme, host, and port, such as http://localhost:5173",
+    );
+  }
+  return url.origin;
+}
+
+/**
+ * Read the database address; it holds a password, so it is registered for redaction.
+ * @param {NodeJS.ProcessEnv} environment
+ * @returns {{ mongodbUri: string }}
+ */
+function readDatabaseSettings(environment) {
+  const mongodbUri = readRequired(environment, MONGODB_URI_VARIABLE);
+  registerSecret(mongodbUri);
+  return { mongodbUri };
+}
+
+/**
+ * Parse `text` as a URL that uses https, or plain http only when it points at this machine.
+ * @param {string} variableName
+ * @param {string} text
+ * @returns {URL}
+ */
+function readSafeUrl(variableName, text) {
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new InvalidConfigError(variableName, "must be a URL");
+  }
+  const isLocal = LOCAL_HOSTNAMES.has(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) {
+    throw new InvalidConfigError(variableName, "must use https unless it points at this machine");
+  }
+  return url;
 }
 
 /**
@@ -187,7 +238,9 @@ module.exports = {
   InvalidConfigError,
   loadEnvironmentFile,
   readConfig,
+  readDatabaseSettings,
   readRequired,
   readRequiredSecret,
   readRetrievalServiceSettings,
+  readSessionSettings,
 };

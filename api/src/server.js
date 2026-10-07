@@ -1,8 +1,10 @@
 /**
- * Start the API: load `api/.env` if present, read and check the settings, and listen.
+ * Start the API: load `api/.env` if present, read and check every setting, connect to the
+ * database and make sure its indexes exist, and listen.
  *
  * A setting that is missing or unsafe stops start-up with a message naming the variable, never
- * its value.
+ * its value; settings are all checked before connecting, so a typo is reported without waiting on
+ * the network. A database that cannot be reached stops start-up with a redacted message.
  */
 
 const { createApp } = require("./app");
@@ -11,16 +13,34 @@ const {
   MissingConfigError,
   loadEnvironmentFile,
   readConfig,
+  readDatabaseSettings,
+  readSessionSettings,
 } = require("./config");
+const { connectToDatabase } = require("./database");
 const { logError, logInfo } = require("./logging");
 const { redactError } = require("./redaction");
+const { createSessions } = require("./sessions");
+const { createMongoUserStore } = require("./users");
 
 const FAILED_EXIT_CODE = 1;
 
-function main() {
+const HTTPS_PROTOCOL_PREFIX = "https:";
+
+async function main() {
   loadEnvironmentFile();
   const config = readConfig(process.env);
-  const app = createApp();
+  const sessionSettings = readSessionSettings(process.env);
+  const databaseSettings = readDatabaseSettings(process.env);
+
+  const { database } = await connectToDatabase(databaseSettings.mongodbUri);
+  const users = createMongoUserStore(database);
+  await users.ensureIndexes();
+  const sessions = createSessions({
+    sessionSecret: sessionSettings.sessionSecret,
+    secureCookies: sessionSettings.appOrigin.startsWith(HTTPS_PROTOCOL_PREFIX),
+  });
+
+  const app = createApp({ appOrigin: sessionSettings.appOrigin, sessions, users });
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);
   });
@@ -41,8 +61,4 @@ function describeStartupError(error) {
   return redactError(error);
 }
 
-try {
-  main();
-} catch (error) {
-  stopWithError(error);
-}
+main().catch(stopWithError);

@@ -9,9 +9,11 @@ const {
   MissingConfigError,
   loadEnvironmentFile,
   readConfig,
+  readDatabaseSettings,
   readRequired,
   readRequiredSecret,
   readRetrievalServiceSettings,
+  readSessionSettings,
 } = require("../src/config");
 const { REDACTION_PLACEHOLDER, clearRegisteredSecrets, redact } = require("../src/redaction");
 
@@ -99,6 +101,57 @@ describe("loading an environment file", () => {
     loadEnvironmentFile(path.join(folder, "missing.env"), environment);
 
     expect(environment).toEqual({ KEPT: "yes" });
+  });
+});
+
+describe("session settings", () => {
+  const SECRET = "s".repeat(48);
+  const ORIGIN_ONLY = "must be only a scheme, host, and port, such as http://localhost:5173";
+
+  test.each([
+    ["http://localhost:5173", "http://localhost:5173"],
+    ["http://localhost:5173/", "http://localhost:5173"],
+    ["https://repositorycite.example", "https://repositorycite.example"],
+  ])("origin %s is accepted as %s with a strong secret", (origin, expected) => {
+    const settings = readSessionSettings({ SESSION_SECRET: SECRET, APP_ORIGIN: origin });
+
+    expect(settings).toEqual({ sessionSecret: SECRET, appOrigin: expected });
+    expect(redact(SECRET)).toBe(REDACTION_PLACEHOLDER);
+  });
+
+  test.each([
+    ["http://repositorycite.example", "must use https unless it points at this machine"],
+    ["localhost:5173", "must use https unless it points at this machine"],
+    ["not a url", "must be a URL"],
+    ["http://localhost:5173/app", ORIGIN_ONLY],
+    ["http://localhost:5173/?next=/", ORIGIN_ONLY],
+    ["https://user:pw@repositorycite.example", ORIGIN_ONLY],
+  ])("origin %s is refused", (origin, requirement) => {
+    expect(() => readSessionSettings({ SESSION_SECRET: SECRET, APP_ORIGIN: origin })).toThrow(
+      new InvalidConfigError("APP_ORIGIN", requirement),
+    );
+  });
+
+  test("a missing origin or a weak secret is refused", () => {
+    expect(() => readSessionSettings({ SESSION_SECRET: SECRET })).toThrow(
+      new MissingConfigError("APP_ORIGIN"),
+    );
+    expect(() =>
+      readSessionSettings({ SESSION_SECRET: "short", APP_ORIGIN: "http://localhost:5173" }),
+    ).toThrow(new InvalidConfigError("SESSION_SECRET", "must be at least 32 characters"));
+  });
+});
+
+describe("database settings", () => {
+  test("the URI is returned and redacted from any text", () => {
+    const uri = "mongodb+srv://user:password@cluster0.example.mongodb.net/?appName=x";
+
+    expect(readDatabaseSettings({ MONGODB_URI: uri })).toEqual({ mongodbUri: uri });
+    expect(redact(`failed to reach ${uri}`)).toBe(`failed to reach ${REDACTION_PLACEHOLDER}`);
+  });
+
+  test("a missing URI is refused", () => {
+    expect(() => readDatabaseSettings({})).toThrow(new MissingConfigError("MONGODB_URI"));
   });
 });
 
