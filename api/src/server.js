@@ -18,6 +18,7 @@ const {
   readRetrievalServiceSettings,
   readSessionSettings,
 } = require("./config");
+const { createMongoConversationStore } = require("./conversations");
 const { connectToDatabase } = require("./database");
 const { createGitHubClient } = require("./github");
 const { logError, logInfo } = require("./logging");
@@ -45,6 +46,8 @@ async function main() {
   await users.ensureIndexes();
   const repositoryLinks = createMongoRepositoryLinkStore(database);
   await repositoryLinks.ensureIndexes();
+  const conversations = createMongoConversationStore(database);
+  await conversations.ensureIndexes();
   const cookieSettings = {
     sessionSecret: sessionSettings.sessionSecret,
     secureCookies: sessionSettings.appOrigin.startsWith(HTTPS_PROTOCOL_PREFIX),
@@ -62,6 +65,7 @@ async function main() {
     users,
     retrievalService: createRetrievalService(retrievalServiceSettings),
     repositoryLinks,
+    conversations,
   });
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);

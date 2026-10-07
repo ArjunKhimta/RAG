@@ -2,6 +2,7 @@ const { createApp } = require("../../src/app");
 const { createSessions } = require("../../src/sessions");
 const { createSignInAttempts } = require("../../src/signInAttempts");
 const { createFakeGitHub } = require("./fakeGitHub");
+const { createMemoryConversationStore } = require("./memoryConversationStore");
 const { createFakeRetrievalService } = require("./fakeRetrievalService");
 const { createMemoryRepositoryLinkStore } = require("./memoryRepositoryLinkStore");
 const { createMemoryUserStore } = require("./memoryUserStore");
@@ -26,11 +27,13 @@ function createClock(startMilliseconds = START_TIME) {
 /**
  * The whole app over in-memory stores, a fake GitHub, a fake retrieval service, and a hand-moved
  * clock. `sessionCookieFor(profile)` signs someone in directly and returns their cookie.
+ * @param {{ conversationLimits?: { conversationsPerUser: number, messagesPerConversation: number } }} [options]
  */
-function buildTestApp() {
+function buildTestApp({ conversationLimits } = {}) {
   const clock = createClock();
   const users = createMemoryUserStore();
   const repositoryLinks = createMemoryRepositoryLinkStore();
+  const conversations = createMemoryConversationStore();
   const github = createFakeGitHub();
   const retrievalService = createFakeRetrievalService();
   const cookieSettings = {
@@ -48,6 +51,8 @@ function buildTestApp() {
     users,
     retrievalService,
     repositoryLinks,
+    conversations,
+    conversationLimits,
     now: clock.now,
   });
 
@@ -59,6 +64,7 @@ function buildTestApp() {
   return {
     app,
     clock,
+    conversations,
     github,
     repositoryLinks,
     retrievalService,

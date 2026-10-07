@@ -1,6 +1,7 @@
 const request = require("supertest");
 
 const {
+  NOT_READY_MESSAGE,
   NOTHING_TO_RESUME_MESSAGE,
   PERMANENT_FAILURE_MESSAGE,
   REPOSITORY_RULE,
@@ -417,6 +418,95 @@ describe("resuming indexing", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("ready");
+  });
+});
+
+describe("searching a repository", () => {
+  function search(linkId, body, as = cookie) {
+    return request(app)
+      .post(`/api/repositories/${linkId}/search`)
+      .set("Origin", TEST_APP_ORIGIN)
+      .set("Cookie", as)
+      .send(body);
+  }
+
+  async function readyFlask(as = cookie) {
+    service.markIndexed("pallets/flask", "3.1.3");
+    return (await addLink(FLASK, as)).body;
+  }
+
+  test("a ready link is searched with the trimmed query and the options given", async () => {
+    const link = await readyFlask();
+
+    const response = await search(link.id, { query: "  url_for  ", limit: 3, exclude_tests: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.results[0].qualified_name).toBe("url_for");
+    expect(response.body.repository.license.link).toContain("LICENSE.txt");
+    expect(service.searchCalls).toEqual([
+      {
+        repository: "pallets/flask",
+        version: "3.1.3",
+        query: "url_for",
+        limit: 3,
+        excludeTests: true,
+      },
+    ]);
+  });
+
+  test("options left out are not sent", async () => {
+    const link = await readyFlask();
+
+    await search(link.id, { query: "url_for" });
+
+    expect(service.searchCalls[0]).toEqual({
+      repository: "pallets/flask",
+      version: "3.1.3",
+      query: "url_for",
+    });
+  });
+
+  test("a link still indexing is a 409", async () => {
+    const { link } = await indexingLink();
+
+    const response = await search(link.id, { query: "url_for" });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: NOT_READY_MESSAGE });
+    expect(service.searchCalls).toHaveLength(0);
+  });
+
+  test("another person's link is a 404", async () => {
+    const theirs = await readyFlask(hubotCookie);
+
+    const response = await search(theirs.id, { query: "url_for" });
+
+    expect(response.status).toBe(404);
+    expect(service.searchCalls).toHaveLength(0);
+  });
+
+  test.each([
+    ["a limit of 21", { query: "q", limit: 21 }, "limit must be a whole number from 1 to 20"],
+    ["a limit of 2.5", { query: "q", limit: 2.5 }, "limit must be a whole number from 1 to 20"],
+    ["a blank query", { query: " " }, "query must be a non-blank string"],
+    ["a search mode", { query: "q", mode: "hybrid" }, "Unknown fields: mode"],
+  ])("%s is a 400 and searches nothing", async (description, body, message) => {
+    const link = await readyFlask();
+
+    const response = await search(link.id, body);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: message });
+    expect(service.searchCalls).toHaveLength(0);
+  });
+
+  test("searches are not kept in history", async () => {
+    const link = await readyFlask();
+
+    await search(link.id, { query: "url_for" });
+
+    const history = await request(app).get("/api/conversations").set("Cookie", cookie);
+    expect(history.body.conversations).toEqual([]);
   });
 });
 

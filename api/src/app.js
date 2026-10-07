@@ -22,6 +22,7 @@ const helmet = require("helmet");
 
 const { createAccountRouter } = require("./accountRoutes");
 const { createAuthentication } = require("./authentication");
+const { createConversationRouter } = require("./conversationRoutes");
 const { registerErrorReplies } = require("./errors");
 const { createGitHubSignInRouter } = require("./githubSignInRoutes");
 const { createRepositoryRouter } = require("./repositoryRoutes");
@@ -48,6 +49,8 @@ const JSON_API_CONTENT_SECURITY_POLICY = {
  *   users: ReturnType<typeof import("./users").createMongoUserStore>,
  *   retrievalService: ReturnType<typeof import("./retrievalService").createRetrievalService>,
  *   repositoryLinks: ReturnType<typeof import("./repositoryLinks").createMongoRepositoryLinkStore>,
+ *   conversations: ReturnType<typeof import("./conversations").createMongoConversationStore>,
+ *   conversationLimits?: { conversationsPerUser: number, messagesPerConversation: number },
  *   now?: () => number,
  * }} dependencies
  * @returns {import("express").Express}
@@ -60,6 +63,8 @@ function createApp({
   users,
   retrievalService,
   repositoryLinks,
+  conversations,
+  conversationLimits,
   now = Date.now,
 }) {
   const authentication = createAuthentication({ sessions, users });
@@ -88,6 +93,17 @@ function createApp({
       repositoryLinks,
       requireUser: authentication.requireUser,
       now,
+    }),
+  );
+  app.use(
+    `${API_PATH}/conversations`,
+    createConversationRouter({
+      retrievalService,
+      repositoryLinks,
+      conversations,
+      requireUser: authentication.requireUser,
+      now,
+      limits: conversationLimits,
     }),
   );
   registerErrorReplies(app, MAX_REQUEST_BYTES);

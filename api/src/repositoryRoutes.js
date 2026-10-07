@@ -11,6 +11,8 @@
  * - `POST /api/repositories/:id/resume`: start indexing again where it stopped (the service
  *   reuses every embedding already made); refused with 409 when there is nothing to resume, when
  *   the failure will recur, or before the quota resets (with `Retry-After`)
+ * - `POST /api/repositories/:id/search` `{query, limit?, exclude_tests?}`: search a ready link's
+ *   version with the service's vector search; results are shown, not kept in history
  * - `DELETE /api/repositories/:id`: remove the link only; the shared index stays
  *
  * Repository names are lowercased before anything else, because GitHub treats `Pallets/Flask` and
@@ -30,6 +32,13 @@ const {
   JobStatus,
 } = require("./linkStates");
 const { LinkStatus } = require("./repositoryLinks");
+const {
+  badRequest,
+  booleanField,
+  requireFields,
+  textField,
+  wholeNumberField,
+} = require("./requestFields");
 const { UNEXPECTED_REPLY_MESSAGE, RetrievalServiceError } = require("./retrievalService");
 
 const OK_STATUS = 200;
@@ -40,8 +49,6 @@ const ACCEPTED_STATUS = 202;
 
 const NO_CONTENT_STATUS = 204;
 
-const BAD_REQUEST_STATUS = 400;
-
 const NOT_FOUND_STATUS = 404;
 
 const CONFLICT_STATUS = 409;
@@ -50,7 +57,17 @@ const BAD_GATEWAY_STATUS = 502;
 
 const ALREADY_INDEXED = "already_indexed";
 
-const REQUEST_FIELDS = ["repository", "version"];
+const LINK_REQUEST_FIELDS = ["repository", "version"];
+
+const SEARCH_REQUEST_FIELDS = ["query"];
+
+const SEARCH_OPTIONAL_FIELDS = ["limit", "exclude_tests"];
+
+const LOWEST_SEARCH_LIMIT = 1;
+
+const HIGHEST_SEARCH_LIMIT = 20;
+
+const NOT_READY_MESSAGE = "This repository is not ready to search yet";
 
 const MAX_REPOSITORY_LENGTH = 140;
 
@@ -122,6 +139,20 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
     const updated = await saveState(request, await startIndexing(link.repository, link.version));
     const status = updated.status === LinkStatus.READY ? OK_STATUS : ACCEPTED_STATUS;
     response.status(status).json(publicLink(updated));
+  });
+
+  router.post("/:linkId/search", async (request, response) => {
+    const search = readSearchRequest(request.body);
+    const link = await findOwnedLink(request);
+    if (link.status !== LinkStatus.READY) {
+      throw new ApiError(CONFLICT_STATUS, NOT_READY_MESSAGE);
+    }
+    const results = await retrievalService.search({
+      repository: link.repository,
+      version: link.version,
+      ...search,
+    });
+    response.json(results);
   });
 
   router.delete("/:linkId", async (request, response) => {
@@ -200,27 +231,35 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
  * @param {unknown} body
  */
 function readLinkRequest(body) {
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new ApiError(BAD_REQUEST_STATUS, "The body must be a JSON object");
-  }
-  const unknown = Object.keys(body)
-    .filter((fieldName) => !REQUEST_FIELDS.includes(fieldName))
-    .sort();
-  if (unknown.length > 0) {
-    throw new ApiError(BAD_REQUEST_STATUS, `Unknown fields: ${unknown.join(", ")}`);
-  }
-  const missing = REQUEST_FIELDS.filter((fieldName) => !(fieldName in body));
-  if (missing.length > 0) {
-    throw new ApiError(BAD_REQUEST_STATUS, `Missing fields: ${missing.join(", ")}`);
-  }
-  const { repository, version } = body;
+  const { repository, version } = requireFields(body, LINK_REQUEST_FIELDS);
   if (!isTextUpTo(repository, MAX_REPOSITORY_LENGTH)) {
-    throw new ApiError(BAD_REQUEST_STATUS, REPOSITORY_RULE);
+    throw badRequest(REPOSITORY_RULE);
   }
   if (!isTextUpTo(version, MAX_VERSION_LENGTH)) {
-    throw new ApiError(BAD_REQUEST_STATUS, VERSION_RULE);
+    throw badRequest(VERSION_RULE);
   }
   return { repository: repository.toLowerCase(), version };
+}
+
+/**
+ * @param {unknown} body
+ * @returns {{ query: string, limit?: number, excludeTests?: boolean }}
+ */
+function readSearchRequest(body) {
+  const fields = requireFields(body, SEARCH_REQUEST_FIELDS, SEARCH_OPTIONAL_FIELDS);
+  const search = { query: textField(fields.query, "query") };
+  if ("limit" in fields) {
+    search.limit = wholeNumberField(
+      fields.limit,
+      "limit",
+      LOWEST_SEARCH_LIMIT,
+      HIGHEST_SEARCH_LIMIT,
+    );
+  }
+  if ("exclude_tests" in fields) {
+    search.excludeTests = booleanField(fields.exclude_tests, "exclude_tests");
+  }
+  return search;
 }
 
 /**
@@ -263,6 +302,7 @@ function publicLink(link) {
 }
 
 module.exports = {
+  NOT_READY_MESSAGE,
   NOTHING_TO_RESUME_MESSAGE,
   PERMANENT_FAILURE_MESSAGE,
   REPOSITORY_RULE,
