@@ -20,6 +20,7 @@
  *   JSON): 502, logged with the status and path only, never the reply body
  */
 
+const { ApiError } = require("./apiError");
 const { logError } = require("./logging");
 const { redact, redactError } = require("./redaction");
 
@@ -60,17 +61,15 @@ const UNKNOWN_JOB_MESSAGE = "No such indexing job";
 const NOT_SEARCHABLE_MESSAGE =
   "This repository version cannot be searched yet; it may still be indexing or need indexing again";
 
-class RetrievalServiceError extends Error {
+class RetrievalServiceError extends ApiError {
   /**
    * @param {number} status the status the API should reply with
    * @param {string} message safe to show to the user
    * @param {number | null} [retryAfterSeconds]
    */
   constructor(status, message, retryAfterSeconds = null) {
-    super(message);
+    super(status, message, retryAfterSeconds);
     this.name = "RetrievalServiceError";
-    this.status = status;
-    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 

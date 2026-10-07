@@ -15,12 +15,15 @@ const {
   readConfig,
   readDatabaseSettings,
   readGitHubSettings,
+  readRetrievalServiceSettings,
   readSessionSettings,
 } = require("./config");
 const { connectToDatabase } = require("./database");
 const { createGitHubClient } = require("./github");
 const { logError, logInfo } = require("./logging");
 const { redactError } = require("./redaction");
+const { createMongoRepositoryLinkStore } = require("./repositoryLinks");
+const { createRetrievalService } = require("./retrievalService");
 const { createSessions } = require("./sessions");
 const { createSignInAttempts } = require("./signInAttempts");
 const { createMongoUserStore } = require("./users");
@@ -34,11 +37,14 @@ async function main() {
   const config = readConfig(process.env);
   const sessionSettings = readSessionSettings(process.env);
   const gitHubSettings = readGitHubSettings(process.env);
+  const retrievalServiceSettings = readRetrievalServiceSettings(process.env);
   const databaseSettings = readDatabaseSettings(process.env);
 
   const { database } = await connectToDatabase(databaseSettings.mongodbUri);
   const users = createMongoUserStore(database);
   await users.ensureIndexes();
+  const repositoryLinks = createMongoRepositoryLinkStore(database);
+  await repositoryLinks.ensureIndexes();
   const cookieSettings = {
     sessionSecret: sessionSettings.sessionSecret,
     secureCookies: sessionSettings.appOrigin.startsWith(HTTPS_PROTOCOL_PREFIX),
@@ -54,6 +60,8 @@ async function main() {
     signInAttempts: createSignInAttempts(cookieSettings),
     sessions: createSessions(cookieSettings),
     users,
+    retrievalService: createRetrievalService(retrievalServiceSettings),
+    repositoryLinks,
   });
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);

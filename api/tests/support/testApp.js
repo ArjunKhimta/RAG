@@ -2,6 +2,8 @@ const { createApp } = require("../../src/app");
 const { createSessions } = require("../../src/sessions");
 const { createSignInAttempts } = require("../../src/signInAttempts");
 const { createFakeGitHub } = require("./fakeGitHub");
+const { createFakeRetrievalService } = require("./fakeRetrievalService");
+const { createMemoryRepositoryLinkStore } = require("./memoryRepositoryLinkStore");
 const { createMemoryUserStore } = require("./memoryUserStore");
 
 const TEST_APP_ORIGIN = "http://localhost:5173";
@@ -21,11 +23,16 @@ function createClock(startMilliseconds = START_TIME) {
   };
 }
 
-/** The whole app over an in-memory users store, a fake GitHub, and a hand-moved clock. */
+/**
+ * The whole app over in-memory stores, a fake GitHub, a fake retrieval service, and a hand-moved
+ * clock. `sessionCookieFor(profile)` signs someone in directly and returns their cookie.
+ */
 function buildTestApp() {
   const clock = createClock();
   const users = createMemoryUserStore();
+  const repositoryLinks = createMemoryRepositoryLinkStore();
   const github = createFakeGitHub();
+  const retrievalService = createFakeRetrievalService();
   const cookieSettings = {
     sessionSecret: TEST_SESSION_SECRET,
     secureCookies: false,
@@ -39,9 +46,27 @@ function buildTestApp() {
     signInAttempts,
     sessions,
     users,
+    retrievalService,
+    repositoryLinks,
     now: clock.now,
   });
-  return { app, clock, github, signInAttempts, sessions, users };
+
+  async function sessionCookieFor(profile) {
+    const user = await users.saveSignedInUser(profile, new Date(clock.now()));
+    return `session=${await sessions.issue(user)}`;
+  }
+
+  return {
+    app,
+    clock,
+    github,
+    repositoryLinks,
+    retrievalService,
+    sessionCookieFor,
+    sessions,
+    signInAttempts,
+    users,
+  };
 }
 
 module.exports = {

@@ -24,6 +24,7 @@ const { createAccountRouter } = require("./accountRoutes");
 const { createAuthentication } = require("./authentication");
 const { registerErrorReplies } = require("./errors");
 const { createGitHubSignInRouter } = require("./githubSignInRoutes");
+const { createRepositoryRouter } = require("./repositoryRoutes");
 const { requireSameOrigin } = require("./sameOrigin");
 
 const MAX_REQUEST_BYTES = 16 * 1024;
@@ -45,11 +46,22 @@ const JSON_API_CONTENT_SECURITY_POLICY = {
  *   signInAttempts: ReturnType<typeof import("./signInAttempts").createSignInAttempts>,
  *   sessions: ReturnType<typeof import("./sessions").createSessions>,
  *   users: ReturnType<typeof import("./users").createMongoUserStore>,
+ *   retrievalService: ReturnType<typeof import("./retrievalService").createRetrievalService>,
+ *   repositoryLinks: ReturnType<typeof import("./repositoryLinks").createMongoRepositoryLinkStore>,
  *   now?: () => number,
  * }} dependencies
  * @returns {import("express").Express}
  */
-function createApp({ appOrigin, github, signInAttempts, sessions, users, now = Date.now }) {
+function createApp({
+  appOrigin,
+  github,
+  signInAttempts,
+  sessions,
+  users,
+  retrievalService,
+  repositoryLinks,
+  now = Date.now,
+}) {
   const authentication = createAuthentication({ sessions, users });
   const app = express();
   app.use(helmet({ contentSecurityPolicy: JSON_API_CONTENT_SECURITY_POLICY }));
@@ -69,6 +81,15 @@ function createApp({ appOrigin, github, signInAttempts, sessions, users, now = D
     }),
   );
   app.use(API_PATH, createAccountRouter({ authentication, sessions, users, now }));
+  app.use(
+    `${API_PATH}/repositories`,
+    createRepositoryRouter({
+      retrievalService,
+      repositoryLinks,
+      requireUser: authentication.requireUser,
+      now,
+    }),
+  );
   registerErrorReplies(app, MAX_REQUEST_BYTES);
   return app;
 }

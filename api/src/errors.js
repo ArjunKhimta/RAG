@@ -3,15 +3,16 @@
  * the HTTP status.
  *
  * A request the body reader refuses (too large, not valid JSON, an unsupported encoding) gets a
- * fixed message of our own, never the reader's text. A `RetrievalServiceError` already carries the
- * status, safe message, and any `Retry-After` the API should reply with, so routes let it through.
- * Any other error is unexpected: its details, which could hold a database address or a token, go
- * to the log only after redaction, and the caller sees a generic 500.
+ * fixed message of our own, never the reader's text. An `ApiError` (including a
+ * `RetrievalServiceError`) already carries the status, safe message, and any `Retry-After` the API
+ * should reply with, so routes let it through. Any other error is unexpected: its details, which
+ * could hold a database address or a token, go to the log only after redaction, and the caller
+ * sees a generic 500.
  */
 
+const { ApiError } = require("./apiError");
 const { logError } = require("./logging");
 const { redactError } = require("./redaction");
-const { RetrievalServiceError } = require("./retrievalService");
 
 const NOT_FOUND_STATUS = 404;
 
@@ -56,8 +57,8 @@ function errorHandler(maxRequestBytes) {
       next(error);
       return;
     }
-    if (error instanceof RetrievalServiceError) {
-      replyRetrievalServiceError(response, error);
+    if (error instanceof ApiError) {
+      replyApiError(response, error);
       return;
     }
     if (isRefusedRequest(error)) {
@@ -71,9 +72,9 @@ function errorHandler(maxRequestBytes) {
 
 /**
  * @param {import("express").Response} response
- * @param {RetrievalServiceError} error
+ * @param {ApiError} error
  */
-function replyRetrievalServiceError(response, error) {
+function replyApiError(response, error) {
   if (error.retryAfterSeconds !== null) {
     response.set("Retry-After", String(error.retryAfterSeconds));
   }
