@@ -19,7 +19,9 @@ test("replies carry security headers and do not announce Express", async () => {
   const response = await request(createApp()).get("/health");
 
   expect(response.headers["x-content-type-options"]).toBe("nosniff");
-  expect(response.headers["content-security-policy"]).toBeDefined();
+  expect(response.headers["content-security-policy"]).toBe(
+    "default-src 'none';frame-ancestors 'none'",
+  );
   expect(response.headers["x-powered-by"]).toBeUndefined();
 });
 

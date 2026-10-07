@@ -1,5 +1,7 @@
 const { createApp } = require("../../src/app");
 const { createSessions } = require("../../src/sessions");
+const { createSignInAttempts } = require("../../src/signInAttempts");
+const { createFakeGitHub } = require("./fakeGitHub");
 const { createMemoryUserStore } = require("./memoryUserStore");
 
 const TEST_APP_ORIGIN = "http://localhost:5173";
@@ -19,17 +21,27 @@ function createClock(startMilliseconds = START_TIME) {
   };
 }
 
-/** The whole app over an in-memory users store and a hand-moved clock. */
+/** The whole app over an in-memory users store, a fake GitHub, and a hand-moved clock. */
 function buildTestApp() {
   const clock = createClock();
   const users = createMemoryUserStore();
-  const sessions = createSessions({
+  const github = createFakeGitHub();
+  const cookieSettings = {
     sessionSecret: TEST_SESSION_SECRET,
     secureCookies: false,
     now: clock.now,
+  };
+  const sessions = createSessions(cookieSettings);
+  const signInAttempts = createSignInAttempts(cookieSettings);
+  const app = createApp({
+    appOrigin: TEST_APP_ORIGIN,
+    github,
+    signInAttempts,
+    sessions,
+    users,
+    now: clock.now,
   });
-  const app = createApp({ appOrigin: TEST_APP_ORIGIN, sessions, users, now: clock.now });
-  return { app, clock, sessions, users };
+  return { app, clock, github, signInAttempts, sessions, users };
 }
 
 module.exports = {

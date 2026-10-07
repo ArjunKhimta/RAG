@@ -10,6 +10,7 @@ const {
   loadEnvironmentFile,
   readConfig,
   readDatabaseSettings,
+  readGitHubSettings,
   readRequired,
   readRequiredSecret,
   readRetrievalServiceSettings,
@@ -139,6 +140,32 @@ describe("session settings", () => {
     expect(() =>
       readSessionSettings({ SESSION_SECRET: "short", APP_ORIGIN: "http://localhost:5173" }),
     ).toThrow(new InvalidConfigError("SESSION_SECRET", "must be at least 32 characters"));
+  });
+});
+
+describe("GitHub settings", () => {
+  const CLIENT_SECRET = "c".repeat(40);
+
+  test("the ID and secret are returned and the secret is redacted", () => {
+    const settings = readGitHubSettings({
+      GITHUB_CLIENT_ID: "Ov23liExample",
+      GITHUB_CLIENT_SECRET: CLIENT_SECRET,
+    });
+
+    expect(settings).toEqual({
+      githubClientId: "Ov23liExample",
+      githubClientSecret: CLIENT_SECRET,
+    });
+    expect(redact(CLIENT_SECRET)).toBe(REDACTION_PLACEHOLDER);
+  });
+
+  test("a missing ID or a short secret is refused", () => {
+    expect(() => readGitHubSettings({ GITHUB_CLIENT_SECRET: CLIENT_SECRET })).toThrow(
+      new MissingConfigError("GITHUB_CLIENT_ID"),
+    );
+    expect(() =>
+      readGitHubSettings({ GITHUB_CLIENT_ID: "Ov23liExample", GITHUB_CLIENT_SECRET: "short" }),
+    ).toThrow(new InvalidConfigError("GITHUB_CLIENT_SECRET", "must be at least 32 characters"));
   });
 });
 

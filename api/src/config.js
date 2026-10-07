@@ -36,6 +36,10 @@ const APP_ORIGIN_VARIABLE = "APP_ORIGIN";
 
 const MONGODB_URI_VARIABLE = "MONGODB_URI";
 
+const GITHUB_CLIENT_ID_VARIABLE = "GITHUB_CLIENT_ID";
+
+const GITHUB_CLIENT_SECRET_VARIABLE = "GITHUB_CLIENT_SECRET";
+
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 class MissingConfigError extends Error {
@@ -149,6 +153,18 @@ function readAppOrigin(environment) {
 }
 
 /**
+ * Read the GitHub OAuth App's ID and secret. The ID is public (it appears in the sign-in link);
+ * the secret is checked like every other secret and registered for redaction.
+ * @param {NodeJS.ProcessEnv} environment
+ * @returns {{ githubClientId: string, githubClientSecret: string }}
+ */
+function readGitHubSettings(environment) {
+  const githubClientId = readRequired(environment, GITHUB_CLIENT_ID_VARIABLE);
+  const githubClientSecret = readRequiredSecret(environment, GITHUB_CLIENT_SECRET_VARIABLE);
+  return { githubClientId, githubClientSecret };
+}
+
+/**
  * Read the database address; it holds a password, so it is registered for redaction.
  * @param {NodeJS.ProcessEnv} environment
  * @returns {{ mongodbUri: string }}
@@ -239,6 +255,7 @@ module.exports = {
   loadEnvironmentFile,
   readConfig,
   readDatabaseSettings,
+  readGitHubSettings,
   readRequired,
   readRequiredSecret,
   readRetrievalServiceSettings,

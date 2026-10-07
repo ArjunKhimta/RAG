@@ -16,7 +16,7 @@
  * on plain-http localhost, so a local run leaves it off.
  */
 
-const { SignJWT, jwtVerify } = require("jose");
+const { SIGNING_ALGORITHM, TOKEN_ISSUER, createTokenSigner } = require("./signedTokens");
 
 const SESSION_COOKIE_NAME = "session";
 
@@ -24,11 +24,7 @@ const SESSION_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 
 const SESSION_COOKIE_PATH = "/api";
 
-const TOKEN_ISSUER = "repositorycite-api";
-
 const SESSION_AUDIENCE = "repositorycite-session";
-
-const SIGNING_ALGORITHM = "HS256";
 
 const USER_ID_PATTERN = /^[0-9a-f]{24}$/;
 
@@ -36,7 +32,7 @@ const USER_ID_PATTERN = /^[0-9a-f]{24}$/;
  * @param {{ sessionSecret: string, secureCookies: boolean, now?: () => number }} options
  */
 function createSessions({ sessionSecret, secureCookies, now = Date.now }) {
-  const signingKey = new TextEncoder().encode(sessionSecret);
+  const signer = createTokenSigner({ secret: sessionSecret, now });
   const cookieOptions = {
     httpOnly: true,
     secure: secureCookies,
@@ -51,15 +47,14 @@ function createSessions({ sessionSecret, secureCookies, now = Date.now }) {
      * @returns {Promise<string>}
      */
     issue(user) {
-      const issuedAtSeconds = Math.floor(now() / 1000);
-      return new SignJWT({ session_version: user.sessionVersion })
-        .setProtectedHeader({ alg: SIGNING_ALGORITHM })
-        .setSubject(user.id)
-        .setIssuer(TOKEN_ISSUER)
-        .setAudience(SESSION_AUDIENCE)
-        .setIssuedAt(issuedAtSeconds)
-        .setExpirationTime(issuedAtSeconds + SESSION_LIFETIME_SECONDS)
-        .sign(signingKey);
+      return signer.sign(
+        { session_version: user.sessionVersion },
+        {
+          audience: SESSION_AUDIENCE,
+          lifetimeSeconds: SESSION_LIFETIME_SECONDS,
+          subject: user.id,
+        },
+      );
     },
 
     /**
@@ -69,19 +64,8 @@ function createSessions({ sessionSecret, secureCookies, now = Date.now }) {
      * @returns {Promise<{ userId: string, sessionVersion: number } | null>}
      */
     async read(token) {
-      let payload;
-      try {
-        const verified = await jwtVerify(token, signingKey, {
-          algorithms: [SIGNING_ALGORITHM],
-          issuer: TOKEN_ISSUER,
-          audience: SESSION_AUDIENCE,
-          currentDate: new Date(now()),
-        });
-        payload = verified.payload;
-      } catch {
-        return null;
-      }
-      return readClaims(payload);
+      const payload = await signer.verify(token, SESSION_AUDIENCE);
+      return payload === null ? null : readClaims(payload);
     },
 
     /**
