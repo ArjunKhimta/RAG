@@ -9,8 +9,13 @@ does not free up until the daily reset. The quota IDs tell them apart: daily one
 `PerDay`, as in `EmbedContentRequestsPerDayPerProjectPerModel-FreeTier`. A daily-quota error is
 never worth retrying.
 
+A call that times out or loses its connection never reaches Gemini's error handling: the HTTP
+library underneath (httpx) raises its own error. Such a failure becomes a `GeminiRequestError`
+too, with no HTTP status, and counts as temporary, like a busy reply.
+
 A retryable failure waits for the delay the API suggests, or else backs off exponentially from
-2 seconds, capped at 60, with jitter.
+2 seconds, capped at 60, with jitter. Every failure carries a short `reason`, such as
+`HTTP 503 UNAVAILABLE` or `timed out after 30 s`, for log lines that never include a reply body.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import httpx
 from google.genai import errors
 
 RETRYABLE_STATUS_CODES = frozenset({429, 500, 503})
@@ -46,11 +52,15 @@ class GeminiRequestError(RuntimeError):
         status_code: int | None,
         retry_after_seconds: float | None,
         exceeded_quota_ids: tuple[str, ...] = (),
+        reason: str | None = None,
+        is_transport_failure: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.retry_after_seconds = retry_after_seconds
         self.exceeded_quota_ids = exceeded_quota_ids
+        self.reason = reason or message
+        self.is_transport_failure = is_transport_failure
 
     @property
     def is_daily_quota_exhausted(self) -> bool:
@@ -58,6 +68,8 @@ class GeminiRequestError(RuntimeError):
 
     @property
     def is_retryable(self) -> bool:
+        if self.is_transport_failure:
+            return True
         return self.status_code in RETRYABLE_STATUS_CODES and not self.is_daily_quota_exhausted
 
 
@@ -73,6 +85,24 @@ def gemini_request_error[ErrorType: GeminiRequestError](
         status_code=error.code,
         retry_after_seconds=_suggested_retry_seconds(error.details),
         exceeded_quota_ids=exceeded_quota_ids,
+        reason=f"HTTP {error.code} {error.status}",
+    )
+
+
+def transport_request_error[ErrorType: GeminiRequestError](
+    error: httpx.TransportError, error_class: type[ErrorType], timeout_seconds: float
+) -> ErrorType:
+    """Turn a timed-out or failed connection into a temporary Gemini failure."""
+    if isinstance(error, httpx.TimeoutException):
+        reason = f"timed out after {timeout_seconds:g} s"
+    else:
+        reason = f"connection failed ({type(error).__name__})"
+    return error_class(
+        f"Gemini request {reason}",
+        status_code=None,
+        retry_after_seconds=None,
+        reason=reason,
+        is_transport_failure=True,
     )
 
 

@@ -19,13 +19,16 @@ is over the limit has its tokens counted exactly, and if it really is over, its 
 `embedding_truncated` rather than hidden.
 
 Per-minute rate-limit and server errors are retried with exponential backoff and random jitter,
-using the API's suggested delay when it gives one. After the last attempt the error propagates. An
+using the API's suggested delay when it gives one, and so are calls cut off by the client's
+30-second limit; each retry and the final give-up are logged with their reason (an HTTP status or
+"timed out after 30 s", never a reply body). After the last attempt the error propagates. An
 exhausted daily quota is raised at once: it will not free up until the daily reset, and the work
 done so far is already stored, so the next run resumes from the cache.
 """
 
 from __future__ import annotations
 
+import logging
 import random
 import time
 from collections.abc import Callable, Iterator
@@ -50,7 +53,10 @@ from retrieval.embedders import DocumentEmbedder, EmbeddingRequestError
 from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
 from retrieval.gemini_errors import retry_delay_seconds
 from retrieval.rate_limiter import RateLimiter
+from retrieval.redaction import redact
 from retrieval.repository_cloner import CloneMetadata
+
+logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 6
 
@@ -220,10 +226,25 @@ def _embed_with_retries(
         try:
             vectors = embedder.embed_documents(input_texts)
         except EmbeddingRequestError as error:
-            is_last_attempt = attempt_number == settings.max_attempts
-            if not error.is_retryable or is_last_attempt:
+            if not error.is_retryable:
+                raise
+            if attempt_number == settings.max_attempts:
+                logger.warning(
+                    "Gemini embedding of %d texts gave up after %d attempts (%s)",
+                    len(batch),
+                    attempt_number,
+                    redact(error.reason),
+                )
                 raise
             delay_seconds = retry_delay_seconds(error, attempt_number, jitter_fraction)
+            logger.warning(
+                "Gemini embedding attempt %d of %d for %d texts failed (%s); retrying in %.1f s",
+                attempt_number,
+                settings.max_attempts,
+                len(batch),
+                redact(error.reason),
+                delay_seconds,
+            )
             report.retry_count += 1
             report.retry_wait_seconds += delay_seconds
             sleep(delay_seconds)

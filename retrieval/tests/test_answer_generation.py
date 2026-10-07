@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from google.genai import errors, types
 
@@ -618,3 +619,168 @@ def test_the_suggested_wait_is_used_when_gemini_gives_one():
     _retrying_model(models, sleeps).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
 
     assert sleeps == [21.0]
+
+
+class SteppingClock:
+    """A clock that moves only when a call takes time or the model sleeps."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class TimedModels:
+    """Each outcome is (seconds the call takes, response or exception)."""
+
+    def __init__(self, clock: SteppingClock, outcomes: list) -> None:
+        self.clock = clock
+        self.outcomes = list(outcomes)
+        self.call_count = 0
+
+    def generate_content(self, model, contents, config):
+        self.call_count += 1
+        seconds, outcome = self.outcomes.pop(0)
+        self.clock.now += seconds
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _timed_model(clock: SteppingClock, models: TimedModels) -> GeminiAnswerModel:
+    return GeminiAnswerModel(
+        SimpleNamespace(models=models),
+        FakeRateLimiter(),
+        max_attempts=3,
+        sleep=clock.sleep,
+        jitter_fraction=lambda: 1.0,
+        clock=clock,
+    )
+
+
+def _timed_out() -> httpx.ReadTimeout:
+    return httpx.ReadTimeout("The read operation timed out")
+
+
+NO_ANSWER_REPLY = '{"found_answer": false, "sentences": []}'
+
+
+def test_a_timed_out_call_is_retried_and_logged_as_timed_out(caplog):
+    clock = SteppingClock()
+    models = TimedModels(clock, [(30.0, _timed_out()), (1.5, _response(NO_ANSWER_REPLY))])
+
+    reply = _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert reply.attempt_count == 2
+    assert clock.sleeps == [2.0]
+    assert (
+        "Gemini answer attempt 1 of 3 failed (timed out after 30 s); retrying in 2.0 s"
+        in caplog.messages
+    )
+
+
+def test_a_dropped_connection_is_retried_and_named(caplog):
+    clock = SteppingClock()
+    dropped = httpx.ConnectError("connection refused")
+    models = TimedModels(clock, [(0.1, dropped), (1.5, _response(NO_ANSWER_REPLY))])
+
+    _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert any("connection failed (ConnectError)" in message for message in caplog.messages)
+
+
+def test_a_busy_reply_is_logged_with_its_http_status(caplog):
+    clock = SteppingClock()
+    models = TimedModels(clock, [(0.5, _busy_error()), (1.5, _response(NO_ANSWER_REPLY))])
+
+    _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert (
+        "Gemini answer attempt 1 of 3 failed (HTTP 503 UNAVAILABLE); retrying in 2.0 s"
+        in caplog.messages
+    )
+
+
+def test_a_retry_that_could_not_finish_within_75_seconds_is_not_started(caplog):
+    clock = SteppingClock()
+    models = TimedModels(
+        clock, [(30.0, _timed_out()), (30.0, _timed_out()), (1.5, _response(NO_ANSWER_REPLY))]
+    )
+
+    with pytest.raises(GenerationRequestError) as raised:
+        _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert models.call_count == 2
+    assert clock.now == 62.0
+    assert raised.value.is_transport_failure
+    assert caplog.messages[-1] == (
+        "Gemini answer gave up after 2 attempts in 62.0 s (timed out after 30 s; another "
+        "attempt could not finish within 75 s)"
+    )
+
+
+def test_a_long_suggested_wait_ends_the_answer_early_rather_than_late():
+    clock = SteppingClock()
+    minute_limit_json = {
+        "error": {
+            "code": 429,
+            "status": "RESOURCE_EXHAUSTED",
+            "message": "Quota exceeded",
+            "details": [
+                {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "50s"}
+            ],
+        }
+    }
+    models = TimedModels(clock, [(0.5, errors.ClientError(429, minute_limit_json))])
+
+    with pytest.raises(GenerationRequestError):
+        _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert clock.sleeps == []
+
+
+def test_the_last_attempt_logs_the_give_up(caplog):
+    clock = SteppingClock()
+    models = TimedModels(clock, [(0.5, _busy_error())] * 3)
+
+    with pytest.raises(GenerationRequestError):
+        _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert caplog.messages[-1] == (
+        "Gemini answer gave up after 3 attempts in 7.5 s (HTTP 503 UNAVAILABLE)"
+    )
+
+
+def test_a_failure_that_is_never_retried_logs_nothing(caplog):
+    clock = SteppingClock()
+    bad_request_json = {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "bad"}}
+    models = TimedModels(clock, [(0.5, errors.ClientError(400, bad_request_json))])
+
+    with pytest.raises(GenerationRequestError):
+        _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert caplog.messages == []
+
+
+def test_a_slow_call_is_logged_even_when_it_succeeds(caplog):
+    clock = SteppingClock()
+    models = TimedModels(clock, [(12.5, _response(NO_ANSWER_REPLY))])
+
+    _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert caplog.messages == ["Gemini answer call took 12.5 s (attempt 1 of 3)"]
+
+
+def test_a_normal_call_logs_nothing(caplog):
+    clock = SteppingClock()
+    models = TimedModels(clock, [(1.8, _response(NO_ANSWER_REPLY))])
+
+    _timed_model(clock, models).generate("instruction", "prompt", ANSWER_RESPONSE_SCHEMA)
+
+    assert caplog.messages == []

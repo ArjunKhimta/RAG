@@ -39,6 +39,7 @@ text, and the citation check still confines its references to the code it was gi
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 import time
@@ -46,18 +47,30 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+import httpx
 from google import genai
 from google.genai import errors, types
 
-from retrieval.config import ANSWER_MAX_ATTEMPTS, ANSWER_MAX_OUTPUT_TOKENS, GEMINI_ANSWER_MODEL
+from retrieval.config import (
+    ANSWER_MAX_ATTEMPTS,
+    ANSWER_MAX_OUTPUT_TOKENS,
+    ANSWER_TIME_BUDGET_SECONDS,
+    GEMINI_ANSWER_MODEL,
+    GEMINI_REQUEST_TIMEOUT_SECONDS,
+    SLOW_GEMINI_CALL_SECONDS,
+)
 from retrieval.embedding_inputs import estimate_tokens
 from retrieval.gemini_errors import (
     GeminiRequestError,
     gemini_request_error,
     retry_delay_seconds,
+    transport_request_error,
 )
 from retrieval.rate_limiter import RateLimiter
+from retrieval.redaction import redact
 from retrieval.search_results import SearchResult
+
+logger = logging.getLogger(__name__)
 
 OUTLINE_KIND = "class"
 
@@ -208,9 +221,18 @@ class AnswerModel(Protocol):
 class GeminiAnswerModel:
     """Asks Gemini for a JSON reply, with low thinking and no tools, under the per-minute limits.
 
-    A temporary failure (busy, server error, or a per-minute limit) is tried again, up to
-    `ANSWER_MAX_ATTEMPTS` (3) attempts in all, after the wait Gemini suggests or a short backoff.
-    A used-up daily quota is never retried: it does not free up until the daily reset.
+    A temporary failure (busy, server error, a per-minute limit, or a call cut off by the client's
+    30-second limit or a dropped connection) is tried again, up to `ANSWER_MAX_ATTEMPTS` (3)
+    attempts in all, after the wait Gemini suggests or a short backoff. A used-up daily quota is
+    never retried: it does not free up until the daily reset.
+
+    The whole answer, attempts and waits together, must finish within `ANSWER_TIME_BUDGET_SECONDS`
+    (75): a retry that could not finish in time (time so far, plus the wait, plus one full call) is
+    not started. The budget sits below the Node API's 90-second limit, so the service gives up
+    before Node does instead of spending Gemini on an answer no one will see.
+
+    Every retry and every give-up is logged with its reason, as is any call slower than
+    `SLOW_GEMINI_CALL_SECONDS` (10), so a slowdown can be told apart from repeated busy replies.
     """
 
     def __init__(
@@ -222,6 +244,9 @@ class GeminiAnswerModel:
         max_attempts: int = ANSWER_MAX_ATTEMPTS,
         sleep: Callable[[float], None] = time.sleep,
         jitter_fraction: Callable[[], float] = random.random,
+        clock: Callable[[], float] = time.monotonic,
+        time_budget_seconds: float = ANSWER_TIME_BUDGET_SECONDS,
+        request_timeout_seconds: float = GEMINI_REQUEST_TIMEOUT_SECONDS,
     ) -> None:
         if max_attempts < 1:
             raise ValueError("At least one attempt is needed")
@@ -232,6 +257,9 @@ class GeminiAnswerModel:
         self._max_attempts = max_attempts
         self._sleep = sleep
         self._jitter_fraction = jitter_fraction
+        self._clock = clock
+        self._time_budget_seconds = time_budget_seconds
+        self._request_timeout_seconds = request_timeout_seconds
 
     def generate(
         self, system_instruction: str, prompt: str, response_schema: dict[str, Any]
@@ -245,21 +273,77 @@ class GeminiAnswerModel:
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         estimated_tokens = estimate_tokens(system_instruction + prompt)
+        started = self._clock()
         for attempt_number in range(1, self._max_attempts + 1):
             self._rate_limiter.acquire(request_count=1, token_count=estimated_tokens)
             try:
-                response = self._client.models.generate_content(
-                    model=self.model_id, contents=prompt, config=config
-                )
-            except errors.APIError as api_error:
-                error = gemini_request_error(api_error, GenerationRequestError)
-                is_last_attempt = attempt_number == self._max_attempts
-                if not error.is_retryable or is_last_attempt:
-                    raise error from api_error
-                self._sleep(retry_delay_seconds(error, attempt_number, self._jitter_fraction))
+                response = self._call_gemini(prompt, config, attempt_number)
+            except GenerationRequestError as error:
+                delay_seconds = self._retry_delay_or_give_up(error, attempt_number, started)
+                self._sleep(delay_seconds)
                 continue
             return _model_reply_from(response, attempt_number)
         raise AssertionError("unreachable: the last attempt either returns or raises")
+
+    def _call_gemini(
+        self, prompt: str, config: types.GenerateContentConfig, attempt_number: int
+    ) -> types.GenerateContentResponse:
+        call_started = self._clock()
+        try:
+            return self._client.models.generate_content(
+                model=self.model_id, contents=prompt, config=config
+            )
+        except errors.APIError as api_error:
+            raise gemini_request_error(api_error, GenerationRequestError) from api_error
+        except httpx.TransportError as transport_error:
+            raise transport_request_error(
+                transport_error, GenerationRequestError, self._request_timeout_seconds
+            ) from transport_error
+        finally:
+            call_seconds = self._clock() - call_started
+            if call_seconds > SLOW_GEMINI_CALL_SECONDS:
+                logger.warning(
+                    "Gemini answer call took %.1f s (attempt %d of %d)",
+                    call_seconds,
+                    attempt_number,
+                    self._max_attempts,
+                )
+
+    def _retry_delay_or_give_up(
+        self, error: GenerationRequestError, attempt_number: int, started: float
+    ) -> float:
+        """Return how long to wait before the next attempt, or raise `error` with a log line."""
+        elapsed_seconds = self._clock() - started
+        if not error.is_retryable:
+            raise error
+        if attempt_number == self._max_attempts:
+            logger.warning(
+                "Gemini answer gave up after %d attempts in %.1f s (%s)",
+                attempt_number,
+                elapsed_seconds,
+                redact(error.reason),
+            )
+            raise error
+        delay_seconds = retry_delay_seconds(error, attempt_number, self._jitter_fraction)
+        finish_at_latest = elapsed_seconds + delay_seconds + self._request_timeout_seconds
+        if finish_at_latest > self._time_budget_seconds:
+            logger.warning(
+                "Gemini answer gave up after %d attempts in %.1f s (%s; another attempt could "
+                "not finish within %g s)",
+                attempt_number,
+                elapsed_seconds,
+                redact(error.reason),
+                self._time_budget_seconds,
+            )
+            raise error
+        logger.warning(
+            "Gemini answer attempt %d of %d failed (%s); retrying in %.1f s",
+            attempt_number,
+            self._max_attempts,
+            redact(error.reason),
+            delay_seconds,
+        )
+        return delay_seconds
 
 
 def generate_answer(

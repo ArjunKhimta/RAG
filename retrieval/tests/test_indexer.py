@@ -500,3 +500,30 @@ def test_progress_counts_from_zero_after_the_cache_and_after_each_batch():
     )
 
     assert progress == [(0, 4), (2, 4), (4, 4)]
+
+
+def test_each_embedding_retry_and_the_give_up_are_logged_with_their_reason(caplog):
+    timed_out = EmbeddingRequestError(
+        "Gemini request timed out after 30 s",
+        status_code=None,
+        retry_after_seconds=None,
+        reason="timed out after 30 s",
+        is_transport_failure=True,
+    )
+    embedder = FakeEmbedder(failures=[timed_out] * 2)
+
+    with pytest.raises(EmbeddingRequestError):
+        _index(
+            [_function_chunk(0)],
+            embedder,
+            InMemoryChunkStore(),
+            clock=FakeClock(),
+            jitter=lambda: 0.0,
+            settings=IndexingSettings(max_attempts=2),
+        )
+
+    assert caplog.messages == [
+        "Gemini embedding attempt 1 of 2 for 1 texts failed (timed out after 30 s); "
+        "retrying in 1.0 s",
+        "Gemini embedding of 1 texts gave up after 2 attempts (timed out after 30 s)",
+    ]

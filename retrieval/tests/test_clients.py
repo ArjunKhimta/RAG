@@ -17,8 +17,9 @@ class RecordingMongoClient:
 
 
 class RecordingGeminiClient:
-    def __init__(self, api_key):
+    def __init__(self, api_key, http_options=None):
         self.api_key = api_key
+        self.http_options = http_options
 
 
 @pytest.fixture
@@ -67,6 +68,22 @@ def test_gemini_client_receives_the_configured_key(monkeypatch, recorded_gemini_
     client = clients.build_gemini_client()
 
     assert client.api_key == EXAMPLE_API_KEY
+
+
+def test_every_gemini_call_gives_up_after_thirty_seconds(monkeypatch, recorded_gemini_module):
+    monkeypatch.setenv("GEMINI_API_KEY", EXAMPLE_API_KEY)
+
+    client = clients.build_gemini_client()
+
+    assert client.http_options.timeout == 30_000
+
+
+def test_the_real_gemini_client_accepts_the_time_limit(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", EXAMPLE_API_KEY)
+
+    client = clients.build_gemini_client()
+
+    assert client._api_client._http_options.timeout == 30_000
 
 
 def test_gemini_client_raises_when_the_key_is_missing(monkeypatch, recorded_gemini_module):

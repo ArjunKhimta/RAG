@@ -3,9 +3,11 @@ from __future__ import annotations
 import math
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from google.genai import errors
 
+from retrieval import embedders
 from retrieval.embedders import (
     EmbeddingRequestError,
     GeminiDocumentEmbedder,
@@ -187,3 +189,35 @@ def test_normalized_vectors_have_length_one():
 def test_a_zero_vector_cannot_be_normalized():
     with pytest.raises(ValueError):
         normalize_to_unit_length([0.0, 0.0])
+
+
+def test_a_timed_out_embedding_is_a_temporary_embedding_error():
+    models = FakeModels(error=httpx.ReadTimeout("The read operation timed out"))
+    embedder = GeminiQueryEmbedder(SimpleNamespace(models=models))
+
+    with pytest.raises(EmbeddingRequestError) as raised:
+        embedder.embed_query("question")
+
+    assert raised.value.is_retryable
+    assert raised.value.status_code is None
+    assert raised.value.reason == "timed out after 30 s"
+
+
+def test_a_dropped_connection_while_counting_tokens_is_a_temporary_embedding_error():
+    models = FakeModels(error=httpx.ConnectError("connection refused"))
+    embedder = GeminiDocumentEmbedder(SimpleNamespace(models=models))
+
+    with pytest.raises(EmbeddingRequestError) as raised:
+        embedder.count_tokens("text")
+
+    assert raised.value.is_retryable
+    assert raised.value.reason == "connection failed (ConnectError)"
+
+
+def test_a_slow_embedding_call_is_logged(caplog):
+    times = iter([100.0, 112.0])
+
+    result = embedders._call_gemini("embedding", lambda: "vectors", clock=lambda: next(times))
+
+    assert result == "vectors"
+    assert caplog.messages == ["Gemini embedding call took 12.0 s"]
