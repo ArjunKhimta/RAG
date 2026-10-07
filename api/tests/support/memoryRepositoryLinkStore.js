@@ -24,6 +24,10 @@ function createMemoryRepositoryLinkStore() {
   return {
     async ensureIndexes() {},
 
+    async countForUser(userId) {
+      return [...records.values()].filter((record) => record.userId === userId).length;
+    },
+
     async findByTarget(userId, repository, version) {
       const record = findByTargetNow(userId, repository, version);
       return record === undefined ? null : { ...record };

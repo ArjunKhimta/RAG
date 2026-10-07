@@ -13,8 +13,12 @@
  *   searched as 409) passes through and saves nothing
  * - `DELETE /api/conversations/:id`: delete the conversation and its messages
  *
- * The limits are checked before asking, so two questions sent at the same moment can take a
- * conversation one or two past 100; nothing depends on the exact number.
+ * Asking also uses one of the person's 5 questions a minute (in memory) and 30 a day (in the
+ * database), 429 with `Retry-After` when used up; both are given back when the service refused
+ * before Gemini did any work, but not when an answer failed its citation check, since Gemini did
+ * the work. The conversation and message counts are checked before asking, so two questions sent
+ * at the same moment can take a conversation one or two past 100; nothing depends on the exact
+ * number.
  */
 
 const express = require("express");
@@ -22,6 +26,8 @@ const express = require("express");
 const { ApiError } = require("./apiError");
 const { LinkStatus } = require("./repositoryLinks");
 const { booleanField, requireFields, textField } = require("./requestFields");
+const { refusedBeforeGemini } = require("./retrievalService");
+const { UsageKind } = require("./usage");
 
 const CREATED_STATUS = 201;
 
@@ -31,9 +37,7 @@ const NOT_FOUND_STATUS = 404;
 
 const CONFLICT_STATUS = 409;
 
-const MAX_CONVERSATIONS_PER_USER = 50;
-
-const MAX_MESSAGES_PER_CONVERSATION = 100;
+const TOO_MANY_REQUESTS_STATUS = 429;
 
 const MAX_TITLE_CHARACTERS = 80;
 
@@ -47,30 +51,30 @@ const NOT_READY_MESSAGE = "This repository is not ready for questions yet";
 
 const NOT_LINKED_MESSAGE = "Add this repository again before asking about it";
 
-const TOO_MANY_CONVERSATIONS_MESSAGE = `You have ${MAX_CONVERSATIONS_PER_USER} conversations; delete one before starting another`;
-
-const CONVERSATION_FULL_MESSAGE = `This conversation has ${MAX_MESSAGES_PER_CONVERSATION} messages; start a new one`;
+const TOO_MANY_QUESTIONS_THIS_MINUTE_MESSAGE =
+  "You are asking questions quickly; wait a moment before the next one";
 
 /**
  * @param {{
  *   retrievalService: ReturnType<typeof import("./retrievalService").createRetrievalService>,
  *   repositoryLinks: ReturnType<typeof import("./repositoryLinks").createMongoRepositoryLinkStore>,
  *   conversations: ReturnType<typeof import("./conversations").createMongoConversationStore>,
+ *   dailyLimits: ReturnType<typeof import("./usage").createDailyLimits>,
+ *   questionsPerMinute: ReturnType<typeof import("./slidingWindowLimiter").createSlidingWindowLimiter>,
+ *   limits: typeof import("./limits").DEFAULT_LIMITS,
  *   requireUser: import("express").RequestHandler,
  *   now?: () => number,
- *   limits?: { conversationsPerUser: number, messagesPerConversation: number },
  * }} dependencies
  */
 function createConversationRouter({
   retrievalService,
   repositoryLinks,
   conversations,
+  dailyLimits,
+  questionsPerMinute,
+  limits,
   requireUser,
   now = Date.now,
-  limits = {
-    conversationsPerUser: MAX_CONVERSATIONS_PER_USER,
-    messagesPerConversation: MAX_MESSAGES_PER_CONVERSATION,
-  },
 }) {
   const router = express.Router();
   router.use(requireUser);
@@ -85,7 +89,7 @@ function createConversationRouter({
       throw new ApiError(CONFLICT_STATUS, NOT_READY_MESSAGE);
     }
     if ((await conversations.countForUser(request.user.id)) >= limits.conversationsPerUser) {
-      throw new ApiError(CONFLICT_STATUS, TOO_MANY_CONVERSATIONS_MESSAGE);
+      throw new ApiError(CONFLICT_STATUS, tooManyConversationsMessage(limits.conversationsPerUser));
     }
     const conversation = await conversations.create({
       userId: request.user.id,
@@ -112,14 +116,23 @@ function createConversationRouter({
     const conversation = await findOwnedConversation(request);
     await requireReadyLink(request.user.id, conversation);
     if ((await conversations.countMessages(conversation.id)) >= limits.messagesPerConversation) {
-      throw new ApiError(CONFLICT_STATUS, CONVERSATION_FULL_MESSAGE);
+      throw new ApiError(CONFLICT_STATUS, conversationFullMessage(limits.messagesPerConversation));
     }
-    const reply = await retrievalService.ask({
-      repository: conversation.repository,
-      version: conversation.version,
-      question,
-      excludeTests,
-    });
+    const slots = await takeQuestionSlots(request.user.id);
+    let reply;
+    try {
+      reply = await retrievalService.ask({
+        repository: conversation.repository,
+        version: conversation.version,
+        question,
+        excludeTests,
+      });
+    } catch (error) {
+      if (refusedBeforeGemini(error)) {
+        await giveBackQuestionSlots(slots);
+      }
+      throw error;
+    }
     const message = await conversations.addMessage({
       userId: request.user.id,
       conversationId: conversation.id,
@@ -139,6 +152,35 @@ function createConversationRouter({
     }
     response.status(NO_CONTENT_STATUS).end();
   });
+
+  /**
+   * Take a slot from this minute's questions (in memory), then from today's (in the database);
+   * if today's is used up, this minute's slot is given back.
+   * @param {string} userId
+   */
+  async function takeQuestionSlots(userId) {
+    const minute = questionsPerMinute.take(userId);
+    if (!minute.taken) {
+      throw new ApiError(
+        TOO_MANY_REQUESTS_STATUS,
+        TOO_MANY_QUESTIONS_THIS_MINUTE_MESSAGE,
+        minute.retryAfterSeconds,
+      );
+    }
+    try {
+      const day = await dailyLimits.take(userId, UsageKind.QUESTIONS);
+      return { userId, minuteTime: minute.time, day };
+    } catch (error) {
+      questionsPerMinute.giveBack(userId, minute.time);
+      throw error;
+    }
+  }
+
+  /** @param {{ userId: string, minuteTime: number, day: object }} slots */
+  async function giveBackQuestionSlots(slots) {
+    questionsPerMinute.giveBack(slots.userId, slots.minuteTime);
+    await dailyLimits.giveBack(slots.day);
+  }
 
   /** @param {import("express").Request} request */
   async function findOwnedConversation(request) {
@@ -185,6 +227,16 @@ function readQuestion(body) {
   return { question, excludeTests };
 }
 
+/** @param {number} limit */
+function tooManyConversationsMessage(limit) {
+  return `You have ${limit} conversations; delete one before starting another`;
+}
+
+/** @param {number} limit */
+function conversationFullMessage(limit) {
+  return `This conversation has ${limit} messages; start a new one`;
+}
+
 /**
  * The first 80 characters of the question, counted as people see them (an emoji is one).
  * @param {string} question
@@ -221,14 +273,13 @@ function publicMessage(message) {
 }
 
 module.exports = {
-  CONVERSATION_FULL_MESSAGE,
-  MAX_CONVERSATIONS_PER_USER,
-  MAX_MESSAGES_PER_CONVERSATION,
   NOT_LINKED_MESSAGE,
   NOT_READY_MESSAGE,
-  TOO_MANY_CONVERSATIONS_MESSAGE,
+  TOO_MANY_QUESTIONS_THIS_MINUTE_MESSAGE,
   UNKNOWN_CONVERSATION_MESSAGE,
   UNKNOWN_LINK_MESSAGE,
+  conversationFullMessage,
   createConversationRouter,
   titleFor,
+  tooManyConversationsMessage,
 };

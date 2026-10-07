@@ -1,10 +1,10 @@
 const request = require("supertest");
 
 const {
-  CONVERSATION_FULL_MESSAGE,
+  conversationFullMessage,
   NOT_LINKED_MESSAGE,
   NOT_READY_MESSAGE,
-  TOO_MANY_CONVERSATIONS_MESSAGE,
+  tooManyConversationsMessage,
   UNKNOWN_CONVERSATION_MESSAGE,
   UNKNOWN_LINK_MESSAGE,
   titleFor,
@@ -114,7 +114,7 @@ describe("starting a conversation", () => {
   });
 
   test("past the conversation limit it is a 409 and nothing is deleted", async () => {
-    await setUp({ conversationLimits: { conversationsPerUser: 2, messagesPerConversation: 100 } });
+    await setUp({ limits: { conversationsPerUser: 2 } });
     const link = await readyLink();
     await send("post", "/api/conversations", { link_id: link.id });
     await send("post", "/api/conversations", { link_id: link.id });
@@ -122,7 +122,7 @@ describe("starting a conversation", () => {
     const response = await send("post", "/api/conversations", { link_id: link.id });
 
     expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: TOO_MANY_CONVERSATIONS_MESSAGE });
+    expect(response.body).toEqual({ error: tooManyConversationsMessage(2) });
     expect((await send("get", "/api/conversations")).body.conversations).toHaveLength(2);
   });
 });
@@ -207,7 +207,7 @@ describe("asking a question", () => {
   });
 
   test("a full conversation is a 409 and asks nothing", async () => {
-    await setUp({ conversationLimits: { conversationsPerUser: 50, messagesPerConversation: 2 } });
+    await setUp({ limits: { messagesPerConversation: 2 } });
     const { conversation } = await startConversation();
     await ask(conversation.id);
     await ask(conversation.id);
@@ -215,7 +215,7 @@ describe("asking a question", () => {
     const response = await ask(conversation.id);
 
     expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: CONVERSATION_FULL_MESSAGE });
+    expect(response.body).toEqual({ error: conversationFullMessage(2) });
     expect(service.askCalls).toHaveLength(2);
   });
 

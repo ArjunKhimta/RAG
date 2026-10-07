@@ -1,10 +1,12 @@
 const { createApp } = require("../../src/app");
+const { withLimits } = require("../../src/limits");
 const { createSessions } = require("../../src/sessions");
 const { createSignInAttempts } = require("../../src/signInAttempts");
 const { createFakeGitHub } = require("./fakeGitHub");
 const { createMemoryConversationStore } = require("./memoryConversationStore");
 const { createFakeRetrievalService } = require("./fakeRetrievalService");
 const { createMemoryRepositoryLinkStore } = require("./memoryRepositoryLinkStore");
+const { createMemoryUsageStore } = require("./memoryUsageStore");
 const { createMemoryUserStore } = require("./memoryUserStore");
 
 const TEST_APP_ORIGIN = "http://localhost:5173";
@@ -26,14 +28,16 @@ function createClock(startMilliseconds = START_TIME) {
 
 /**
  * The whole app over in-memory stores, a fake GitHub, a fake retrieval service, and a hand-moved
- * clock. `sessionCookieFor(profile)` signs someone in directly and returns their cookie.
- * @param {{ conversationLimits?: { conversationsPerUser: number, messagesPerConversation: number } }} [options]
+ * clock, with the real limits unless `limits` overrides some. `sessionCookieFor(profile)` signs
+ * someone in directly and returns their cookie.
+ * @param {{ limits?: Partial<typeof import("../../src/limits").DEFAULT_LIMITS> }} [options]
  */
-function buildTestApp({ conversationLimits } = {}) {
+function buildTestApp({ limits } = {}) {
   const clock = createClock();
   const users = createMemoryUserStore();
   const repositoryLinks = createMemoryRepositoryLinkStore();
   const conversations = createMemoryConversationStore();
+  const usage = createMemoryUsageStore();
   const github = createFakeGitHub();
   const retrievalService = createFakeRetrievalService();
   const cookieSettings = {
@@ -52,7 +56,8 @@ function buildTestApp({ conversationLimits } = {}) {
     retrievalService,
     repositoryLinks,
     conversations,
-    conversationLimits,
+    usage,
+    limits: withLimits(limits),
     now: clock.now,
   });
 
@@ -71,6 +76,7 @@ function buildTestApp({ conversationLimits } = {}) {
     sessionCookieFor,
     sessions,
     signInAttempts,
+    usage,
     users,
   };
 }

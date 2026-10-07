@@ -73,6 +73,23 @@ class RetrievalServiceError extends ApiError {
   }
 }
 
+const REFUSED_BEFORE_GEMINI_STATUSES = new Set([
+  BAD_REQUEST_STATUS,
+  CONFLICT_STATUS,
+  UNAVAILABLE_STATUS,
+]);
+
+/**
+ * Whether the service refused before Gemini did any work (a bad request, a version that cannot be
+ * searched, or the service, the database, or Gemini unavailable, including a time limit or a
+ * connection failure), so a person's slot should be given back. An answer that failed its
+ * citation check (502) used Gemini, so it counts.
+ * @param {unknown} error
+ */
+function refusedBeforeGemini(error) {
+  return error instanceof RetrievalServiceError && REFUSED_BEFORE_GEMINI_STATUSES.has(error.status);
+}
+
 class UnexpectedReplyError extends Error {
   constructor(description) {
     super(description);
@@ -423,4 +440,5 @@ module.exports = {
   UNKNOWN_JOB_MESSAGE,
   RetrievalServiceError,
   createRetrievalService,
+  refusedBeforeGemini,
 };

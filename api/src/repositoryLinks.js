@@ -69,6 +69,11 @@ function createMongoRepositoryLinkStore(database) {
 
     findByTarget,
 
+    /** @param {string} userId */
+    countForUser(userId) {
+      return links.countDocuments({ user_id: toObjectId(userId) });
+    },
+
     /**
      * Add a link, or return the one that already exists for this person and version.
      * @param {{ userId: string, repository: string, version: string, state: LinkState, now: Date }} link

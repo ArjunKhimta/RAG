@@ -25,12 +25,17 @@ const { createAuthentication } = require("./authentication");
 const { createConversationRouter } = require("./conversationRoutes");
 const { registerErrorReplies } = require("./errors");
 const { createGitHubSignInRouter } = require("./githubSignInRoutes");
+const { DEFAULT_LIMITS } = require("./limits");
 const { createRepositoryRouter } = require("./repositoryRoutes");
 const { requireSameOrigin } = require("./sameOrigin");
+const { createSlidingWindowLimiter } = require("./slidingWindowLimiter");
+const { createDailyLimits } = require("./usage");
 
 const MAX_REQUEST_BYTES = 16 * 1024;
 
 const API_PATH = "/api";
+
+const MINUTE_MILLISECONDS = 60 * 1000;
 
 const JSON_API_CONTENT_SECURITY_POLICY = {
   useDefaults: false,
@@ -50,7 +55,8 @@ const JSON_API_CONTENT_SECURITY_POLICY = {
  *   retrievalService: ReturnType<typeof import("./retrievalService").createRetrievalService>,
  *   repositoryLinks: ReturnType<typeof import("./repositoryLinks").createMongoRepositoryLinkStore>,
  *   conversations: ReturnType<typeof import("./conversations").createMongoConversationStore>,
- *   conversationLimits?: { conversationsPerUser: number, messagesPerConversation: number },
+ *   usage: ReturnType<typeof import("./usage").createMongoUsageStore>,
+ *   limits?: typeof DEFAULT_LIMITS,
  *   now?: () => number,
  * }} dependencies
  * @returns {import("express").Express}
@@ -64,10 +70,22 @@ function createApp({
   retrievalService,
   repositoryLinks,
   conversations,
-  conversationLimits,
+  usage,
+  limits = DEFAULT_LIMITS,
   now = Date.now,
 }) {
   const authentication = createAuthentication({ sessions, users });
+  const dailyLimits = createDailyLimits({ usage, limits, now });
+  const questionsPerMinute = createSlidingWindowLimiter({
+    limit: limits.questionsPerMinute,
+    windowMilliseconds: MINUTE_MILLISECONDS,
+    now,
+  });
+  const signInLimiter = createSlidingWindowLimiter({
+    limit: limits.signInsPerWindow,
+    windowMilliseconds: limits.signInWindowMinutes * MINUTE_MILLISECONDS,
+    now,
+  });
   const app = express();
   app.use(helmet({ contentSecurityPolicy: JSON_API_CONTENT_SECURITY_POLICY }));
   app.use(express.json({ limit: MAX_REQUEST_BYTES }));
@@ -82,15 +100,29 @@ function createApp({
       signInAttempts,
       sessions,
       users,
+      signInLimiter,
       now,
     }),
   );
-  app.use(API_PATH, createAccountRouter({ authentication, sessions, users, now }));
+  app.use(
+    API_PATH,
+    createAccountRouter({
+      authentication,
+      sessions,
+      users,
+      dailyLimits,
+      repositoryLinks,
+      limits,
+      now,
+    }),
+  );
   app.use(
     `${API_PATH}/repositories`,
     createRepositoryRouter({
       retrievalService,
       repositoryLinks,
+      dailyLimits,
+      limits,
       requireUser: authentication.requireUser,
       now,
     }),
@@ -101,9 +133,11 @@ function createApp({
       retrievalService,
       repositoryLinks,
       conversations,
+      dailyLimits,
+      questionsPerMinute,
+      limits,
       requireUser: authentication.requireUser,
       now,
-      limits: conversationLimits,
     }),
   );
   registerErrorReplies(app, MAX_REQUEST_BYTES);

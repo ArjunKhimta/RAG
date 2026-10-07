@@ -15,6 +15,14 @@
  *   version with the service's vector search; results are shown, not kept in history
  * - `DELETE /api/repositories/:id`: remove the link only; the shared index stays
  *
+ * Limits (`limits.js`): at most 5 links at a time (409 to add a sixth); 2 new indexing requests a
+ * day (adding or resuming; the slot is given back when the version was already indexed or the
+ * service refused), and 100 searches a day (given back when the service refused before Gemini did
+ * any work), both 429 with `Retry-After` until midnight Pacific. Reading a link whose job finished
+ * asks the service once more for the license, but uses no slot. Because the slot is taken before
+ * asking the service, a person who has used both of today's slots cannot add even an already
+ * indexed version until midnight.
+ *
  * Repository names are lowercased before anything else, because GitHub treats `Pallets/Flask` and
  * `pallets/flask` as the same repository and the service would index them twice. A link ID that is
  * malformed, unknown, or another person's is the same 404, so IDs reveal nothing.
@@ -39,7 +47,12 @@ const {
   textField,
   wholeNumberField,
 } = require("./requestFields");
-const { UNEXPECTED_REPLY_MESSAGE, RetrievalServiceError } = require("./retrievalService");
+const {
+  UNEXPECTED_REPLY_MESSAGE,
+  RetrievalServiceError,
+  refusedBeforeGemini,
+} = require("./retrievalService");
+const { UsageKind } = require("./usage");
 
 const OK_STATUS = 200;
 
@@ -90,11 +103,20 @@ const TOO_EARLY_MESSAGE = "Indexing can resume after the daily embedding quota r
  * @param {{
  *   retrievalService: ReturnType<typeof import("./retrievalService").createRetrievalService>,
  *   repositoryLinks: ReturnType<typeof import("./repositoryLinks").createMongoRepositoryLinkStore>,
+ *   dailyLimits: ReturnType<typeof import("./usage").createDailyLimits>,
+ *   limits: typeof import("./limits").DEFAULT_LIMITS,
  *   requireUser: import("express").RequestHandler,
  *   now?: () => number,
  * }} dependencies
  */
-function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser, now = Date.now }) {
+function createRepositoryRouter({
+  retrievalService,
+  repositoryLinks,
+  dailyLimits,
+  limits,
+  requireUser,
+  now = Date.now,
+}) {
   const router = express.Router();
   router.use(requireUser);
 
@@ -105,7 +127,10 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
       response.status(OK_STATUS).json(publicLink(existing));
       return;
     }
-    const state = await startIndexing(repository, version);
+    if ((await repositoryLinks.countForUser(request.user.id)) >= limits.linkedRepositories) {
+      throw new ApiError(CONFLICT_STATUS, tooManyRepositoriesMessage(limits.linkedRepositories));
+    }
+    const state = await startCountedIndexing(request.user.id, repository, version);
     const link = await repositoryLinks.create({
       userId: request.user.id,
       repository,
@@ -136,7 +161,8 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
     if (!decision.allowed) {
       throw resumeRefusal(decision);
     }
-    const updated = await saveState(request, await startIndexing(link.repository, link.version));
+    const state = await startCountedIndexing(request.user.id, link.repository, link.version);
+    const updated = await saveState(request, state);
     const status = updated.status === LinkStatus.READY ? OK_STATUS : ACCEPTED_STATUS;
     response.status(status).json(publicLink(updated));
   });
@@ -147,11 +173,20 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
     if (link.status !== LinkStatus.READY) {
       throw new ApiError(CONFLICT_STATUS, NOT_READY_MESSAGE);
     }
-    const results = await retrievalService.search({
-      repository: link.repository,
-      version: link.version,
-      ...search,
-    });
+    const ticket = await dailyLimits.take(request.user.id, UsageKind.SEARCHES);
+    let results;
+    try {
+      results = await retrievalService.search({
+        repository: link.repository,
+        version: link.version,
+        ...search,
+      });
+    } catch (error) {
+      if (refusedBeforeGemini(error)) {
+        await dailyLimits.giveBack(ticket);
+      }
+      throw error;
+    }
     response.json(results);
   });
 
@@ -187,6 +222,29 @@ function createRepositoryRouter({ retrievalService, repositoryLinks, requireUser
       throw new ApiError(NOT_FOUND_STATUS, UNKNOWN_LINK_MESSAGE);
     }
     return link;
+  }
+
+  /**
+   * Start indexing on the person's behalf, using one of today's indexing slots. The slot is given
+   * back when the version was already indexed (no work) or the service refused; the index route
+   * never uses Gemini while the request is open, so any refusal means no work was done.
+   * @param {string} userId
+   * @param {string} repository
+   * @param {string} version
+   */
+  async function startCountedIndexing(userId, repository, version) {
+    const ticket = await dailyLimits.take(userId, UsageKind.INDEXING_REQUESTS);
+    let state;
+    try {
+      state = await startIndexing(repository, version);
+    } catch (error) {
+      await dailyLimits.giveBack(ticket);
+      throw error;
+    }
+    if (state.status === LinkStatus.READY) {
+      await dailyLimits.giveBack(ticket);
+    }
+    return state;
   }
 
   /**
@@ -270,6 +328,11 @@ function isTextUpTo(value, maxLength) {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength;
 }
 
+/** @param {number} limit */
+function tooManyRepositoriesMessage(limit) {
+  return `You have ${limit} repositories; remove one before adding another`;
+}
+
 /** @param {{ allowed: false, reason: string, retryAfterSeconds?: number }} decision */
 function resumeRefusal(decision) {
   if (decision.reason === "too_early") {
@@ -310,4 +373,5 @@ module.exports = {
   UNKNOWN_LINK_MESSAGE,
   VERSION_RULE,
   createRepositoryRouter,
+  tooManyRepositoriesMessage,
 };

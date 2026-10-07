@@ -110,6 +110,8 @@ function describeRepositoryLinkStoreContract(setUp) {
     const listed = await store.listForUser(FIRST_USER);
 
     expect(listed.map((item) => item.id)).toEqual([newer.id, older.id]);
+    expect(await store.countForUser(FIRST_USER)).toBe(2);
+    expect(await store.countForUser(SECOND_USER)).toBe(1);
   });
 
   test("saving a state replaces every state field and the update time only", async () => {

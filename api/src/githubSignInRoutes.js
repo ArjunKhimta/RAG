@@ -11,6 +11,11 @@
  * `/?sign_in=denied` (the person said no on GitHub), `/?sign_in=expired` (no attempt cookie, as
  * after 10 minutes or in another browser), or `/?sign_in=failed` (anything else, with the reason
  * logged). The attempt cookie is cleared whatever the outcome, so it is used at most once.
+ *
+ * Opening the login link is limited to 20 times per 15 minutes per internet address (in memory);
+ * past that it sends the browser to `/?sign_in=rate_limited` without contacting GitHub. Behind a
+ * proxy (Vercel in production), Express must be told to trust the forwarded address, or every
+ * person would share the proxy's address and its limit.
  */
 
 const express = require("express");
@@ -35,7 +40,10 @@ const SignInOutcome = Object.freeze({
   DENIED: "denied",
   EXPIRED: "expired",
   FAILED: "failed",
+  RATE_LIMITED: "rate_limited",
 });
+
+const UNKNOWN_ADDRESS = "unknown";
 
 /**
  * The address GitHub sends people back to; it must match the OAuth App's callback URL exactly.
@@ -54,6 +62,7 @@ function callbackUrlFor(appOrigin, apiPath) {
  *   signInAttempts: ReturnType<typeof import("./signInAttempts").createSignInAttempts>,
  *   sessions: ReturnType<typeof import("./sessions").createSessions>,
  *   users: { saveSignedInUser: Function },
+ *   signInLimiter: ReturnType<typeof import("./slidingWindowLimiter").createSlidingWindowLimiter>,
  *   now?: () => number,
  * }} dependencies
  */
@@ -64,15 +73,21 @@ function createGitHubSignInRouter({
   signInAttempts,
   sessions,
   users,
+  signInLimiter,
   now = Date.now,
 }) {
   const router = express.Router();
   const redirectUri = callbackUrlFor(appOrigin, apiPath);
 
   router.get(LOGIN_PATH, async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    if (!signInLimiter.take(request.ip ?? UNKNOWN_ADDRESS).taken) {
+      logInfo("Sign-in attempts from one address reached the limit");
+      response.redirect(siteAddress(SignInOutcome.RATE_LIMITED));
+      return;
+    }
     const attempt = await signInAttempts.start();
     signInAttempts.setCookie(response, attempt.token);
-    response.set("Cache-Control", "no-store");
     response.redirect(
       github.authorizationUrl({
         state: attempt.state,
@@ -86,12 +101,20 @@ function createGitHubSignInRouter({
     signInAttempts.clearCookie(response);
     response.set("Cache-Control", "no-store");
     const outcome = await completeSignIn(request, response);
+    response.redirect(siteAddress(outcome));
+  });
+
+  /**
+   * The site's front page, naming the sign-in outcome unless it succeeded.
+   * @param {string | null} outcome
+   */
+  function siteAddress(outcome) {
     const destination = new URL("/", appOrigin);
     if (outcome !== null) {
       destination.searchParams.set(SIGN_IN_OUTCOME_PARAMETER, outcome);
     }
-    response.redirect(destination.toString());
-  });
+    return destination.toString();
+  }
 
   /**
    * Finish the sign-in; return null on success, or the outcome to show the person.

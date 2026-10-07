@@ -27,6 +27,7 @@ const { createMongoRepositoryLinkStore } = require("./repositoryLinks");
 const { createRetrievalService } = require("./retrievalService");
 const { createSessions } = require("./sessions");
 const { createSignInAttempts } = require("./signInAttempts");
+const { createMongoUsageStore } = require("./usage");
 const { createMongoUserStore } = require("./users");
 
 const FAILED_EXIT_CODE = 1;
@@ -48,6 +49,8 @@ async function main() {
   await repositoryLinks.ensureIndexes();
   const conversations = createMongoConversationStore(database);
   await conversations.ensureIndexes();
+  const usage = createMongoUsageStore(database);
+  await usage.ensureIndexes();
   const cookieSettings = {
     sessionSecret: sessionSettings.sessionSecret,
     secureCookies: sessionSettings.appOrigin.startsWith(HTTPS_PROTOCOL_PREFIX),
@@ -66,6 +69,7 @@ async function main() {
     retrievalService: createRetrievalService(retrievalServiceSettings),
     repositoryLinks,
     conversations,
+    usage,
   });
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);
