@@ -10,6 +10,8 @@ The steps, in order, each timed:
    texts a day may be embedded for indexing, so 3,000 new chunks is about four days.
 5. Make sure the chunk store's indexes and the Atlas vector and keyword search indexes exist.
 6. Embed and store the chunks, reusing cached embeddings, then record the version.
+7. Store the fingerprints of the indexed files (a hash tree; see `fingerprints.py`), so a later
+   refresh can tell which files changed.
 
 Optional hooks hear each stage as it starts and the embedding progress, so a background job can
 keep its status current.
@@ -30,8 +32,10 @@ from pymongo.database import Database
 
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.code_graph import RESOLVED_OUTCOMES, attach_calls, build_call_graph, edge_count_of
-from retrieval.config import MAX_REPOSITORY_CHUNKS
+from retrieval.config import INDEX_FORMAT_VERSION, MAX_REPOSITORY_CHUNKS
 from retrieval.embedders import DocumentEmbedder
+from retrieval.fingerprint_store import MongoFingerprintStore
+from retrieval.fingerprints import VersionFingerprints, build_version_fingerprints
 from retrieval.github_urls import RepositoryReference
 from retrieval.indexer import IndexingReport, ProgressHook, index_chunks
 from retrieval.other_languages import OtherLanguageCount, describe_counts
@@ -75,6 +79,7 @@ class RepositoryIndexingRun:
     report: IndexingReport
     collection_statistics: dict[str, int]
     timings: dict[str, float]
+    fingerprints: VersionFingerprints
     other_languages: tuple[OtherLanguageCount, ...] = ()
 
 
@@ -102,6 +107,7 @@ def index_repository_version(
     timings["walk, scan, chunk"] = _milliseconds_since(stage_started)
     _require_python_code(len(chunking.chunks), walk_result.other_languages, cloned.metadata)
     _require_chunk_count_within(len(chunking.chunks), max_chunk_count, cloned.metadata)
+    fingerprints = build_version_fingerprints(chunking.file_fingerprints)
     announce_stage(IndexingStage.CALL_GRAPH)
     stage_started = time.perf_counter()
     call_graph = build_call_graph(chunking.chunks, chunking.file_calls)
@@ -124,6 +130,9 @@ def index_repository_version(
         other_languages=walk_result.other_languages,
     )
     timings["embed and store"] = _milliseconds_since(stage_started)
+    stage_started = time.perf_counter()
+    MongoFingerprintStore(database).save(cloned.metadata, fingerprints, INDEX_FORMAT_VERSION)
+    timings["store fingerprints"] = _milliseconds_since(stage_started)
     resolved_call_count = sum(
         1 for resolved in call_graph.resolved_calls if resolved.outcome in RESOLVED_OUTCOMES
     )
@@ -140,6 +149,7 @@ def index_repository_version(
         report=report,
         collection_statistics=store.chunk_collection_statistics(),
         timings=timings,
+        fingerprints=fingerprints,
         other_languages=walk_result.other_languages,
     )
 

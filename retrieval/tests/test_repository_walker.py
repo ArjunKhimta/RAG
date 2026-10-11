@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from retrieval.chunker import ChunkKind
+from retrieval.fingerprints import fingerprint_bytes
 from retrieval.other_languages import OtherLanguageCount
 from retrieval.redaction import REDACTION_PLACEHOLDER
 from retrieval.repository_walker import (
@@ -191,6 +192,41 @@ def test_a_file_that_cannot_be_scanned_is_skipped_not_indexed(repository_root):
         SkippedPath("src/package/latin1.py", SkipReason.NOT_SCANNABLE)
     ]
     assert all(chunk.file_path != "src/package/latin1.py" for chunk in chunking.chunks)
+
+
+def test_every_chunked_file_is_fingerprinted_from_the_bytes_read_before_redaction(
+    repository_root,
+):
+    secret_source = f'PASSWORD = "{FAKE_PASSWORD}"\n'
+    _write(repository_root / "src" / "package" / "settings.py", secret_source)
+    walk_result = find_python_files(repository_root)
+
+    chunking = chunk_source_files(walk_result.files)
+
+    fingerprints_by_path = {
+        file.path: file.fingerprint for file in chunking.file_fingerprints
+    }
+    assert list(fingerprints_by_path) == [
+        "setup.py",
+        "src/package/__init__.py",
+        "src/package/app.py",
+        "src/package/settings.py",
+        "tests/conftest.py",
+        "tests/test_app.py",
+    ]
+    assert fingerprints_by_path["src/package/__init__.py"] == fingerprint_bytes(b"")
+    assert fingerprints_by_path["src/package/settings.py"] == fingerprint_bytes(
+        secret_source.encode("utf-8")
+    )
+
+
+def test_a_file_that_cannot_be_scanned_is_not_fingerprinted(repository_root):
+    (repository_root / "src" / "package" / "latin1.py").write_bytes(b'NAME = "caf\xe9"\n')
+    walk_result = find_python_files(repository_root)
+
+    chunking = chunk_source_files(walk_result.files)
+
+    assert "src/package/latin1.py" not in [file.path for file in chunking.file_fingerprints]
 
 
 @pytest.mark.parametrize(

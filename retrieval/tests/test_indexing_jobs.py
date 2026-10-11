@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from retrieval.embedding_budget import EmbeddingBudgetExhaustedError
+from retrieval.fingerprints import build_version_fingerprints
 from retrieval.github_urls import RepositoryReference
 from retrieval.indexer import IndexingReport
 from retrieval.indexing_jobs import (
@@ -75,6 +76,7 @@ INDEXING_RUN = RepositoryIndexingRun(
     ),
     collection_statistics={},
     timings={"clone or reuse": 812.4, "embed and store": 30_100.6},
+    fingerprints=build_version_fingerprints([]),
 )
 
 

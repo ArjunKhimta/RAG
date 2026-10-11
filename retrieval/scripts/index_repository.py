@@ -37,6 +37,7 @@ from retrieval.embedding_budget import (
     build_document_embedder,
     build_indexing_rate_limiter,
 )
+from retrieval.fingerprints import VersionFingerprints
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.indexer import IndexingReport
 from retrieval.other_languages import describe_counts
@@ -51,6 +52,8 @@ from retrieval.repository_indexing import (
 BYTES_PER_MEGABYTE = 1024 * 1024
 
 LABEL_WIDTH = 28
+
+FINGERPRINT_PREFIX_LENGTH = 12
 
 
 def main() -> int:
@@ -97,6 +100,7 @@ def main() -> int:
         _row("Secret findings redacted", run.secret_finding_count),
         _row("Call sites resolved", f"{run.resolved_call_count} of {run.call_site_count}"),
         _row("Call graph edges", run.call_graph_edge_count),
+        _row("Fingerprint root", _describe_fingerprints(run.fingerprints)),
         "",
         *_report_lines(run.report),
         "",
@@ -140,6 +144,13 @@ def _report_lines(report: IndexingReport) -> list[str]:
         _row("Rate-limit waiting", f"{report.rate_limit_wait_seconds:.1f} s"),
         _row("Retry waiting", f"{report.retry_wait_seconds:.1f} s"),
     ]
+
+
+def _describe_fingerprints(fingerprints: VersionFingerprints) -> str:
+    return (
+        f"{fingerprints.root[:FINGERPRINT_PREFIX_LENGTH]} "
+        f"({len(fingerprints.files)} files, {len(fingerprints.folders)} folders)"
+    )
 
 
 def _row(label: str, value: object) -> str:

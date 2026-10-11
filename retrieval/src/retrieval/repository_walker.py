@@ -9,7 +9,8 @@ skipped are reported with the reason, so nothing disappears silently. Files in o
 languages are counted by language, never read, so the version can say what was left out.
 
 Each file is scanned for secrets and redacted before it is chunked. A file that cannot be scanned
-reliably is skipped rather than indexed unscanned.
+reliably is skipped rather than indexed unscanned. Each file that is chunked is fingerprinted from
+the same bytes, so a later refresh can tell exactly which indexed files changed.
 
 The calls and imports of each source file are collected from the same redacted text, for the call
 graph. Test files are left out of the graph, so their calls are not collected.
@@ -26,6 +27,7 @@ from pathlib import Path, PurePosixPath
 from retrieval.call_sites import FileCalls, find_file_calls
 from retrieval.chunker import CodeChunk, chunk_python_source
 from retrieval.config import MAX_FILE_BYTES
+from retrieval.fingerprints import PathFingerprint, fingerprint_bytes
 from retrieval.other_languages import OtherLanguageCount, language_of, summarize_languages
 from retrieval.secret_scanning import SecretFinding, UnscannableSourceError, scan_and_redact
 
@@ -80,6 +82,7 @@ class ChunkingResult:
     secret_findings: list[SecretFinding]
     unscannable: list[SkippedPath]
     file_calls: list[FileCalls]
+    file_fingerprints: list[PathFingerprint]
 
 
 def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTES) -> WalkResult:
@@ -117,12 +120,13 @@ def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
     """Redact secrets in each file, then chunk it under its repository-relative path.
 
     Chunks are marked when they come from a test file or cover a redacted line. Calls and imports
-    are collected for source files only.
+    are collected for source files only. Every chunked file is fingerprinted from the bytes read.
     """
     chunks: list[CodeChunk] = []
     secret_findings: list[SecretFinding] = []
     unscannable: list[SkippedPath] = []
     file_calls: list[FileCalls] = []
+    file_fingerprints: list[PathFingerprint] = []
     for source_file in files:
         source = source_file.path.read_bytes()
         try:
@@ -131,6 +135,9 @@ def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
             unscannable.append(SkippedPath(source_file.relative_path, SkipReason.NOT_SCANNABLE))
             continue
         secret_findings.extend(redacted.findings)
+        file_fingerprints.append(
+            PathFingerprint(path=source_file.relative_path, fingerprint=fingerprint_bytes(source))
+        )
         is_test_file = is_test_path(source_file.relative_path)
         for chunk in chunk_python_source(source_file.relative_path, redacted.source):
             contains_redaction = _covers_any_line(chunk, redacted.redacted_line_numbers)
@@ -145,6 +152,7 @@ def chunk_source_files(files: list[SourceFile]) -> ChunkingResult:
         secret_findings=secret_findings,
         unscannable=unscannable,
         file_calls=file_calls,
+        file_fingerprints=file_fingerprints,
     )
 
 

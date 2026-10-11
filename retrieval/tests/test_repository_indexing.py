@@ -9,6 +9,8 @@ import pytest
 
 from retrieval import repository_indexing
 from retrieval.chunk_store import CHUNKS_COLLECTION, CachedEmbedding, IndexedVersion, StoredChunk
+from retrieval.config import INDEX_FORMAT_VERSION
+from retrieval.fingerprints import PathFingerprint, build_version_fingerprints, fingerprint_bytes
 from retrieval.github_urls import RepositoryReference
 from retrieval.other_languages import OtherLanguageCount
 from retrieval.rate_limiter import RateLimiter
@@ -91,10 +93,22 @@ class RecordingChunkStore:
         return COLLECTION_STATISTICS
 
 
+class RecordingFingerprintStore:
+    saved: list[tuple] = []
+
+    def __init__(self, database) -> None:
+        self.database = database
+
+    def save(self, metadata, fingerprints, format_version) -> None:
+        RecordingFingerprintStore.saved.append((metadata, fingerprints, format_version))
+
+
 @pytest.fixture
 def ensured_search_indexes(monkeypatch) -> list[tuple]:
     RecordingChunkStore.instances = []
+    RecordingFingerprintStore.saved = []
     monkeypatch.setattr(repository_indexing, "MongoChunkStore", RecordingChunkStore)
+    monkeypatch.setattr(repository_indexing, "MongoFingerprintStore", RecordingFingerprintStore)
     ensured: list[tuple] = []
 
     def ensure_vector_index(collection, dimensions):
@@ -167,7 +181,29 @@ def test_a_version_is_cloned_chunked_graphed_embedded_and_recorded(
         "walk, scan, chunk",
         "call graph",
         "embed and store",
+        "store fingerprints",
     ]
+
+
+def test_fingerprints_of_the_indexed_files_are_stored_after_the_version_is_recorded(
+    tmp_path, ensured_search_indexes
+):
+    run = index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, []),
+    )
+
+    expected_files = [
+        PathFingerprint(path, fingerprint_bytes(text.encode("utf-8")))
+        for path, text in sorted(SOURCE_FILES.items())
+    ]
+    assert run.fingerprints == build_version_fingerprints(expected_files)
+    assert RecordingFingerprintStore.saved == [(METADATA, run.fingerprints, INDEX_FORMAT_VERSION)]
+    assert len(RecordingChunkStore.instances[0].repositories) == 1
 
 
 def test_store_and_search_indexes_are_ensured_before_embedding(tmp_path, ensured_search_indexes):
@@ -207,6 +243,7 @@ def test_a_refused_clone_stops_before_any_embedding(tmp_path, ensured_search_ind
 
     assert embedder.embedded_batches == []
     assert RecordingChunkStore.instances == []
+    assert RecordingFingerprintStore.saved == []
 
 
 def test_stages_are_announced_in_order_and_progress_is_reported(tmp_path, ensured_search_indexes):
@@ -249,6 +286,7 @@ def test_too_many_chunks_is_refused_before_any_embedding(tmp_path, ensured_searc
 
     assert embedder.embedded_batches == []
     assert RecordingChunkStore.instances == []
+    assert RecordingFingerprintStore.saved == []
 
 
 def test_a_version_with_no_python_code_is_refused_before_any_embedding(
@@ -278,6 +316,7 @@ def test_a_version_with_no_python_code_is_refused_before_any_embedding(
     )
     assert embedder.embedded_batches == []
     assert RecordingChunkStore.instances == []
+    assert RecordingFingerprintStore.saved == []
 
 
 def test_files_in_other_languages_are_recorded_with_the_version(tmp_path, ensured_search_indexes):
