@@ -5,6 +5,12 @@ its ID at once, and the caller polls the job's record. Starting a job checks, in
 already indexed needs no job; the same version already running returns that job; a different job
 running means busy; otherwise a job record is saved and the work starts on a background thread.
 
+A refresh asks for a version already indexed to be indexed again if its tag or branch has moved.
+It is up to date, with no job, when the version is a commit ID (which never moves) or GitHub still
+names the indexed commit; otherwise it starts a job like any other, which skips the "already
+indexed" answer, expects the commit GitHub named, and patches the stored index (see
+`refresh_planning.py`). GitHub is asked outside the lock, since that can take seconds.
+
 Only one job runs at a time per process, tracked in memory: every job shares the indexing lane's
 per-minute limit, and one job at a time keeps memory predictable on a small server. This assumes
 the service runs as a single process; with more, each would run its own job.
@@ -34,6 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -59,6 +66,8 @@ from retrieval.repository_cloner import (
     UnacceptableLicenseError,
     UnsafeDeletionError,
     clone_repository,
+    find_remote_commit,
+    is_commit_id,
     remove_directory_inside,
 )
 from retrieval.repository_indexing import (
@@ -120,6 +129,7 @@ REFUSAL_CODES: tuple[tuple[type[Exception], JobErrorCode], ...] = (
 
 class StartKind(StrEnum):
     ALREADY_INDEXED = "already_indexed"
+    UP_TO_DATE = "up_to_date"
     ALREADY_RUNNING = "already_running"
     STARTED = "started"
     BUSY = "busy"
@@ -215,7 +225,8 @@ class IndexingJobRunner:
         embedder: DocumentEmbedder,
         rate_limiter: RateLimiter,
         index_version: IndexVersion = index_repository_version,
-        clone: Callable[[RepositoryReference, str], ClonedRepository] = clone_repository,
+        clone: Callable[..., ClonedRepository] = clone_repository,
+        find_remote_commit: Callable[[RepositoryReference, str], str] = find_remote_commit,
         start_thread: StartThread | None = None,
         repositories_directory: Path = REPOSITORIES_DIRECTORY,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -228,6 +239,7 @@ class IndexingJobRunner:
         self._rate_limiter = rate_limiter
         self._index_version = index_version
         self._clone = clone
+        self._find_remote_commit = find_remote_commit
         self._start_thread = start_thread or start_daemon_thread
         self._repositories_directory = repositories_directory
         self._clock = clock
@@ -241,26 +253,59 @@ class IndexingJobRunner:
             record = self._repository_records.find_repository_record(repository, version)
             if record is not None:
                 return StartOutcome(StartKind.ALREADY_INDEXED, repository_record=record)
-            if self._running is not None:
-                running_job_id, running_repository, running_version = self._running
-                if (running_repository, running_version) == (repository, version):
-                    return StartOutcome(StartKind.ALREADY_RUNNING, job_id=running_job_id)
-                return StartOutcome(StartKind.BUSY)
-            job_id = self._new_job_id()
-            self._job_store.create(job_id, repository, version, self._clock())
-            self._running = (job_id, repository, version)
-        self._start_thread(lambda: self._run(job_id, repository, version))
-        return StartOutcome(StartKind.STARTED, job_id=job_id)
+            outcome = self._create_job_locked(repository, version)
+        return self._launch(outcome, repository, version, expected_commit=None)
+
+    def refresh(self, repository: str, version: str) -> StartOutcome:
+        """Index `repository` at `version` again if its tag or branch has moved since indexing.
+
+        Raises `VersionNotFoundError` if the tag or branch is gone, and `CloneFailedError` if
+        GitHub cannot be asked.
+        """
+        record = self._repository_records.find_repository_record(repository, version)
+        if record is None:
+            return self.start(repository, version)
+        if is_commit_id(version):
+            return StartOutcome(StartKind.UP_TO_DATE, repository_record=record)
+        owner, name = repository.split("/")
+        remote_commit = self._find_remote_commit(RepositoryReference(owner, name), version)
+        if remote_commit == record["commit_id"]:
+            return StartOutcome(StartKind.UP_TO_DATE, repository_record=record)
+        with self._lock:
+            outcome = self._create_job_locked(repository, version)
+        return self._launch(outcome, repository, version, expected_commit=remote_commit)
 
     def find_job(self, job_id: str) -> dict[str, Any] | None:
         return self._job_store.find(job_id)
 
-    def _run(self, job_id: str, repository: str, version: str) -> None:
+    def _create_job_locked(self, repository: str, version: str) -> StartOutcome:
+        if self._running is not None:
+            running_job_id, running_repository, running_version = self._running
+            if (running_repository, running_version) == (repository, version):
+                return StartOutcome(StartKind.ALREADY_RUNNING, job_id=running_job_id)
+            return StartOutcome(StartKind.BUSY)
+        job_id = self._new_job_id()
+        self._job_store.create(job_id, repository, version, self._clock())
+        self._running = (job_id, repository, version)
+        return StartOutcome(StartKind.STARTED, job_id=job_id)
+
+    def _launch(
+        self, outcome: StartOutcome, repository: str, version: str, expected_commit: str | None
+    ) -> StartOutcome:
+        if outcome.kind == StartKind.STARTED:
+            job_id = outcome.job_id
+            self._start_thread(lambda: self._run(job_id, repository, version, expected_commit))
+        return outcome
+
+    def _run(self, job_id: str, repository: str, version: str, expected_commit: str | None) -> None:
         owner, name = repository.split("/")
         cloned_paths: list[Path] = []
+        clone = self._clone
+        if expected_commit is not None:
+            clone = partial(self._clone, expected_commit=expected_commit)
 
         def clone_and_remember(reference: RepositoryReference, clone_version: str):
-            cloned = self._clone(reference, clone_version)
+            cloned = clone(reference, clone_version)
             if not cloned.was_reused:
                 cloned_paths.append(cloned.path)
             return cloned

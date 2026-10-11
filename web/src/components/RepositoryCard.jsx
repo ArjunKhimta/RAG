@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { isSignedOutError } from "../api/account.js";
-import { fetchRepository, removeRepository, resumeRepository } from "../api/repositories.js";
+import {
+  fetchRepository,
+  refreshRepository,
+  removeRepository,
+  resumeRepository,
+} from "../api/repositories.js";
 import { useCurrentTime } from "../hooks/useCurrentTime.js";
 import { gitHubCommitLink, gitHubRepositoryLink, safeGitHubLink } from "../links.js";
 import {
   LinkStatus,
+  RefreshStatus,
+  isRefreshRunning,
+  refreshAvailability,
+  refreshOf,
   resumeAvailability,
   stageDescription,
   statusLabel,
@@ -29,13 +38,16 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
   const [actionErrorMessage, setActionErrorMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
-  const now = useCurrentTime(
-    CLOCK_REFRESH_MILLISECONDS,
-    link.status === LinkStatus.WAITING_FOR_QUOTA,
-  );
+  const [refreshNotice, setRefreshNotice] = useState(null);
+  const refresh = refreshOf(link);
+  const isWaitingForQuota =
+    link.status === LinkStatus.WAITING_FOR_QUOTA ||
+    (refresh !== null && refresh.status === RefreshStatus.WAITING_FOR_QUOTA);
+  const now = useCurrentTime(CLOCK_REFRESH_MILLISECONDS, isWaitingForQuota);
 
   useEffect(() => {
-    if (link.status !== LinkStatus.INDEXING) {
+    const wasRefreshing = isRefreshRunning(link);
+    if (link.status !== LinkStatus.INDEXING && !wasRefreshing) {
       return undefined;
     }
     let active = true;
@@ -44,6 +56,9 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
         const updated = await fetchRepository(link.id);
         if (active) {
           setPollErrorMessage(null);
+          if (wasRefreshing && refreshOf(updated) === null) {
+            setRefreshNotice(refreshedNotice(updated));
+          }
           onChange(updated);
         }
       } catch (error) {
@@ -88,6 +103,17 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
     });
   }
 
+  function handleRefresh() {
+    setRefreshNotice(null);
+    return runAction(async () => {
+      const updated = await refreshRepository(link.id);
+      if (refreshOf(updated) === null) {
+        setRefreshNotice(upToDateNotice(updated));
+      }
+      onChange(updated);
+    });
+  }
+
   function handleRemove() {
     return runAction(async () => {
       await removeRepository(link.id);
@@ -96,6 +122,7 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
   }
 
   const resume = resumeAvailability(link, now);
+  const refreshing = refreshAvailability(link, now);
 
   return (
     <li className="repository-card">
@@ -107,8 +134,12 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
         <span className={`status status-${link.status}`}>{statusLabel(link.status)}</span>
       </div>
 
-      {link.status === LinkStatus.INDEXING && <IndexingProgress link={link} />}
+      {link.status === LinkStatus.INDEXING && <IndexingProgress job={link} />}
       {link.status === LinkStatus.READY && <IndexedDetails link={link} />}
+      {link.status === LinkStatus.READY && refresh !== null && (
+        <RefreshDetails refresh={refresh} resumeAfter={refreshing.resumeAfter} />
+      )}
+      {refreshNotice !== null && <p role="status">{refreshNotice}</p>}
       {link.status === LinkStatus.WAITING_FOR_QUOTA && (
         <WaitingDetails link={link} resumeAfter={resume.resumeAfter} />
       )}
@@ -138,6 +169,11 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
             </Link>
           </>
         )}
+        {link.status === LinkStatus.READY && refreshing.canRefresh && (
+          <button type="button" className="button" onClick={handleRefresh} disabled={busy}>
+            {busy ? "Checking GitHub…" : "Refresh from GitHub"}
+          </button>
+        )}
         {resume.canResume && (
           <button type="button" className="button" onClick={handleResume} disabled={busy}>
             Resume indexing
@@ -165,14 +201,14 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
   );
 }
 
-function IndexingProgress({ link }) {
-  const progress = link.progress;
+function IndexingProgress({ job }) {
+  const progress = job.progress;
   const total = progress === null ? null : progress.to_embed;
-  const showCount = link.stage === "embedding" && total !== null && total > 0;
+  const showCount = job.stage === "embedding" && total !== null && total > 0;
 
   return (
     <div className="indexing-progress">
-      <p>{stageDescription(link.stage)}…</p>
+      <p>{stageDescription(job.stage)}…</p>
       {showCount ? (
         <>
           <progress value={progress.embedded} max={total} />
@@ -214,6 +250,51 @@ function IndexedDetails({ link }) {
       <PythonOnlyNote counts={link.indexed.other_language_files} />
     </>
   );
+}
+
+function RefreshDetails({ refresh, resumeAfter }) {
+  if (refresh.status === RefreshStatus.RUNNING) {
+    return (
+      <>
+        <p>Refreshing from GitHub. The commit above stays searchable until it finishes.</p>
+        <IndexingProgress job={refresh} />
+      </>
+    );
+  }
+  if (refresh.status === RefreshStatus.WAITING_FOR_QUOTA) {
+    return (
+      <p>
+        Today&apos;s embedding quota ran out while refreshing.{" "}
+        {resumeAfter === null
+          ? "You can refresh again now."
+          : `You can refresh again after ${formatLocalTime(resumeAfter)}; ` +
+            "the work done so far is kept."}
+      </p>
+    );
+  }
+  if (refresh.status === RefreshStatus.INTERRUPTED) {
+    return (
+      <p>The refresh stopped before it finished. Refreshing again reuses the work already done.</p>
+    );
+  }
+  const reason = withFullStop(refresh.error?.message ?? "The refresh failed");
+  return <p>The refresh did not finish: {reason} The commit above is still searchable.</p>;
+}
+
+function upToDateNotice(link) {
+  return `Up to date: GitHub still has ${link.version} at commit ${shortCommit(link)}.`;
+}
+
+function refreshedNotice(link) {
+  return `Refreshed: now indexed at commit ${shortCommit(link)}.`;
+}
+
+function shortCommit(link) {
+  return link.indexed === null ? "unknown" : link.indexed.commit_id.slice(0, SHORT_COMMIT_LENGTH);
+}
+
+function withFullStop(text) {
+  return text.endsWith(".") ? text : `${text}.`;
 }
 
 function WaitingDetails({ link, resumeAfter }) {

@@ -6,6 +6,7 @@ const {
   UNAVAILABLE_MESSAGE,
   UNEXPECTED_REPLY_MESSAGE,
   UNKNOWN_JOB_MESSAGE,
+  VERSION_GONE_MESSAGE,
   RetrievalServiceError,
   createRetrievalService,
 } = require("../src/retrievalService");
@@ -642,3 +643,57 @@ function startFakeService() {
     });
   });
 }
+
+describe("refreshing an indexed version", () => {
+  test("asks the service to refresh, and an unmoved version is up to date with its block", async () => {
+    service.reply({ status: 200, body: { status: "up_to_date", repository: REPOSITORY_BLOCK } });
+
+    const reply = await client().refreshIndexing({ repository: "pallets/flask", version: "main" });
+
+    expect(JSON.parse(service.requests[0].body)).toEqual({
+      repository: "pallets/flask",
+      version: "main",
+      refresh: true,
+    });
+    expect(service.requests[0].path).toBe("/index");
+    expect(reply.status).toBe("up_to_date");
+    expect(reply.repository.commit_id).toBe(REPOSITORY_BLOCK.commit_id);
+  });
+
+  test("a moved version starts a job", async () => {
+    service.reply({ status: 202, body: { job_id: JOB_ID, status: "running", status_link: "x" } });
+
+    const reply = await client().refreshIndexing({ repository: "pallets/flask", version: "main" });
+
+    expect(reply).toEqual({ status: "running", jobId: JOB_ID });
+  });
+
+  test("a tag or branch that no longer exists gets its own message", async () => {
+    service.reply({ status: 409, body: { error: "main is no longer a tag or branch of a/b" } });
+
+    const error = await caught(client().refreshIndexing({ repository: "a/b", version: "main" }));
+
+    expect(error.status).toBe(409);
+    expect(error.message).toBe(VERSION_GONE_MESSAGE);
+    expect(loggedText()).toContain("main is no longer a tag or branch of a/b");
+  });
+
+  test("GitHub out of reach passes on the service's message and wait", async () => {
+    const message = "GitHub could not be reached to check for changes; try again shortly";
+    service.reply({ status: 503, headers: { "Retry-After": "30" }, body: { error: message } });
+
+    const error = await caught(client().refreshIndexing({ repository: "a/b", version: "main" }));
+
+    expect(error.status).toBe(503);
+    expect(error.message).toBe(message);
+    expect(error.retryAfterSeconds).toBe(30);
+  });
+
+  test("an up_to_date status is accepted only from a refresh", async () => {
+    service.reply({ status: 200, body: { status: "up_to_date", repository: REPOSITORY_BLOCK } });
+
+    const error = await caught(client().startIndexing({ repository: "a/b", version: "1" }));
+
+    expect(error.status).toBe(502);
+  });
+});

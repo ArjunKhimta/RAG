@@ -27,8 +27,11 @@ from retrieval.repository_cloner import (
     RepositoryTooLargeError,
     UnacceptableLicenseError,
     UnsafeDeletionError,
+    VersionNotFoundError,
     clone_repository,
     find_license_file,
+    find_remote_commit,
+    is_commit_id,
     remove_directory_inside,
 )
 
@@ -550,3 +553,104 @@ def _git(directory: Path, *arguments: str) -> str:
     command = ["git", *GIT_IDENTITY_OPTIONS, "-C", str(directory), *arguments]
     completed = subprocess.run(command, capture_output=True, text=True, check=True)
     return completed.stdout.strip()
+
+
+def test_a_tag_resolves_to_its_commit(reference, public_source):
+    assert find_remote_commit(reference, RELEASE_TAG) == _git(public_source, "rev-parse", "1.0.0")
+
+
+def test_an_annotated_tag_resolves_to_the_commit_it_points_to(reference, public_source):
+    _git(public_source, "tag", "-a", "2.0.0", "-m", "annotated")
+
+    commit_id = find_remote_commit(reference, "2.0.0")
+
+    assert commit_id == _git(public_source, "rev-parse", "2.0.0^{commit}")
+    assert commit_id != _git(public_source, "rev-parse", "2.0.0")
+
+
+def test_a_branch_resolves_to_its_latest_commit_as_it_moves(reference, public_source):
+    _git(public_source, "branch", "develop")
+    before = find_remote_commit(reference, "develop")
+    _git(public_source, "checkout", "--quiet", "develop")
+    _commit_file(public_source, "def third():\n    return 3\n", "third")
+
+    after = find_remote_commit(reference, "develop")
+
+    assert before != after
+    assert after == _git(public_source, "rev-parse", "develop")
+
+
+def test_a_tag_wins_over_a_branch_of_the_same_name_as_git_fetch_does(reference, public_source):
+    _git(public_source, "branch", RELEASE_TAG + "-x")
+    _git(public_source, "branch", "shared-name")
+    _git(public_source, "tag", "shared-name", RELEASE_TAG)
+
+    commit_id = find_remote_commit(reference, "shared-name")
+
+    assert commit_id == _git(public_source, "rev-parse", RELEASE_TAG)
+    assert commit_id != _git(public_source, "rev-parse", "refs/heads/shared-name")
+
+
+def test_a_name_that_is_only_the_end_of_another_branch_is_not_found(reference, public_source):
+    _git(public_source, "branch", "release-9")
+
+    with pytest.raises(VersionNotFoundError, match="9 is not a tag or branch of owner/project"):
+        find_remote_commit(reference, "9")
+
+
+def test_an_unreachable_repository_is_a_failed_git_command(tmp_path):
+    missing = LocalSourceReference(
+        owner="owner", name="project", source_url=(tmp_path / "missing").as_uri()
+    )
+
+    with pytest.raises(CloneFailedError, match="git ls-remote failed"):
+        find_remote_commit(missing, RELEASE_TAG)
+
+
+def test_unsafe_versions_are_refused_before_asking_the_remote(reference):
+    with pytest.raises(InvalidVersionError):
+        find_remote_commit(reference, "--upload-pack=touch")
+
+
+def test_only_a_full_forty_character_hexadecimal_name_is_a_commit_id():
+    assert is_commit_id("22d924701a6ae2e4cd01e9a15bbaf3946094af65")
+    assert not is_commit_id("22d9247")
+    assert not is_commit_id("22D924701A6AE2E4CD01E9A15BBAF3946094AF65")
+    assert not is_commit_id("main")
+
+
+def test_a_saved_clone_at_another_commit_is_replaced_when_a_commit_is_expected(
+    reference, repositories_directory, public_source
+):
+    _git(public_source, "branch", "develop")
+    first_clone = _clone(reference, repositories_directory, "develop")
+    _git(public_source, "checkout", "--quiet", "develop")
+    _commit_file(public_source, "def third():\n    return 3\n", "third")
+    new_commit = _git(public_source, "rev-parse", "develop")
+
+    second_clone = clone_repository(
+        reference,
+        "develop",
+        repositories_directory=repositories_directory,
+        fetch_repository_details=lambda reference: PUBLIC_BSD_DETAILS,
+        expected_commit=new_commit,
+    )
+
+    assert first_clone.metadata.commit_id != new_commit
+    assert second_clone.metadata.commit_id == new_commit
+    assert not second_clone.was_reused
+    assert (second_clone.source_path / "app.py").read_text() == "def third():\n    return 3\n"
+
+
+def test_a_saved_clone_at_the_expected_commit_is_reused(reference, repositories_directory):
+    first_clone = _clone(reference, repositories_directory, RELEASE_TAG)
+
+    second_clone = clone_repository(
+        reference,
+        RELEASE_TAG,
+        repositories_directory=repositories_directory,
+        fetch_repository_details=_fail_if_called,
+        expected_commit=first_clone.metadata.commit_id,
+    )
+
+    assert second_clone.was_reused

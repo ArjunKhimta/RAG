@@ -12,7 +12,8 @@
  * - 400, 503: the service's own message, which names the problem without echoing values and reads
  *   well to a user (503 keeps the service's `Retry-After`)
  * - 409 (this version cannot be searched): a fixed message, since the service's is written for a
- *   developer at a terminal (it names the indexing script); the service's message is logged
+ *   developer at a terminal (it names the indexing script); the service's message is logged. For a
+ *   refresh, 409 means the tag or branch no longer exists on GitHub, and has its own fixed message
  * - 502 from the service (the answer failed the citation check): a fixed message
  * - 404 for an unknown indexing job: a fixed message; a malformed job ID is refused without a call
  * - a timeout or a connection failure: 503 with `Retry-After: 30`
@@ -28,6 +29,7 @@ const TIMEOUT_MILLISECONDS = {
   search: 15_000,
   overview: 15_000,
   index: 30_000,
+  refresh: 45_000,
   ask: 90_000,
 };
 
@@ -61,6 +63,9 @@ const UNKNOWN_JOB_MESSAGE = "No such indexing job";
 
 const NOT_SEARCHABLE_MESSAGE =
   "This repository version cannot be searched yet; it may still be indexing or need indexing again";
+
+const VERSION_GONE_MESSAGE =
+  "This tag or branch no longer exists on GitHub, so it cannot be refreshed";
 
 class RetrievalServiceError extends ApiError {
   /**
@@ -130,13 +135,20 @@ function createRetrievalService({
     }
   }
 
-  async function request(method, path, body, timeoutMilliseconds, readSuccess) {
+  async function request(
+    method,
+    path,
+    body,
+    timeoutMilliseconds,
+    readSuccess,
+    conflictMessage = NOT_SEARCHABLE_MESSAGE,
+  ) {
     const reply = await call(method, path, body, timeoutMilliseconds);
     try {
       if (reply.status === 200 || reply.status === 202) {
         return readSuccess(reply);
       }
-      throw failure(reply, path);
+      throw failure(reply, path, conflictMessage);
     } catch (error) {
       if (error instanceof UnexpectedReplyError) {
         logError(
@@ -186,6 +198,22 @@ function createRetrievalService({
       return request("POST", "/index", { repository, version }, timeouts.index, startReply);
     },
 
+    /**
+     * Index an indexed version again if its tag or branch has moved: `up_to_date` with the
+     * repository block when it has not, or a running job.
+     * @param {{ repository: string, version: string }} target
+     */
+    refreshIndexing({ repository, version }) {
+      return request(
+        "POST",
+        "/index",
+        { repository, version, refresh: true },
+        timeouts.refresh,
+        refreshReply,
+        VERSION_GONE_MESSAGE,
+      );
+    },
+
     /** @param {string} jobId */
     async indexJob(jobId) {
       if (typeof jobId !== "string" || !JOB_ID_PATTERN.test(jobId)) {
@@ -230,7 +258,7 @@ function unavailable() {
   );
 }
 
-function failure(reply, path) {
+function failure(reply, path, conflictMessage) {
   if (reply.status === BAD_GATEWAY_STATUS) {
     return new RetrievalServiceError(BAD_GATEWAY_STATUS, REJECTED_ANSWER_MESSAGE);
   }
@@ -239,7 +267,7 @@ function failure(reply, path) {
   }
   if (reply.status === CONFLICT_STATUS) {
     logError(`Retrieval service refused ${path}: ${redact(String(errorMessage(reply)))}`);
-    return new RetrievalServiceError(CONFLICT_STATUS, NOT_SEARCHABLE_MESSAGE);
+    return new RetrievalServiceError(CONFLICT_STATUS, conflictMessage);
   }
   if (!PASSED_ON_STATUSES.has(reply.status)) {
     return new UnexpectedReplyError("a status the service does not send");
@@ -273,6 +301,14 @@ function startReply(reply) {
     return { status: "running", jobId: body.job_id };
   }
   throw new UnexpectedReplyError("a start reply with an unknown status or job ID");
+}
+
+function refreshReply(reply) {
+  const body = requireObject(reply.body, "refresh reply");
+  if (reply.status === 200 && body.status === "up_to_date") {
+    return { status: "up_to_date", repository: repositoryBlock(body.repository) };
+  }
+  return startReply(reply);
 }
 
 function askReply(body) {
@@ -513,6 +549,7 @@ module.exports = {
   UNAVAILABLE_RETRY_SECONDS,
   UNEXPECTED_REPLY_MESSAGE,
   UNKNOWN_JOB_MESSAGE,
+  VERSION_GONE_MESSAGE,
   RetrievalServiceError,
   createRetrievalService,
   refusedBeforeGemini,

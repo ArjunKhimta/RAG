@@ -2,14 +2,20 @@ const request = require("supertest");
 
 const {
   NOT_READY_MESSAGE,
+  NOT_READY_TO_REFRESH_MESSAGE,
   NOTHING_TO_RESUME_MESSAGE,
   PERMANENT_FAILURE_MESSAGE,
+  REFRESH_TOO_EARLY_MESSAGE,
   REPOSITORY_RULE,
   TOO_EARLY_MESSAGE,
   UNKNOWN_LINK_MESSAGE,
   VERSION_RULE,
 } = require("../src/repositoryRoutes");
-const { RetrievalServiceError, UNEXPECTED_REPLY_MESSAGE } = require("../src/retrievalService");
+const {
+  RetrievalServiceError,
+  UNEXPECTED_REPLY_MESSAGE,
+  VERSION_GONE_MESSAGE,
+} = require("../src/retrievalService");
 const { repositoryBlock } = require("./support/fakeRetrievalService");
 const { HUBOT, OCTOCAT } = require("./support/userStoreContract");
 const { TEST_APP_ORIGIN, buildTestApp } = require("./support/testApp");
@@ -71,6 +77,7 @@ describe("every route needs a session", () => {
     ["POST", "/api/repositories"],
     ["GET", "/api/repositories/0123456789abcdef01234567"],
     ["POST", "/api/repositories/0123456789abcdef01234567/resume"],
+    ["POST", "/api/repositories/0123456789abcdef01234567/refresh"],
     ["DELETE", "/api/repositories/0123456789abcdef01234567"],
   ])("%s %s without one is a 401", async (method, path) => {
     const response = await request(app)[method.toLowerCase()](path).set("Origin", TEST_APP_ORIGIN);
@@ -109,6 +116,7 @@ describe("adding a repository", () => {
       error: null,
       resume_after: null,
       indexed: { commit_id: block.commit_id, license: block.license, other_language_files: null },
+      refresh: null,
       created_at: "2026-10-07T12:00:00.000Z",
       updated_at: "2026-10-07T12:00:00.000Z",
     });
@@ -605,5 +613,188 @@ describe("removing a repository", () => {
 
     expect(response.status).toBe(403);
     expect((await listLinks()).body.repositories).toHaveLength(1);
+  });
+});
+
+describe("refreshing a repository", () => {
+  const MAIN = { repository: "pallets/flask", version: "main" };
+
+  const MOVED_COMMIT = "d".repeat(40);
+
+  function refresh(linkId, as = cookie) {
+    return request(app)
+      .post(`/api/repositories/${linkId}/refresh`)
+      .set("Origin", TEST_APP_ORIGIN)
+      .set("Cookie", as);
+  }
+
+  async function readyMain() {
+    service.markIndexed(MAIN.repository, MAIN.version);
+    return (await addLink(MAIN)).body;
+  }
+
+  async function startedRefresh() {
+    const link = await readyMain();
+    service.moveVersion(MAIN.repository, MAIN.version, MOVED_COMMIT);
+    await refresh(link.id);
+    return { link, job: service.jobFor(MAIN.repository, MAIN.version) };
+  }
+
+  async function indexingRequestsUsed() {
+    const usage = await request(app).get("/api/me/usage").set("Cookie", cookie);
+    return usage.body.indexing_requests.used;
+  }
+
+  test("a version that has not moved is up to date, stays ready, and uses no slot", async () => {
+    const link = await readyMain();
+
+    const response = await refresh(link.id);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ status: "ready", refresh: null });
+    expect(response.body.indexed.commit_id).toBe("c".repeat(40));
+    expect(service.refreshCalls).toEqual([MAIN]);
+    expect(await indexingRequestsUsed()).toBe(0);
+  });
+
+  test("a moved version starts a refresh beside the ready link and uses a slot", async () => {
+    const link = await readyMain();
+    service.moveVersion(MAIN.repository, MAIN.version, MOVED_COMMIT);
+
+    const response = await refresh(link.id);
+
+    expect(response.status).toBe(202);
+    expect(response.body.status).toBe("ready");
+    expect(response.body.indexed.commit_id).toBe("c".repeat(40));
+    expect(response.body.refresh).toEqual({
+      status: "running",
+      stage: null,
+      progress: null,
+      error: null,
+      resume_after: null,
+    });
+    expect(JSON.stringify(response.body)).not.toContain("job_id");
+    expect(await indexingRequestsUsed()).toBe(1);
+  });
+
+  test("reading the link follows the refresh, then shows the new commit once it succeeds", async () => {
+    const { link, job } = await startedRefresh();
+    service.updateJob(job.job_id, {
+      stage: "embedding",
+      progress: { embedded: 10, to_embed: 21 },
+    });
+
+    const during = await readLink(link.id);
+    service.finishJob(job.job_id);
+    const after = await readLink(link.id);
+
+    expect(during.body.status).toBe("ready");
+    expect(during.body.refresh).toMatchObject({
+      status: "running",
+      stage: "embedding",
+      progress: { embedded: 10, to_embed: 21 },
+    });
+    expect(after.body.status).toBe("ready");
+    expect(after.body.refresh).toBeNull();
+    expect(after.body.indexed.commit_id).toBe(MOVED_COMMIT);
+  });
+
+  test("the old index stays searchable while a refresh runs", async () => {
+    const { link } = await startedRefresh();
+
+    const response = await request(app)
+      .post(`/api/repositories/${link.id}/search`)
+      .set("Origin", TEST_APP_ORIGIN)
+      .set("Cookie", cookie)
+      .send({ query: "session cookie" });
+
+    expect(response.status).toBe(200);
+  });
+
+  test("a failed refresh leaves the link ready on the old commit, and may be tried again", async () => {
+    const { link, job } = await startedRefresh();
+    const error = { code: "clone_failed", message: "The version could not be downloaded" };
+    service.updateJob(job.job_id, { status: "failed", error });
+
+    const read = await readLink(link.id);
+    const again = await refresh(link.id);
+
+    expect(read.body.status).toBe("ready");
+    expect(read.body.indexed.commit_id).toBe("c".repeat(40));
+    expect(read.body.refresh).toMatchObject({ status: "failed", error });
+    expect(again.status).toBe(202);
+    expect(service.refreshCalls).toHaveLength(2);
+  });
+
+  test("a refresh waiting for the quota cannot be pressed again until the reset", async () => {
+    const { link, job } = await startedRefresh();
+    service.updateJob(job.job_id, {
+      status: "waiting_for_quota",
+      error: { code: null, message: "Today's indexing budget is used up" },
+      resume_after: "2026-10-07T12:10:00Z",
+    });
+    await readLink(link.id);
+
+    const early = await refresh(link.id);
+    clock.advanceSeconds(600);
+    const later = await refresh(link.id);
+
+    expect(early.status).toBe(409);
+    expect(early.body).toEqual({ error: REFRESH_TOO_EARLY_MESSAGE });
+    expect(early.headers["retry-after"]).toBe("600");
+    expect(later.status).toBe(202);
+  });
+
+  test("pressing refresh while one runs changes nothing and asks the service nothing", async () => {
+    const { link } = await startedRefresh();
+
+    const response = await refresh(link.id);
+
+    expect(response.status).toBe(202);
+    expect(response.body.refresh.status).toBe("running");
+    expect(service.refreshCalls).toHaveLength(1);
+    expect(await indexingRequestsUsed()).toBe(1);
+  });
+
+  test("a refresh job the service no longer knows is interrupted, and may be pressed again", async () => {
+    const { link, job } = await startedRefresh();
+    service.forgetJob(job.job_id);
+
+    const read = await readLink(link.id);
+    const again = await refresh(link.id);
+
+    expect(read.body.status).toBe("ready");
+    expect(read.body.refresh.status).toBe("interrupted");
+    expect(again.status).toBe(202);
+  });
+
+  test("a tag or branch that no longer exists is a 409 and gives the slot back", async () => {
+    const link = await readyMain();
+    service.failNextRefresh(new RetrievalServiceError(409, VERSION_GONE_MESSAGE));
+
+    const response = await refresh(link.id);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: VERSION_GONE_MESSAGE });
+    expect(await indexingRequestsUsed()).toBe(0);
+  });
+
+  test("a link that is not ready cannot be refreshed", async () => {
+    const { link } = await indexingLink();
+
+    const response = await refresh(link.id);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: NOT_READY_TO_REFRESH_MESSAGE });
+    expect(service.refreshCalls).toHaveLength(0);
+  });
+
+  test("another person's link is a 404", async () => {
+    const link = await readyMain();
+
+    const response = await refresh(link.id, hubotCookie);
+
+    expect(response.status).toBe(404);
+    expect(service.refreshCalls).toHaveLength(0);
   });
 });

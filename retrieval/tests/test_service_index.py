@@ -7,6 +7,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 
 from retrieval.indexing_jobs import StartKind, StartOutcome, new_job_document
 from retrieval.redaction import clear_registered_secrets
+from retrieval.repository_cloner import CloneFailedError, VersionNotFoundError
 from retrieval.service.app import create_app
 
 SERVICE_TOKEN = "test-service-token-0123456789abcdef"
@@ -41,10 +42,17 @@ class FakeRunner:
         self.outcome = outcome or StartOutcome(StartKind.STARTED, job_id=JOB_ID)
         self.jobs = jobs or {}
         self.starts: list[tuple[str, str]] = []
+        self.refreshes: list[tuple[str, str]] = []
         self.lookups: list[str] = []
 
     def start(self, repository, version):
         self.starts.append((repository, version))
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+    def refresh(self, repository, version):
+        self.refreshes.append((repository, version))
         if isinstance(self.outcome, Exception):
             raise self.outcome
         return self.outcome
@@ -289,3 +297,76 @@ def test_each_route_allows_only_its_method():
 
     assert client.get("/index", headers=AUTHORIZED).status_code == 405
     assert client.post(f"/index-jobs/{JOB_ID}", headers=AUTHORIZED).status_code == 405
+
+
+REFRESH_BODY = {**VALID_BODY, "refresh": True}
+
+
+def test_a_refresh_still_at_the_indexed_commit_is_up_to_date_with_its_repository_block():
+    runner = FakeRunner(StartOutcome(StartKind.UP_TO_DATE, repository_record=REPOSITORY_RECORD))
+
+    response = _client(runner).post("/index", json=REFRESH_BODY, headers=AUTHORIZED)
+
+    assert response.status_code == 200
+    reply = response.get_json()
+    assert reply["status"] == "up_to_date"
+    assert reply["repository"]["commit_id"] == COMMIT_ID
+    assert reply["repository"]["license"]["path"] == "LICENSE.txt"
+    assert runner.refreshes == [("pallets/itsdangerous", "2.2.0")]
+    assert runner.starts == []
+
+
+def test_a_refresh_of_a_moved_version_starts_a_job():
+    runner = FakeRunner()
+
+    response = _client(runner).post("/index", json=REFRESH_BODY, headers=AUTHORIZED)
+
+    assert response.status_code == 202
+    assert response.get_json()["job_id"] == JOB_ID
+    assert runner.refreshes == [("pallets/itsdangerous", "2.2.0")]
+
+
+def test_without_refresh_an_indexed_version_is_never_checked_against_github():
+    runner = FakeRunner()
+
+    _client(runner).post("/index", json={**VALID_BODY, "refresh": False}, headers=AUTHORIZED)
+
+    assert runner.starts == [("pallets/itsdangerous", "2.2.0")]
+    assert runner.refreshes == []
+
+
+def test_a_refresh_of_a_tag_or_branch_that_no_longer_exists_is_a_conflict():
+    gone = VersionNotFoundError("2.2.0 is not a tag or branch of pallets/itsdangerous")
+    runner = FakeRunner(gone)
+
+    response = _client(runner).post("/index", json=REFRESH_BODY, headers=AUTHORIZED)
+
+    assert response.status_code == 409
+    assert response.get_json() == {
+        "error": "2.2.0 is no longer a tag or branch of pallets/itsdangerous on GitHub"
+    }
+
+
+def test_github_out_of_reach_is_unavailable_without_showing_git_output(caplog):
+    runner = FakeRunner(CloneFailedError("git ls-remote failed: fatal: unable to access"))
+
+    response = _client(runner).post("/index", json=REFRESH_BODY, headers=AUTHORIZED)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    assert response.get_json() == {
+        "error": "GitHub could not be reached to check for changes; try again shortly"
+    }
+    assert "git ls-remote failed" in caplog.text
+
+
+def test_refresh_must_be_true_or_false():
+    runner = FakeRunner()
+
+    response = _client(runner).post(
+        "/index", json={**VALID_BODY, "refresh": "yes"}, headers=AUTHORIZED
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "refresh must be true or false"}
+    assert runner.refreshes == []

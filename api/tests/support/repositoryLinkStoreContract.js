@@ -1,4 +1,4 @@
-const { indexingState, readyState } = require("../../src/linkStates");
+const { indexingState, readyState, refreshingState } = require("../../src/linkStates");
 const { LinkStatus } = require("../../src/repositoryLinks");
 
 const FIRST_USER = "0123456789abcdef01234567";
@@ -60,6 +60,7 @@ function describeRepositoryLinkStoreContract(setUp) {
       error: null,
       resumeAfter: null,
       indexed: null,
+      refresh: null,
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
     });
@@ -139,6 +140,31 @@ function describeRepositoryLinkStoreContract(setUp) {
       updatedAt: LATER,
     });
     expect(await store.findForUser(FIRST_USER, waiting.id)).toEqual(saved);
+  });
+
+  test("a refresh beside a ready state is kept, with its times, until a state without one", async () => {
+    const ready = await link({ state: readyState(FLASK_BLOCK) });
+    const refresh = {
+      status: "waiting_for_quota",
+      jobId: JOB_ID,
+      stage: null,
+      progress: { embedded: 80, to_embed: 120 },
+      error: { code: "waiting_for_quota", message: "Quota used up" },
+      resumeAfter: new Date("2026-10-08T07:00:00Z"),
+    };
+
+    const refreshing = await store.saveState(
+      FIRST_USER,
+      ready.id,
+      refreshingState(FLASK_BLOCK, refresh),
+      LATER,
+    );
+    const cleared = await store.saveState(FIRST_USER, ready.id, readyState(FLASK_BLOCK), LATER);
+
+    expect(refreshing.status).toBe(LinkStatus.READY);
+    expect(refreshing.refresh).toEqual(refresh);
+    expect(await store.findForUser(FIRST_USER, ready.id)).toEqual(cleared);
+    expect(cleared.refresh).toBeNull();
   });
 
   test("removing a link leaves the person's other links", async () => {

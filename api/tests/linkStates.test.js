@@ -1,9 +1,14 @@
 const {
   indexingState,
   readyState,
+  refreshDecision,
+  refreshFromJob,
+  refreshingState,
   resumeDecision,
+  runningRefresh,
   stateFromJob,
   unknownJobState,
+  unknownRefresh,
 } = require("../src/linkStates");
 const { LinkStatus } = require("../src/repositoryLinks");
 const { FLASK_BLOCK } = require("./support/repositoryLinkStoreContract");
@@ -34,6 +39,7 @@ describe("states from the service's answers", () => {
       error: null,
       resumeAfter: null,
       indexed: FLASK_BLOCK,
+      refresh: null,
     });
   });
 
@@ -68,6 +74,7 @@ describe("states from the service's answers", () => {
       error: { code: "waiting_for_quota", message: "The daily quota is used up" },
       resumeAfter: new Date("2026-10-08T07:00:00Z"),
       indexed: null,
+      refresh: null,
     });
   });
 
@@ -130,5 +137,76 @@ describe("whether indexing may start again", () => {
       retryAfterSeconds: 91,
     });
     expect(resumeDecision(waiting, resetAt)).toEqual({ allowed: true });
+  });
+});
+
+describe("refreshing a ready link", () => {
+  const READY = readyState(FLASK_BLOCK);
+
+  test("a refresh keeps the link ready on its indexed commit, with the job beside it", () => {
+    expect(refreshingState(FLASK_BLOCK, runningRefresh(JOB_ID))).toEqual({
+      ...READY,
+      refresh: {
+        status: "running",
+        jobId: JOB_ID,
+        stage: null,
+        progress: null,
+        error: null,
+        resumeAfter: null,
+      },
+    });
+  });
+
+  test("a refresh's job is read like any job, keeping the job's own status name", () => {
+    expect(refreshFromJob(job({}))).toEqual({
+      status: "running",
+      jobId: JOB_ID,
+      stage: "embedding",
+      progress: { embedded: 80, to_embed: 158 },
+      error: null,
+      resumeAfter: null,
+    });
+    expect(refreshFromJob(job({ status: "paused" }))).toBeNull();
+  });
+
+  test("a job the service forgot is an interrupted refresh", () => {
+    expect(unknownRefresh(JOB_ID)).toMatchObject({ status: "interrupted", jobId: JOB_ID });
+  });
+
+  test.each([
+    ["ready with no refresh", READY, { allowed: true }],
+    [
+      "not ready",
+      indexingState(JOB_ID),
+      { allowed: false, reason: "not_ready" },
+    ],
+    [
+      "refreshing",
+      refreshingState(FLASK_BLOCK, runningRefresh(JOB_ID)),
+      { allowed: false, reason: "running" },
+    ],
+    [
+      "after a failed refresh",
+      refreshingState(FLASK_BLOCK, refreshFromJob(job({ status: "failed" }))),
+      { allowed: true },
+    ],
+    [
+      "waiting for a quota that resets in 10 minutes",
+      refreshingState(
+        FLASK_BLOCK,
+        refreshFromJob(job({ status: "waiting_for_quota", resume_after: "2026-10-07T12:10:00Z" })),
+      ),
+      { allowed: false, reason: "too_early", retryAfterSeconds: 600 },
+    ],
+    [
+      "waiting for a quota that has reset",
+      refreshingState(
+        FLASK_BLOCK,
+        refreshFromJob(job({ status: "waiting_for_quota", resume_after: "2026-10-07T11:00:00Z" })),
+      ),
+      { allowed: true },
+    ],
+  ])("refresh decision %s", (_description, state, decision) => {
+    expect(refreshDecision(state, NOW)).toEqual(decision);
   });
 });

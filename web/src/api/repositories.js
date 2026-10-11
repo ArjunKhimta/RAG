@@ -23,6 +23,10 @@ export function resumeRepository(linkId) {
   return apiRequest(`${linkPath(linkId)}/resume`, { method: "POST" });
 }
 
+export function refreshRepository(linkId) {
+  return apiRequest(`${linkPath(linkId)}/refresh`, { method: "POST" });
+}
+
 export function removeRepository(linkId) {
   return apiRequest(linkPath(linkId), { method: "DELETE" });
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { gitHubCommitLink, safeGitHubLink } from "../src/links.js";
 import {
+  isRefreshRunning,
   normalizeRepositoryInput,
+  refreshAvailability,
   resumeAvailability,
   stageDescription,
   statusLabel,
@@ -109,5 +111,42 @@ describe("GitHub links", () => {
     expect(gitHubCommitLink("pallets/flask", "abc123")).toBe(
       "https://github.com/pallets/flask/tree/abc123",
     );
+  });
+});
+
+describe("refreshAvailability", () => {
+  const NOW_TODAY = Date.parse("2026-10-12T12:00:00Z");
+
+  function ready(refresh) {
+    return { status: "ready", refresh };
+  }
+
+  it("offers a refresh on a ready link with none, or after one failed or stopped", () => {
+    expect(refreshAvailability(ready(null), NOW_TODAY).canRefresh).toBe(true);
+    expect(refreshAvailability({ status: "ready" }, NOW_TODAY).canRefresh).toBe(true);
+    expect(refreshAvailability(ready({ status: "failed" }), NOW_TODAY).canRefresh).toBe(true);
+    expect(refreshAvailability(ready({ status: "interrupted" }), NOW_TODAY).canRefresh).toBe(true);
+  });
+
+  it("does not offer one while it runs or before the link is ready", () => {
+    expect(refreshAvailability(ready({ status: "running" }), NOW_TODAY).canRefresh).toBe(false);
+    expect(refreshAvailability({ status: "indexing", refresh: null }, NOW_TODAY).canRefresh).toBe(false);
+  });
+
+  it("offers one after the quota resets, not before", () => {
+    const waiting = (resumeAfter) =>
+      ready({ status: "waiting_for_quota", resume_after: resumeAfter });
+
+    expect(refreshAvailability(waiting("2026-10-12T12:10:00Z"), NOW_TODAY)).toEqual({
+      canRefresh: false,
+      resumeAfter: "2026-10-12T12:10:00Z",
+    });
+    expect(refreshAvailability(waiting("2026-10-12T11:00:00Z"), NOW_TODAY).canRefresh).toBe(true);
+  });
+
+  it("knows a running refresh only on a ready link", () => {
+    expect(isRefreshRunning(ready({ status: "running" }))).toBe(true);
+    expect(isRefreshRunning(ready({ status: "failed" }))).toBe(false);
+    expect(isRefreshRunning({ status: "ready" })).toBe(false);
   });
 });

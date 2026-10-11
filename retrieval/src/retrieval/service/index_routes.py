@@ -5,6 +5,12 @@ same as in `POST /ask`, including the license link. A started job, or the same v
 being indexed, gets 202 with the job ID and a `Location` header to poll. A different version
 while a job runs gets 503 with `Retry-After: 60`, since one job runs at a time.
 
+With `"refresh": true`, an indexed version is checked against GitHub first: still at the indexed
+commit (or a commit ID, which never moves), it gets 200 `up_to_date` with its repository block and
+no job; moved, it gets a job as above, which patches the stored index. A tag or branch that no
+longer exists gets 409, and GitHub out of reach 503 with `Retry-After: 30`. A version never
+indexed is simply indexed.
+
 `GET /index-jobs/<job_id>` returns the job's status. An ID that is not 32 hexadecimal characters
 is refused as unknown without a database lookup. Any caller holding the service token can read
 any job; only the Node API holds it, IDs cannot be guessed, and Node decides who sees which job.
@@ -16,6 +22,7 @@ failures and malformed bodies use the shared error replies in `errors`.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -24,8 +31,10 @@ from flask import Flask, Response, jsonify, request
 
 from retrieval.chunk_store import require_license_path
 from retrieval.indexing_jobs import IndexingJobRunner, StartKind
+from retrieval.redaction import redact_exception
+from retrieval.repository_cloner import CloneFailedError, VersionNotFoundError
 from retrieval.service.ask_response import repository_block
-from retrieval.service.errors import UNAVAILABLE_STATUS, error_reply
+from retrieval.service.errors import CONFLICT_STATUS, UNAVAILABLE_STATUS, error_reply
 from retrieval.service.index_request import parse_index_request
 from retrieval.service.index_response import job_link, job_response, started_response
 
@@ -39,7 +48,13 @@ JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 
 BUSY_MESSAGE = "Another repository is being indexed; try again shortly"
 
+GITHUB_UNREACHABLE_RETRY_SECONDS = 30
+
+GITHUB_UNREACHABLE_MESSAGE = "GitHub could not be reached to check for changes; try again shortly"
+
 UNKNOWN_JOB_MESSAGE = "No such indexing job"
+
+logger = logging.getLogger(__name__)
 
 
 def register_index_routes(
@@ -49,12 +64,26 @@ def register_index_routes(
         index_request = parse_index_request(request.get_json(silent=True))
         repository = index_request.repository
         version = index_request.version
-        outcome = runner.start(repository, version)
-        if outcome.kind == StartKind.ALREADY_INDEXED:
+        try:
+            if index_request.refresh:
+                outcome = runner.refresh(repository, version)
+            else:
+                outcome = runner.start(repository, version)
+        except VersionNotFoundError:
+            message = f"{version} is no longer a tag or branch of {repository} on GitHub"
+            return error_reply(message, CONFLICT_STATUS)
+        except CloneFailedError as error:
+            logger.warning("Could not check GitHub for changes: %s", redact_exception(error))
+            return error_reply(
+                GITHUB_UNREACHABLE_MESSAGE,
+                UNAVAILABLE_STATUS,
+                retry_after=GITHUB_UNREACHABLE_RETRY_SECONDS,
+            )
+        if outcome.kind in (StartKind.ALREADY_INDEXED, StartKind.UP_TO_DATE):
             record = outcome.repository_record
             require_license_path(record, repository, version)
             return jsonify(
-                status=StartKind.ALREADY_INDEXED.value,
+                status=outcome.kind.value,
                 repository=repository_block(record, repository, version),
             )
         if outcome.kind == StartKind.BUSY:

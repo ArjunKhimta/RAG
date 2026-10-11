@@ -3,9 +3,10 @@
  *
  * A link is one person's bookmark on a repository version; the search index behind it is shared by
  * everyone and owned by the retrieval service. A link records how indexing is going as last seen
- * (its state: status, job ID, stage, progress, error, when it may resume, and, once ready, the
- * indexed commit and license), and every update replaces the whole state, so a field from an
- * earlier status never lingers.
+ * (its state: status, job ID, stage, progress, error, when it may resume, once ready, the
+ * indexed commit and license, and any refresh of a ready version), and every update replaces the
+ * whole state, so a field from an earlier status never lingers. Links saved before refreshes
+ * existed have no `refresh` field, read as none.
  *
  * Every lookup is by user as well as link ID, so one person can never read, change, or remove
  * another's link. One link per person per repository version (a unique index), so two requests
@@ -37,7 +38,17 @@ const LinkStatus = Object.freeze({
  *   error: { code: string, message: string } | null,
  *   resumeAfter: Date | null,
  *   indexed: { commit_id: string, license: Record<string, string>, other_language_files: Array<{ language: string, files: number }> | null } | null,
+ *   refresh: RefreshState | null,
  * }} LinkState
+ *
+ * @typedef {{
+ *   status: string,
+ *   jobId: string | null,
+ *   stage: string | null,
+ *   progress: { embedded: number | null, to_embed: number | null } | null,
+ *   error: { code: string, message: string } | null,
+ *   resumeAfter: Date | null,
+ * }} RefreshState
  *
  * @typedef {LinkState & {
  *   id: string,
@@ -194,6 +205,37 @@ function toStoredState(state) {
     error: state.error,
     resume_after: state.resumeAfter,
     indexed: state.indexed,
+    refresh: toStoredRefresh(state.refresh),
+  };
+}
+
+/** @param {RefreshState | null} refresh */
+function toStoredRefresh(refresh) {
+  if (refresh === null) {
+    return null;
+  }
+  return {
+    status: refresh.status,
+    job_id: refresh.jobId,
+    stage: refresh.stage,
+    progress: refresh.progress,
+    error: refresh.error,
+    resume_after: refresh.resumeAfter,
+  };
+}
+
+/** @param {import("mongodb").Document | null | undefined} stored */
+function toRefresh(stored) {
+  if (stored === null || stored === undefined) {
+    return null;
+  }
+  return {
+    status: stored.status,
+    jobId: stored.job_id,
+    stage: stored.stage,
+    progress: stored.progress,
+    error: stored.error,
+    resumeAfter: stored.resume_after,
   };
 }
 
@@ -214,6 +256,7 @@ function toLink(document) {
     error: document.error,
     resumeAfter: document.resume_after,
     indexed: document.indexed,
+    refresh: toRefresh(document.refresh),
     createdAt: document.created_at,
     updatedAt: document.updated_at,
   };

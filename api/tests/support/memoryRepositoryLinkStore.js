@@ -79,6 +79,7 @@ function createMemoryRepositoryLinkStore() {
         error: state.error,
         resumeAfter: state.resumeAfter,
         indexed: state.indexed,
+        refresh: state.refresh,
         updatedAt: now,
       });
       return { ...record };

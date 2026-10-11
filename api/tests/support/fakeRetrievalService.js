@@ -7,13 +7,21 @@ const { RetrievalServiceError, UNKNOWN_JOB_MESSAGE } = require("../../src/retrie
  * the service does: an indexed version is `already_indexed`; the same version while its job runs
  * gets that job's ID; otherwise a new job starts. Tests move jobs along with `updateJob` and
  * `finishJob`, and make the next call fail with `failNextStart`, `failNextJob`, `failNextAsk`,
- * `failNextSearch`, or `failNextOverview`. Questions, searches, and overviews get a fixed reply
- * naming what was asked.
+ * `failNextSearch`, `failNextOverview`, or `failNextRefresh`. Questions, searches, and overviews
+ * get a fixed reply naming what was asked.
+ *
+ * Every indexed version is at commit `c` repeated until `moveVersion` points its tag or branch
+ * somewhere else; a refresh of a moved version starts a job, and finishing that job makes the new
+ * commit the indexed one.
  */
 function createFakeRetrievalService() {
   const indexedVersions = new Set();
+  const indexedCommits = new Map();
+  const remoteCommits = new Map();
   const jobs = new Map();
+  const targetCommitsByJob = new Map();
   let nextStartError = null;
+  let nextRefreshError = null;
   let nextJobError = null;
   let nextAskError = null;
   let nextSearchError = null;
@@ -25,6 +33,7 @@ function createFakeRetrievalService() {
 
   return {
     startCalls: [],
+    refreshCalls: [],
     jobCalls: [],
     askCalls: [],
     searchCalls: [],
@@ -90,6 +99,39 @@ function createFakeRetrievalService() {
       const job = jobs.get(jobId);
       job.status = "succeeded";
       indexedVersions.add(key(job.repository, job.version));
+      if (targetCommitsByJob.has(jobId)) {
+        indexedCommits.set(key(job.repository, job.version), targetCommitsByJob.get(jobId));
+      }
+    },
+
+    moveVersion(repository, version, commitId) {
+      remoteCommits.set(key(repository, version), commitId);
+    },
+
+    failNextRefresh(error) {
+      nextRefreshError = error;
+    },
+
+    async refreshIndexing({ repository, version }) {
+      this.refreshCalls.push({ repository, version });
+      if (nextRefreshError !== null) {
+        const error = nextRefreshError;
+        nextRefreshError = null;
+        throw error;
+      }
+      const versionKey = key(repository, version);
+      if (!indexedVersions.has(versionKey)) {
+        return startJob(repository, version);
+      }
+      const indexedCommit = indexedCommits.get(versionKey) ?? DEFAULT_COMMIT;
+      const remoteCommit = remoteCommits.get(versionKey) ?? indexedCommit;
+      if (remoteCommit === indexedCommit) {
+        return {
+          status: "up_to_date",
+          repository: repositoryBlock(repository, version, indexedCommit),
+        };
+      }
+      return startJob(repository, version, remoteCommit);
     },
 
     forgetJob(jobId) {
@@ -111,28 +153,15 @@ function createFakeRetrievalService() {
         nextStartError = null;
         throw error;
       }
-      if (indexedVersions.has(key(repository, version))) {
-        return { status: "already_indexed", repository: repositoryBlock(repository, version) };
+      const versionKey = key(repository, version);
+      if (indexedVersions.has(versionKey)) {
+        const commitId = indexedCommits.get(versionKey) ?? DEFAULT_COMMIT;
+        return {
+          status: "already_indexed",
+          repository: repositoryBlock(repository, version, commitId),
+        };
       }
-      const running = [...jobs.values()].find(
-        (job) =>
-          job.repository === repository && job.version === version && job.status === "running",
-      );
-      if (running !== undefined) {
-        return { status: "running", jobId: running.job_id };
-      }
-      const jobId = crypto.randomBytes(16).toString("hex");
-      jobs.set(jobId, {
-        job_id: jobId,
-        repository,
-        version,
-        status: "running",
-        stage: "cloning",
-        progress: { embedded: 0, to_embed: null },
-        error: null,
-        resume_after: null,
-      });
-      return { status: "running", jobId };
+      return startJob(repository, version);
     },
 
     async indexJob(jobId) {
@@ -149,10 +178,36 @@ function createFakeRetrievalService() {
       return { ...job, progress: { ...job.progress } };
     },
   };
+
+  function startJob(repository, version, targetCommit) {
+    const running = [...jobs.values()].find(
+      (job) =>
+        job.repository === repository && job.version === version && job.status === "running",
+    );
+    if (running !== undefined) {
+      return { status: "running", jobId: running.job_id };
+    }
+    const jobId = crypto.randomBytes(16).toString("hex");
+    jobs.set(jobId, {
+      job_id: jobId,
+      repository,
+      version,
+      status: "running",
+      stage: "cloning",
+      progress: { embedded: 0, to_embed: null },
+      error: null,
+      resume_after: null,
+    });
+    if (targetCommit !== undefined) {
+      targetCommitsByJob.set(jobId, targetCommit);
+    }
+    return { status: "running", jobId };
+  }
 }
 
-function repositoryBlock(repository, version) {
-  const commitId = "c".repeat(40);
+const DEFAULT_COMMIT = "c".repeat(40);
+
+function repositoryBlock(repository, version, commitId = DEFAULT_COMMIT) {
   return {
     name: repository,
     version,

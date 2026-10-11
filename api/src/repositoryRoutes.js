@@ -6,8 +6,15 @@
  *   400 (bad name or version) and 503 (busy with another job, `Retry-After: 60`) pass through and
  *   nothing is saved
  * - `GET /api/repositories`: the person's links, newest first, as last seen (no service calls)
- * - `GET /api/repositories/:id`: one link; while it is indexing, the job's progress is fetched
- *   from the service and saved first, so the site polls this route to show progress
+ * - `GET /api/repositories/:id`: one link; while it is indexing, or a refresh of it is running,
+ *   the job's progress is fetched from the service and saved first, so the site polls this route
+ *   to show progress
+ * - `POST /api/repositories/:id/refresh`: index a ready link's version again if its tag or branch
+ *   has moved (the service asks GitHub): 200 with the link, its commit and license brought up to
+ *   date, when nothing moved; 202 with the link still `ready` and a running `refresh` when a job
+ *   started (the old index stays searchable meanwhile). 409 for a link that is not ready, a tag or
+ *   branch that no longer exists, or a refresh waiting for the quota (with `Retry-After`); a
+ *   refresh already running gets 202 with the link and no service call
  * - `POST /api/repositories/:id/resume`: start indexing again where it stopped (the service
  *   reuses every embedding already made); refused with 409 when there is nothing to resume, when
  *   the failure will recur, or before the quota resets (with `Retry-After`)
@@ -18,8 +25,8 @@
  * - `DELETE /api/repositories/:id`: remove the link only; the shared index stays
  *
  * Limits (`limits.js`): at most 5 links at a time (409 to add a sixth); 2 new indexing requests a
- * day (adding or resuming; the slot is given back when the version was already indexed or the
- * service refused), and 100 searches a day (given back when the service refused before Gemini did
+ * day (adding, resuming, or refreshing; the slot is given back when the version was already
+ * indexed or up to date, or the service refused), and 100 searches a day (given back when the service refused before Gemini did
  * any work), both 429 with `Retry-After` until midnight Pacific. Reading a link whose job finished
  * asks the service once more for the license, but uses no slot. Because the slot is taken before
  * asking the service, a person who has used both of today's slots cannot add even an already
@@ -36,9 +43,14 @@ const { ApiError } = require("./apiError");
 const {
   indexingState,
   readyState,
+  refreshDecision,
+  refreshFromJob,
+  refreshingState,
   resumeDecision,
+  runningRefresh,
   stateFromJob,
   unknownJobState,
+  unknownRefresh,
   JobStatus,
 } = require("./linkStates");
 const { LinkStatus } = require("./repositoryLinks");
@@ -72,6 +84,8 @@ const BAD_GATEWAY_STATUS = 502;
 
 const ALREADY_INDEXED = "already_indexed";
 
+const UP_TO_DATE = "up_to_date";
+
 const LINK_REQUEST_FIELDS = ["repository", "version"];
 
 const SEARCH_REQUEST_FIELDS = ["query"];
@@ -100,6 +114,10 @@ const PERMANENT_FAILURE_MESSAGE =
   "Indexing this repository will fail the same way again; remove it instead";
 
 const TOO_EARLY_MESSAGE = "Indexing can resume after the daily embedding quota resets";
+
+const NOT_READY_TO_REFRESH_MESSAGE = "Only a ready repository can be refreshed";
+
+const REFRESH_TOO_EARLY_MESSAGE = "Refreshing can continue after the daily embedding quota resets";
 
 /**
  * @param {{
@@ -153,8 +171,42 @@ function createRepositoryRouter({
     let link = await findOwnedLink(request);
     if (link.status === LinkStatus.INDEXING) {
       link = await saveState(request, await currentJobState(link));
+    } else if (isRefreshRunning(link)) {
+      link = await saveState(request, await currentRefreshState(link));
     }
     response.json(publicLink(link));
+  });
+
+  router.post("/:linkId/refresh", async (request, response) => {
+    const link = await findOwnedLink(request);
+    const decision = refreshDecision(link, now());
+    if (!decision.allowed && decision.reason === "running") {
+      response.status(ACCEPTED_STATUS).json(publicLink(link));
+      return;
+    }
+    if (!decision.allowed) {
+      throw refreshRefusal(decision);
+    }
+    const ticket = await dailyLimits.take(request.user.id, UsageKind.INDEXING_REQUESTS);
+    let started;
+    try {
+      started = await retrievalService.refreshIndexing({
+        repository: link.repository,
+        version: link.version,
+      });
+    } catch (error) {
+      await dailyLimits.giveBack(ticket);
+      throw error;
+    }
+    if (started.status === UP_TO_DATE || started.status === ALREADY_INDEXED) {
+      await dailyLimits.giveBack(ticket);
+      const updated = await saveState(request, readyState(started.repository));
+      response.status(OK_STATUS).json(publicLink(updated));
+      return;
+    }
+    const refreshing = refreshingState(link.indexed, runningRefresh(started.jobId));
+    const updated = await saveState(request, refreshing);
+    response.status(ACCEPTED_STATUS).json(publicLink(updated));
   });
 
   router.post("/:linkId/resume", async (request, response) => {
@@ -293,7 +345,50 @@ function createRepositoryRouter({
     return state;
   }
 
+  /**
+   * A running refresh's state now: ready on the new commit once its job succeeded, otherwise still
+   * ready on the old commit with the job's status beside it.
+   * @param {import("./repositoryLinks").RepositoryLink} link
+   */
+  async function currentRefreshState(link) {
+    const jobId = link.refresh.jobId;
+    let job;
+    try {
+      job = await retrievalService.indexJob(jobId);
+    } catch (error) {
+      if (error instanceof RetrievalServiceError && error.status === NOT_FOUND_STATUS) {
+        return refreshingState(link.indexed, unknownRefresh(jobId));
+      }
+      throw error;
+    }
+    if (job.status === JobStatus.SUCCEEDED) {
+      return startIndexing(link.repository, link.version);
+    }
+    const refresh = refreshFromJob(job);
+    if (refresh === null) {
+      throw new ApiError(BAD_GATEWAY_STATUS, UNEXPECTED_REPLY_MESSAGE);
+    }
+    return refreshingState(link.indexed, refresh);
+  }
+
   return router;
+}
+
+/** @param {import("./repositoryLinks").RepositoryLink} link */
+function isRefreshRunning(link) {
+  return (
+    link.status === LinkStatus.READY &&
+    link.refresh !== null &&
+    link.refresh.status === JobStatus.RUNNING
+  );
+}
+
+/** @param {{ allowed: false, reason: string, retryAfterSeconds?: number }} decision */
+function refreshRefusal(decision) {
+  if (decision.reason === "too_early") {
+    return new ApiError(CONFLICT_STATUS, REFRESH_TOO_EARLY_MESSAGE, decision.retryAfterSeconds);
+  }
+  return new ApiError(CONFLICT_STATUS, NOT_READY_TO_REFRESH_MESSAGE);
 }
 
 /**
@@ -357,6 +452,23 @@ function resumeRefusal(decision) {
 }
 
 /**
+ * What the site sees of a refresh: no job ID.
+ * @param {import("./repositoryLinks").RefreshState | null} refresh
+ */
+function publicRefresh(refresh) {
+  if (refresh === null) {
+    return null;
+  }
+  return {
+    status: refresh.status,
+    stage: refresh.stage,
+    progress: refresh.progress,
+    error: refresh.error,
+    resume_after: refresh.resumeAfter === null ? null : refresh.resumeAfter.toISOString(),
+  };
+}
+
+/**
  * What the site sees of a link: no user ID and no job ID.
  * @param {import("./repositoryLinks").RepositoryLink} link
  */
@@ -371,6 +483,7 @@ function publicLink(link) {
     error: link.error,
     resume_after: link.resumeAfter === null ? null : link.resumeAfter.toISOString(),
     indexed: link.indexed,
+    refresh: publicRefresh(link.refresh ?? null),
     created_at: link.createdAt.toISOString(),
     updated_at: link.updatedAt.toISOString(),
   };
@@ -378,7 +491,9 @@ function publicLink(link) {
 
 module.exports = {
   NOT_READY_MESSAGE,
+  NOT_READY_TO_REFRESH_MESSAGE,
   NOTHING_TO_RESUME_MESSAGE,
+  REFRESH_TOO_EARLY_MESSAGE,
   PERMANENT_FAILURE_MESSAGE,
   REPOSITORY_RULE,
   TOO_EARLY_MESSAGE,

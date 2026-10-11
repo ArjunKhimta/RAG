@@ -402,3 +402,129 @@ describe("resuming and removing", () => {
     expect(calls.some((call) => call.key.startsWith("DELETE"))).toBe(false);
   });
 });
+
+describe("refreshing from GitHub", () => {
+  const MOVED_COMMIT = "d086db856be187255b8ec61ef409357393020f32";
+
+  function movedIndexed() {
+    const indexed = readyLink().indexed;
+    return { ...indexed, commit_id: MOVED_COMMIT };
+  }
+
+  function refreshingLink(refresh) {
+    return readyLink({
+      refresh: {
+        status: "running",
+        stage: null,
+        progress: null,
+        error: null,
+        resume_after: null,
+        ...refresh,
+      },
+    });
+  }
+
+  it("says when GitHub still has the indexed commit", async () => {
+    repositoriesApi([readyLink()], {
+      "POST /api/repositories/link-flask/refresh": jsonReply(200, readyLink({ refresh: null })),
+    });
+    renderApp("/repositories");
+    const card = await cardFor("pallets/flask");
+
+    await userEvent.click(within(card).getByRole("button", { name: "Refresh from GitHub" }));
+
+    expect((await within(card).findByRole("status")).textContent).toBe(
+      "Up to date: GitHub still has 3.1.3 at commit 22d9247.",
+    );
+  });
+
+  it("follows a refresh while the old commit stays usable, then shows the new commit", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { calls } = repositoriesApi([readyLink()], {
+      "POST /api/repositories/link-flask/refresh": jsonReply(202, refreshingLink({})),
+      "GET /api/repositories/link-flask": replies(
+        jsonReply(
+          200,
+          refreshingLink({ stage: "embedding", progress: { embedded: 10, to_embed: 21 } }),
+        ),
+        jsonReply(200, readyLink({ indexed: movedIndexed(), refresh: null })),
+      ),
+    });
+    renderApp("/repositories");
+    const card = await cardFor("pallets/flask");
+
+    await userEvent.click(within(card).getByRole("button", { name: "Refresh from GitHub" }));
+    expect(await within(card).findByText(/Refreshing from GitHub/)).toBeTruthy();
+    expect(within(card).getByRole("link", { name: "Ask a question" })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Refresh from GitHub" })).toBeNull();
+
+    await advancePolling();
+    expect(within(card).getByText("10 of 21 pieces of code embedded")).toBeTruthy();
+
+    await advancePolling();
+    expect(within(card).getByRole("status").textContent).toBe(
+      "Refreshed: now indexed at commit d086db8.",
+    );
+    expect(within(card).getByRole("link", { name: "d086db8" })).toBeTruthy();
+
+    await advancePolling();
+    expect(callCount(calls, "GET /api/repositories/link-flask")).toBe(2);
+  });
+
+  it("explains a failed refresh and offers to try again", async () => {
+    const failed = refreshingLink({
+      status: "failed",
+      error: { code: "clone_failed", message: "The version could not be downloaded" },
+    });
+    repositoriesApi([failed]);
+    renderApp("/repositories");
+    const card = await cardFor("pallets/flask");
+
+    expect(
+      within(card).getByText(
+        "The refresh did not finish: The version could not be downloaded. " +
+          "The commit above is still searchable.",
+      ),
+    ).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Refresh from GitHub" })).toBeTruthy();
+    expect(within(card).getByText("Ready")).toBeTruthy();
+  });
+
+  it("waits for the quota before offering to refresh again", async () => {
+    const waiting = refreshingLink({
+      status: "waiting_for_quota",
+      resume_after: "2999-01-01T08:00:00.000Z",
+    });
+    repositoriesApi([waiting]);
+    renderApp("/repositories");
+    const card = await cardFor("pallets/flask");
+
+    expect(within(card).getByText(/ran out while refreshing/)).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Refresh from GitHub" })).toBeNull();
+  });
+
+  it("shows the server's reason when a refresh is refused", async () => {
+    repositoriesApi([readyLink()], {
+      "POST /api/repositories/link-flask/refresh": jsonReply(409, {
+        error: "This tag or branch no longer exists on GitHub, so it cannot be refreshed",
+      }),
+    });
+    renderApp("/repositories");
+    const card = await cardFor("pallets/flask");
+
+    await userEvent.click(within(card).getByRole("button", { name: "Refresh from GitHub" }));
+
+    expect((await within(card).findByRole("alert")).textContent).toBe(
+      "This tag or branch no longer exists on GitHub, so it cannot be refreshed",
+    );
+  });
+
+  it("is not offered before a repository is ready", async () => {
+    repositoriesApi([failedLink("clone_failed", "Could not download"), indexingLink()]);
+    renderApp("/repositories");
+
+    await cardFor("someone/missing");
+
+    expect(screen.queryByRole("button", { name: "Refresh from GitHub" })).toBeNull();
+  });
+});

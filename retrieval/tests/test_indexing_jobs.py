@@ -35,6 +35,7 @@ from retrieval.repository_cloner import (
     RepositoryNotPublicError,
     RepositoryTooLargeError,
     UnacceptableLicenseError,
+    VersionNotFoundError,
 )
 from retrieval.repository_indexing import (
     IndexingStage,
@@ -152,8 +153,12 @@ class FakeClone:
     def __init__(self, repositories_directory: Path, was_reused: bool = False) -> None:
         self.repositories_directory = repositories_directory
         self.was_reused = was_reused
+        self.expected_commits: list[str | None] = []
 
-    def __call__(self, reference: RepositoryReference, version: str) -> ClonedRepository:
+    def __call__(
+        self, reference: RepositoryReference, version: str, expected_commit: str | None = None
+    ) -> ClonedRepository:
+        self.expected_commits.append(expected_commit)
         version_directory = self.repositories_directory / reference.owner / reference.name / version
         source_path = version_directory / "source"
         source_path.mkdir(parents=True, exist_ok=True)
@@ -166,7 +171,21 @@ class FakeClone:
         )
 
 
-def _runner(tmp_path, indexing=None, records=None, clone=None, threads=None, store=None):
+class FakeRemote:
+    def __init__(self, commit_or_error: str | Exception) -> None:
+        self.commit_or_error = commit_or_error
+        self.lookups: list[tuple[RepositoryReference, str]] = []
+
+    def __call__(self, reference: RepositoryReference, version: str) -> str:
+        self.lookups.append((reference, version))
+        if isinstance(self.commit_or_error, Exception):
+            raise self.commit_or_error
+        return self.commit_or_error
+
+
+def _runner(
+    tmp_path, indexing=None, records=None, clone=None, threads=None, store=None, remote=None
+):
     job_ids = iter(f"job-{number}" for number in range(1, 100))
     return IndexingJobRunner(
         database="database",
@@ -176,6 +195,7 @@ def _runner(tmp_path, indexing=None, records=None, clone=None, threads=None, sto
         rate_limiter="rate limiter",
         index_version=indexing or FakeIndexing(),
         clone=clone or FakeClone(tmp_path),
+        find_remote_commit=remote or FakeRemote(AssertionError("GitHub must not be asked")),
         start_thread=threads or DeferredThreads(),
         repositories_directory=tmp_path,
         clock=lambda: NOON_PACIFIC,
@@ -417,3 +437,94 @@ def test_a_patched_version_reports_what_changed_and_what_was_kept():
         "kept_chunk_count": 166,
         "updated_calls_count": 3,
     }
+
+
+INDEXED_RECORD = {"commit_id": "c" * 40}
+
+INDEXED_FLASK = {("pallets/flask", "main"): INDEXED_RECORD}
+
+
+def test_refreshing_a_version_never_indexed_starts_an_ordinary_job(tmp_path):
+    clone = FakeClone(tmp_path)
+    threads = DeferredThreads()
+    runner = _runner(tmp_path, clone=clone, threads=threads)
+
+    outcome = runner.refresh("pallets/flask", "main")
+    threads.run_all()
+
+    assert outcome.kind == StartKind.STARTED
+    assert clone.expected_commits == [None]
+
+
+def test_a_commit_id_version_is_up_to_date_without_asking_github(tmp_path):
+    commit_version = "a" * 40
+    records = Records({("pallets/flask", commit_version): INDEXED_RECORD})
+    store = InMemoryJobStore()
+    runner = _runner(tmp_path, records=records, store=store)
+
+    outcome = runner.refresh("pallets/flask", commit_version)
+
+    assert outcome.kind == StartKind.UP_TO_DATE
+    assert outcome.repository_record == INDEXED_RECORD
+    assert store.jobs == {}
+
+
+def test_a_branch_still_at_the_indexed_commit_is_up_to_date(tmp_path):
+    remote = FakeRemote("c" * 40)
+    store = InMemoryJobStore()
+    runner = _runner(tmp_path, records=Records(INDEXED_FLASK), store=store, remote=remote)
+
+    outcome = runner.refresh("pallets/flask", "main")
+
+    assert outcome.kind == StartKind.UP_TO_DATE
+    assert remote.lookups == [(RepositoryReference("pallets", "flask"), "main")]
+    assert store.jobs == {}
+
+
+def test_a_branch_that_moved_starts_a_job_that_expects_the_new_commit(tmp_path):
+    clone = FakeClone(tmp_path)
+    threads = DeferredThreads()
+    runner = _runner(
+        tmp_path,
+        records=Records(INDEXED_FLASK),
+        clone=clone,
+        threads=threads,
+        remote=FakeRemote("d" * 40),
+    )
+
+    outcome = runner.refresh("pallets/flask", "main")
+    threads.run_all()
+
+    assert outcome.kind == StartKind.STARTED
+    assert clone.expected_commits == ["d" * 40]
+    assert runner.find_job(outcome.job_id)["status"] == JobStatus.SUCCEEDED
+
+
+def test_a_moved_branch_waits_its_turn_like_any_job(tmp_path):
+    threads = DeferredThreads()
+    runner = _runner(
+        tmp_path, records=Records(INDEXED_FLASK), threads=threads, remote=FakeRemote("d" * 40)
+    )
+    other = runner.start("pallets/itsdangerous", "2.2.0")
+
+    busy = runner.refresh("pallets/flask", "main")
+    threads.run_all()
+    started = runner.refresh("pallets/flask", "main")
+    again = runner.refresh("pallets/flask", "main")
+
+    assert other.kind == StartKind.STARTED
+    assert busy.kind == StartKind.BUSY
+    assert started.kind == StartKind.STARTED
+    assert again.kind == StartKind.ALREADY_RUNNING
+    assert again.job_id == started.job_id
+
+
+def test_a_branch_that_no_longer_exists_is_reported_and_starts_nothing(tmp_path):
+    store = InMemoryJobStore()
+    gone = VersionNotFoundError("main is not a tag or branch of pallets/flask")
+    runner = _runner(tmp_path, records=Records(INDEXED_FLASK), store=store, remote=FakeRemote(gone))
+
+    with pytest.raises(VersionNotFoundError):
+        runner.refresh("pallets/flask", "main")
+
+    assert store.jobs == {}

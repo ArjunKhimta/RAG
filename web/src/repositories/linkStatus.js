@@ -6,6 +6,13 @@ export const LinkStatus = Object.freeze({
   FAILED: "failed",
 });
 
+export const RefreshStatus = Object.freeze({
+  RUNNING: "running",
+  WAITING_FOR_QUOTA: "waiting_for_quota",
+  FAILED: "failed",
+  INTERRUPTED: "interrupted",
+});
+
 const STATUS_LABELS = Object.freeze({
   [LinkStatus.INDEXING]: "Indexing",
   [LinkStatus.READY]: "Ready",
@@ -52,6 +59,31 @@ export function resumeAvailability(link, nowMilliseconds) {
     return { canResume: waitMilliseconds <= 0, resumeAfter: link.resume_after };
   }
   return { canResume: false, resumeAfter: null };
+}
+
+export function refreshOf(link) {
+  return link.refresh ?? null;
+}
+
+export function isRefreshRunning(link) {
+  const refresh = refreshOf(link);
+  const isRunning = refresh !== null && refresh.status === RefreshStatus.RUNNING;
+  return link.status === LinkStatus.READY && isRunning;
+}
+
+export function refreshAvailability(link, nowMilliseconds) {
+  const refresh = refreshOf(link);
+  if (link.status !== LinkStatus.READY || isRefreshRunning(link)) {
+    return { canRefresh: false, resumeAfter: null };
+  }
+  if (refresh !== null && refresh.status === RefreshStatus.WAITING_FOR_QUOTA) {
+    if (refresh.resume_after === null) {
+      return { canRefresh: true, resumeAfter: null };
+    }
+    const waitMilliseconds = new Date(refresh.resume_after).getTime() - nowMilliseconds;
+    return { canRefresh: waitMilliseconds <= 0, resumeAfter: refresh.resume_after };
+  }
+  return { canRefresh: true, resumeAfter: null };
 }
 
 export function normalizeRepositoryInput(text) {

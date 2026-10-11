@@ -26,6 +26,12 @@ with no extension or `.txt`, `.md`, or `.rst`, preferring them in that order; a 
 not count. A checkout without one is refused, since its answers could not link their license. A
 clone saved before the path was recorded gets it from its checkout when next reused.
 
+A refresh asks first which commit a tag or branch points to now, with `git ls-remote`, which
+downloads nothing; it resolves the name in the order `git fetch` does, so the commit it reports is
+the one a clone would get. A commit ID never moves, so it is never looked up. A refresh also names
+the commit it expects, and a saved clone at any other commit is deleted and cloned again rather
+than reused.
+
 Git runs isolated from personal and system settings, with no stored credentials and only a short
 list of environment variables, so nothing on this machine can grant access to a private
 repository or rewrite the URL. Cloning runs none of the repository's code: hooks are not
@@ -82,6 +88,10 @@ LICENSE_FILE_PREFERENCE = ("LICENSE", "LICENCE", "COPYING")
 
 VERSION_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 
+COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40}")
+
+PEELED_TAG_SUFFIX = "^{}"
+
 ISOLATED_GIT_OPTIONS = ("-c", "credential.helper=")
 
 ISOLATED_GIT_ENVIRONMENT = {
@@ -116,6 +126,10 @@ class UnacceptableLicenseError(RepositoryError):
 
 class MissingLicenseFileError(UnacceptableLicenseError):
     """Raised when a checkout has no license file at its root for answers to link to."""
+
+
+class VersionNotFoundError(RepositoryError):
+    """Raised when a tag or branch no longer exists in the repository on GitHub."""
 
 
 class RepositoryTooLargeError(RepositoryError):
@@ -169,13 +183,19 @@ def clone_repository(
     repositories_directory: Path = REPOSITORIES_DIRECTORY,
     max_repository_bytes: int = MAX_REPOSITORY_BYTES,
     fetch_repository_details: Callable[[RepositoryReference], RepositoryDetails] | None = None,
+    expected_commit: str | None = None,
 ) -> ClonedRepository:
     """Return a checkout of `reference` at `version`, cloning it only if it is not already there.
 
-    `fetch_repository_details` defaults to asking GitHub's API; tests pass a stand-in.
+    `fetch_repository_details` defaults to asking GitHub's API; tests pass a stand-in. With
+    `expected_commit`, a saved clone at another commit is deleted and cloned again.
     """
     _require_valid_version(version)
     version_directory = repositories_directory / reference.owner / reference.name / version
+    if version_directory.is_dir() and expected_commit is not None:
+        saved_commit = _read_metadata(version_directory).commit_id
+        if saved_commit != expected_commit:
+            remove_directory_inside(version_directory, repositories_directory)
     if version_directory.is_dir():
         return ClonedRepository(
             path=version_directory,
@@ -199,6 +219,42 @@ def clone_repository(
         metadata=metadata,
         was_reused=False,
     )
+
+
+def is_commit_id(version: str) -> bool:
+    return COMMIT_ID_PATTERN.fullmatch(version) is not None
+
+
+def find_remote_commit(reference: RepositoryReference, version: str) -> str:
+    """Return the commit a tag or branch of `reference` points to on GitHub now.
+
+    The name is resolved as `git fetch` resolves it: the name itself, `refs/<name>`, a tag (the
+    commit an annotated tag points to), then a branch. Raises `VersionNotFoundError` if none
+    exists, and `CloneFailedError` if git fails or times out. `ls-remote` keeps only refs ending in
+    a pattern, so the peeled name (`<tag>^{}`, the annotated tag's commit) is asked for as well.
+    """
+    _require_valid_version(version)
+    with tempfile.TemporaryDirectory() as empty_directory:
+        listing = _run_git_in(
+            Path(empty_directory),
+            "ls-remote",
+            reference.clone_url,
+            version,
+            version + PEELED_TAG_SUFFIX,
+        )
+    commits_by_ref = _commits_by_ref(listing)
+    tag_ref = f"refs/tags/{version}"
+    candidate_refs = (
+        version,
+        f"refs/{version}",
+        tag_ref + PEELED_TAG_SUFFIX,
+        tag_ref,
+        f"refs/heads/{version}",
+    )
+    for ref in candidate_refs:
+        if ref in commits_by_ref:
+            return commits_by_ref[ref]
+    raise VersionNotFoundError(f"{version} is not a tag or branch of {reference.full_name}")
 
 
 def fetch_github_repository_details(reference: RepositoryReference) -> RepositoryDetails:
@@ -269,6 +325,14 @@ def _remove_empty_parents(directory: Path, root: Path) -> None:
             parent.rmdir()
         except OSError:
             return
+
+
+def _commits_by_ref(listing: str) -> dict[str, str]:
+    commits_by_ref: dict[str, str] = {}
+    for line in listing.splitlines():
+        commit_id, _, ref = line.partition("\t")
+        commits_by_ref[ref] = commit_id
+    return commits_by_ref
 
 
 def _repository_details_from_json(repository_json: dict) -> RepositoryDetails:
