@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { Timing } from "../src/timing.js";
 import { MAX_QUESTION_CHARACTERS } from "../src/components/AskForm.jsx";
 import { NO_CONTENT, SIGNED_IN, SIGNED_OUT } from "./support/accounts.js";
 import { conversation, foundReply, message, notFoundReply } from "./support/answers.js";
@@ -95,6 +96,26 @@ describe("conversation page", () => {
       "Could not answer: You are asking questions quickly; wait a moment before the next one (in less than a minute).",
     );
     expect(screen.getByLabelText("Your question").value).toBe("Where is url_for defined?");
+    expect(performance.getEntriesByName(Timing.SHOWN_ANSWER, "measure")).toHaveLength(0);
+  });
+
+  it("times a question from sending it until its answer is shown", async () => {
+    conversationApi({
+      "POST /api/conversations/conversation-1/messages": jsonReply(
+        201,
+        message("m2", "Where is url_for defined?", notFoundReply()),
+      ),
+    });
+    renderApp("/conversations/conversation-1");
+    await screen.findByRole("heading", { name: FIRST_QUESTION });
+    expect(performance.getEntriesByName(Timing.SHOWN_ANSWER, "measure")).toHaveLength(0);
+
+    await ask("Where is url_for defined?");
+
+    await screen.findByText("Where is url_for defined?");
+    await waitFor(() =>
+      expect(performance.getEntriesByName(Timing.SHOWN_ANSWER, "measure")).toHaveLength(1),
+    );
   });
 
   it("refuses a question over the length limit before sending it", async () => {
@@ -204,6 +225,9 @@ describe("starting a conversation", () => {
 
     expect(await screen.findByRole("heading", { name: FIRST_QUESTION })).toBeTruthy();
     expect(bodyOf(calls, "POST /api/conversations")).toEqual({ link_id: "link-flask" });
+    await waitFor(() =>
+      expect(performance.getEntriesByName(Timing.SHOWN_ANSWER, "measure")).toHaveLength(1),
+    );
   });
 
   it("reuses the new conversation when the first question has to be asked again", async () => {

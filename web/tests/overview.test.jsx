@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DIAGRAM_DESCRIPTION } from "../src/components/OverviewDiagram.jsx";
 import { renderDiagram } from "../src/overview/renderDiagram.js";
+import { Timing } from "../src/timing.js";
 import { SIGNED_IN } from "./support/accounts.js";
 import { installFakeApi, jsonReply } from "./support/fakeApi.js";
 import { flaskOverview, overviewFile } from "./support/overviews.js";
@@ -67,6 +68,17 @@ describe("overview page", () => {
     expect(screen.getByText(/The 3 most connected of the 3 files/)).toBeTruthy();
   });
 
+  it("times the diagram until its image has loaded", async () => {
+    overviewApi();
+
+    renderApp("/repositories/link-flask/overview");
+
+    const image = await screen.findByRole("img", { name: DIAGRAM_DESCRIPTION });
+    expect(performance.getEntriesByName(Timing.SHOWN_DIAGRAM, "measure")).toHaveLength(0);
+    fireEvent.load(image);
+    expect(performance.getEntriesByName(Timing.SHOWN_DIAGRAM, "measure")).toHaveLength(1);
+  });
+
   it("offers the Mermaid source to copy", async () => {
     overviewApi();
 
@@ -86,6 +98,8 @@ describe("overview page", () => {
     expect(await screen.findByText(/The diagram could not be drawn/)).toBeTruthy();
     expect(screen.queryByRole("img", { name: DIAGRAM_DESCRIPTION })).toBeNull();
     expect(screen.getByRole("link", { name: "src/flask/app.py" })).toBeTruthy();
+    expect(performance.getEntriesByName(Timing.SHOWN_DIAGRAM, "measure")).toHaveLength(0);
+    expect(performance.getEntriesByName(`${Timing.SHOWN_DIAGRAM} start`, "mark")).toHaveLength(0);
   });
 
   it("says so when no file calls another, without drawing", async () => {

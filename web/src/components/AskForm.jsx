@@ -3,6 +3,7 @@ import { isSignedOutError } from "../api/account.js";
 import { Link } from "react-router";
 import { useSession } from "../session/SessionProvider.jsx";
 import { messageWithWait } from "../time.js";
+import { Timing, cancelTiming, startTiming } from "../timing.js";
 
 export const MAX_QUESTION_CHARACTERS = 1000;
 
@@ -24,10 +25,12 @@ export default function AskForm({ onAsk }) {
     }
     setAsking(true);
     setErrorMessage(null);
+    startTiming(Timing.SHOWN_ANSWER);
     try {
       await onAsk(trimmed, excludeTests);
       setQuestion("");
     } catch (error) {
+      cancelTiming(Timing.SHOWN_ANSWER);
       if (isSignedOutError(error)) {
         markSignedOut();
         return;

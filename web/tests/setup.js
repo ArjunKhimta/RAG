@@ -3,5 +3,7 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+  performance.clearMarks();
+  performance.clearMeasures();
   vi.unstubAllGlobals();
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { renderDiagram } from "../overview/renderDiagram.js";
 import { releaseImageUrl, svgImageUrl } from "../overview/svgImage.js";
+import { Timing, cancelTiming, finishTiming, startTiming } from "../timing.js";
 
 export const DIAGRAM_DESCRIPTION =
   "Diagram of how the most connected files call each other; the table below lists every file.";
@@ -12,6 +13,7 @@ export default function OverviewDiagram({ source }) {
   useEffect(() => {
     let active = true;
     let createdUrl = null;
+    startTiming(Timing.SHOWN_DIAGRAM);
     renderDiagram(source).then(
       (svg) => {
         if (!active) {
@@ -21,6 +23,7 @@ export default function OverviewDiagram({ source }) {
         setImageUrl(createdUrl);
       },
       () => {
+        cancelTiming(Timing.SHOWN_DIAGRAM);
         if (active) {
           setFailed(true);
         }
@@ -43,7 +46,13 @@ export default function OverviewDiagram({ source }) {
         </p>
       )}
       {!failed && imageUrl === null && <p className="muted">Drawing the diagram…</p>}
-      {imageUrl !== null && <img src={imageUrl} alt={DIAGRAM_DESCRIPTION} />}
+      {imageUrl !== null && (
+        <img
+          src={imageUrl}
+          alt={DIAGRAM_DESCRIPTION}
+          onLoad={() => finishTiming(Timing.SHOWN_DIAGRAM)}
+        />
+      )}
       <MermaidSource source={source} />
     </div>
   );
