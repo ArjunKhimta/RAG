@@ -52,6 +52,7 @@ from retrieval.config import (
 from retrieval.embedders import DocumentEmbedder, EmbeddingRequestError
 from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
 from retrieval.gemini_errors import retry_delay_seconds
+from retrieval.other_languages import OtherLanguageCount
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.repository_cloner import CloneMetadata
@@ -104,10 +105,12 @@ def index_chunks(
     sleep: Callable[[float], None] = time.sleep,
     jitter_fraction: Callable[[], float] = random.random,
     on_progress: ProgressHook | None = None,
+    other_languages: tuple[OtherLanguageCount, ...] = (),
 ) -> IndexingReport:
     """Embed and store `chunks` as the given repository version, and return what it cost.
 
     `on_progress`, if given, is called with (inputs embedded so far, inputs to embed).
+    `other_languages` is recorded with the version: the files the walker counted but did not read.
     """
     active_settings = settings or IndexingSettings()
     report = IndexingReport(chunk_count=len(chunks))
@@ -174,6 +177,7 @@ def index_chunks(
             embedding_dimensions=embedder.dimensions,
             chunk_count=len(chunks),
             call_graph_edge_count=edge_count_of(chunks),
+            other_languages=other_languages,
         )
     )
     return report

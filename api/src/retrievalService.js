@@ -404,7 +404,21 @@ const JOB_RESULT_FIELDS = [
 function repositoryBlock(value) {
   const block = pick(value, ["name", "version", "commit_id"]);
   block.license = pick(value.license, ["spdx_id", "name", "path", "link"]);
+  block.other_language_files = otherLanguageFiles(value.other_language_files);
   return block;
+}
+
+function otherLanguageFiles(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return listOf(value, (item) => {
+    const fields = requireObject(item, "other language");
+    if (typeof fields.language !== "string" || !Number.isInteger(fields.files) || fields.files < 1) {
+      throw new UnexpectedReplyError("an other-language count that is not a name and a count");
+    }
+    return { language: fields.language, files: fields.files };
+  });
 }
 
 function sentence(value) {

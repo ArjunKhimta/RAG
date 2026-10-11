@@ -39,9 +39,14 @@ from retrieval.embedding_budget import (
 )
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.indexer import IndexingReport
+from retrieval.other_languages import describe_counts
 from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError
-from retrieval.repository_indexing import TooManyChunksError, index_repository_version
+from retrieval.repository_indexing import (
+    NoPythonCodeError,
+    TooManyChunksError,
+    index_repository_version,
+)
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
@@ -71,6 +76,7 @@ def main() -> int:
         InvalidRepositoryUrlError,
         RepositoryError,
         TooManyChunksError,
+        NoPythonCodeError,
         MissingConfigError,
         PyMongoError,
     ) as error:
@@ -87,6 +93,7 @@ def main() -> int:
         "",
         _row("Python files indexed", run.indexed_file_count),
         _row("Paths skipped", run.skipped_path_count),
+        _row("Other languages skipped", describe_counts(run.other_languages) or "none"),
         _row("Secret findings redacted", run.secret_finding_count),
         _row("Call sites resolved", f"{run.resolved_call_count} of {run.call_site_count}"),
         _row("Call graph edges", run.call_graph_edge_count),

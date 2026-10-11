@@ -35,6 +35,7 @@ from pymongo.database import Database
 
 from retrieval.chunker import CodeChunk
 from retrieval.code_graph import symbol_for
+from retrieval.other_languages import OtherLanguageCount, other_language_documents
 from retrieval.repository_cloner import CloneMetadata
 from retrieval.search_results import SearchRefusedError
 
@@ -43,6 +44,8 @@ CHUNKS_COLLECTION = "chunks"
 REPOSITORIES_COLLECTION = "repositories"
 
 LICENSE_PATH_FIELD = "license_path"
+
+OTHER_LANGUAGE_FILES_FIELD = "other_language_files"
 
 CACHE_LOOKUP_BATCH_SIZE = 1000
 
@@ -69,6 +72,7 @@ class IndexedVersion:
     embedding_dimensions: int
     chunk_count: int
     call_graph_edge_count: int
+    other_languages: tuple[OtherLanguageCount, ...] = ()
 
 
 class ChunkStore(Protocol):
@@ -204,6 +208,7 @@ def repository_document(indexed_version: IndexedVersion) -> dict[str, Any]:
         "embedding_dimensions": indexed_version.embedding_dimensions,
         "chunk_count": indexed_version.chunk_count,
         "call_graph_edge_count": indexed_version.call_graph_edge_count,
+        OTHER_LANGUAGE_FILES_FIELD: other_language_documents(indexed_version.other_languages),
         "indexed_at": datetime.now(UTC),
     }
 

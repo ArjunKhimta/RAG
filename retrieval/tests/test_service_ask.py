@@ -188,6 +188,7 @@ def test_a_question_is_answered_with_sentences_sources_snippets_and_license():
             "path": "LICENSE.txt",
             "link": f"https://github.com/pallets/flask/blob/{COMMIT_ID}/LICENSE.txt",
         },
+        "other_language_files": None,
     }
     assert reply["usage"] == {
         "embedding": "from the cache",

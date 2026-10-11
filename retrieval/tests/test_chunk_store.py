@@ -15,6 +15,7 @@ from retrieval.chunk_store import (
     require_license_path,
 )
 from retrieval.chunker import ChunkKind, CodeChunk
+from retrieval.other_languages import OtherLanguageCount
 from retrieval.repository_cloner import CloneMetadata
 from retrieval.search_results import SearchRefusedError
 
@@ -95,6 +96,25 @@ def test_a_repository_document_records_the_license_shown_with_answers():
     assert document["chunk_count"] == 1009
     assert document["embedding_dimensions"] == 768
     assert document["call_graph_edge_count"] == 262
+    assert document["other_language_files"] == []
+
+
+def test_a_repository_document_records_the_files_in_other_languages():
+    document = repository_document(
+        IndexedVersion(
+            metadata=METADATA,
+            embedding_model="gemini-embedding-001",
+            embedding_dimensions=768,
+            chunk_count=12,
+            call_graph_edge_count=3,
+            other_languages=(OtherLanguageCount("C", 2), OtherLanguageCount("Shell", 1)),
+        )
+    )
+
+    assert document["other_language_files"] == [
+        {"language": "C", "files": 2},
+        {"language": "Shell", "files": 1},
+    ]
 
 
 @pytest.mark.parametrize("record", [{}, {"license_path": None}, {"license_path": ""}])

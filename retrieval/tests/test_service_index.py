@@ -97,8 +97,12 @@ def test_the_same_version_already_running_gets_the_same_job():
 
 
 def test_an_indexed_version_gets_its_repository_block_with_the_license():
+    record_with_languages = {
+        **REPOSITORY_RECORD,
+        "other_language_files": [{"language": "C", "files": 3}],
+    }
     runner = FakeRunner(
-        StartOutcome(StartKind.ALREADY_INDEXED, repository_record=REPOSITORY_RECORD)
+        StartOutcome(StartKind.ALREADY_INDEXED, repository_record=record_with_languages)
     )
 
     response = _client(runner).post("/index", json=VALID_BODY, headers=AUTHORIZED)
@@ -116,6 +120,7 @@ def test_an_indexed_version_gets_its_repository_block_with_the_license():
                 "path": "LICENSE.txt",
                 "link": f"https://github.com/pallets/itsdangerous/blob/{COMMIT_ID}/LICENSE.txt",
             },
+            "other_language_files": [{"language": "C", "files": 3}],
         },
     }
 

@@ -9,6 +9,7 @@ import {
 import { safeGitHubLink } from "../links.js";
 import CodeSnippet from "./CodeSnippet.jsx";
 import LicenseNotice from "./LicenseNotice.jsx";
+import PythonOnlyNote from "./PythonOnlyNote.jsx";
 
 export default function AnswerView({ messageId, reply }) {
   const [selectedSnippet, setSelectedSnippet] = useState(0);
@@ -27,6 +28,7 @@ export default function AnswerView({ messageId, reply }) {
           <p className="answer-not-found">{reply.answer}</p>
         )}
         {reply.sources.length > 0 && <SourceList sources={reply.sources} />}
+        <PythonOnlyNote counts={reply.repository.other_language_files} />
         <LicenseNotice repository={reply.repository} />
       </div>
       {reply.snippets.length > 0 && (

@@ -19,6 +19,7 @@ const FLASK_BLOCK = {
     path: "LICENSE.txt",
     link: "https://github.com/pallets/flask/blob/22d9247/LICENSE.txt",
   },
+  other_language_files: null,
 };
 
 /**

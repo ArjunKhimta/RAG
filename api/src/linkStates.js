@@ -39,14 +39,18 @@ const EMPTY_STATE = Object.freeze({
 });
 
 /**
- * @param {{ commit_id: string, license: Record<string, string> }} repositoryBlock
+ * @param {{ commit_id: string, license: Record<string, string>, other_language_files?: Array<{ language: string, files: number }> | null }} repositoryBlock
  * @returns {import("./repositoryLinks").LinkState}
  */
 function readyState(repositoryBlock) {
   return {
     ...EMPTY_STATE,
     status: LinkStatus.READY,
-    indexed: { commit_id: repositoryBlock.commit_id, license: repositoryBlock.license },
+    indexed: {
+      commit_id: repositoryBlock.commit_id,
+      license: repositoryBlock.license,
+      other_language_files: repositoryBlock.other_language_files ?? null,
+    },
   };
 }
 

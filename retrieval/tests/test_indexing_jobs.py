@@ -31,7 +31,12 @@ from retrieval.repository_cloner import (
     RepositoryTooLargeError,
     UnacceptableLicenseError,
 )
-from retrieval.repository_indexing import IndexingStage, RepositoryIndexingRun, TooManyChunksError
+from retrieval.repository_indexing import (
+    IndexingStage,
+    NoPythonCodeError,
+    RepositoryIndexingRun,
+    TooManyChunksError,
+)
 from retrieval.search_indexes import SearchIndexChange
 
 NOON_PACIFIC = datetime(2026, 10, 5, 19, 0, tzinfo=UTC)
@@ -249,6 +254,7 @@ def test_a_used_up_budget_waits_for_the_next_midnight_pacific(tmp_path):
         (MissingLicenseFileError("no license file"), JobErrorCode.LICENSE_NOT_ALLOWED),
         (RepositoryTooLargeError("over 100 MB"), JobErrorCode.TOO_LARGE),
         (TooManyChunksError("has 4,210 chunks"), JobErrorCode.TOO_MANY_CHUNKS),
+        (NoPythonCodeError("has no Python code to index"), JobErrorCode.NO_PYTHON_CODE),
     ],
 )
 def test_each_refusal_fails_with_its_code_and_message(tmp_path, error, code):

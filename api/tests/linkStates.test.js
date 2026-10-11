@@ -37,6 +37,14 @@ describe("states from the service's answers", () => {
     });
   });
 
+  test("an indexed version keeps its counts of files in other languages", () => {
+    const counts = [{ language: "C", files: 214 }];
+
+    const state = readyState({ ...FLASK_BLOCK, other_language_files: counts });
+
+    expect(state.indexed.other_language_files).toEqual(counts);
+  });
+
   test("a running job is indexing with its stage and progress", () => {
     expect(stateFromJob(job({}))).toEqual(
       indexingState(JOB_ID, { stage: "embedding", progress: { embedded: 80, to_embed: 158 } }),

@@ -6,6 +6,7 @@ import { lineRangeText } from "../answers/citations.js";
 import { MAX_QUESTION_CHARACTERS } from "../components/AskForm.jsx";
 import CodeSnippet from "../components/CodeSnippet.jsx";
 import LicenseNotice from "../components/LicenseNotice.jsx";
+import PythonOnlyNote from "../components/PythonOnlyNote.jsx";
 import ReadyRepository from "../components/ReadyRepository.jsx";
 import RequireSignIn from "../components/RequireSignIn.jsx";
 import { useSession } from "../session/SessionProvider.jsx";
@@ -123,6 +124,7 @@ function SearchResults({ reply }) {
           />
         ))
       )}
+      <PythonOnlyNote counts={reply.repository.other_language_files} />
       <LicenseNotice repository={reply.repository} />
     </div>
   );

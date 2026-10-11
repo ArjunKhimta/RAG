@@ -5,7 +5,8 @@ cloned repository could contain a link to `~/.ssh/id_ed25519`, and whatever is c
 sent to Gemini. Every candidate path is also checked to resolve inside the repository.
 
 Folders that hold tooling, dependencies, or build output are not entered. Python files that are
-skipped are reported with the reason, so nothing disappears silently.
+skipped are reported with the reason, so nothing disappears silently. Files in other programming
+languages are counted by language, never read, so the version can say what was left out.
 
 Each file is scanned for secrets and redacted before it is chunked. A file that cannot be scanned
 reliably is skipped rather than indexed unscanned.
@@ -25,6 +26,7 @@ from pathlib import Path, PurePosixPath
 from retrieval.call_sites import FileCalls, find_file_calls
 from retrieval.chunker import CodeChunk, chunk_python_source
 from retrieval.config import MAX_FILE_BYTES
+from retrieval.other_languages import OtherLanguageCount, language_of, summarize_languages
 from retrieval.secret_scanning import SecretFinding, UnscannableSourceError, scan_and_redact
 
 PYTHON_FILE_SUFFIX = ".py"
@@ -69,6 +71,7 @@ class SkippedPath:
 class WalkResult:
     files: list[SourceFile]
     skipped: list[SkippedPath]
+    other_languages: tuple[OtherLanguageCount, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTE
     resolved_root = repository_root.resolve()
     files: list[SourceFile] = []
     skipped: list[SkippedPath] = []
+    other_languages: list[str] = []
     for current_directory, directory_names, file_names in os.walk(resolved_root):
         current_path = Path(current_directory)
         directory_names[:] = _directories_to_enter(
@@ -91,6 +95,9 @@ def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTE
         )
         for file_name in sorted(file_names):
             if not file_name.endswith(PYTHON_FILE_SUFFIX):
+                language = language_of(file_name)
+                if language is not None:
+                    other_languages.append(language)
                 continue
             file_path = current_path / file_name
             relative_path = _relative_posix_path(file_path, resolved_root)
@@ -102,6 +109,7 @@ def find_python_files(repository_root: Path, max_file_bytes: int = MAX_FILE_BYTE
     return WalkResult(
         files=sorted(files, key=_relative_path_of),
         skipped=sorted(skipped, key=_relative_path_of),
+        other_languages=summarize_languages(other_languages),
     )
 
 

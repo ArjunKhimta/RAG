@@ -10,10 +10,12 @@ import pytest
 from retrieval import repository_indexing
 from retrieval.chunk_store import CHUNKS_COLLECTION, CachedEmbedding, IndexedVersion, StoredChunk
 from retrieval.github_urls import RepositoryReference
+from retrieval.other_languages import OtherLanguageCount
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import ClonedRepository, CloneMetadata, RepositoryNotPublicError
 from retrieval.repository_indexing import (
     IndexingStage,
+    NoPythonCodeError,
     TooManyChunksError,
     index_repository_version,
 )
@@ -108,9 +110,9 @@ def ensured_search_indexes(monkeypatch) -> list[tuple]:
     return ensured
 
 
-def _fake_clone(tmp_path: Path, clone_calls: list[tuple]):
+def _fake_clone(tmp_path: Path, clone_calls: list[tuple], files: dict[str, str] = SOURCE_FILES):
     source_path = tmp_path / "source"
-    for relative_path, text in SOURCE_FILES.items():
+    for relative_path, text in files.items():
         file_path = source_path / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(text)
@@ -247,6 +249,52 @@ def test_too_many_chunks_is_refused_before_any_embedding(tmp_path, ensured_searc
 
     assert embedder.embedded_batches == []
     assert RecordingChunkStore.instances == []
+
+
+def test_a_version_with_no_python_code_is_refused_before_any_embedding(
+    tmp_path, ensured_search_indexes
+):
+    embedder = FakeEmbedder()
+    files = {
+        "src/index.js": "export const answer = 42;\n",
+        "src/util.js": "export function noop() {}\n",
+        "build.sh": "echo build\n",
+        "README.md": "# Not Python\n",
+    }
+
+    with pytest.raises(NoPythonCodeError) as refusal:
+        index_repository_version(
+            REFERENCE,
+            "1.0.0",
+            {CHUNKS_COLLECTION: "chunks collection"},
+            embedder,
+            RateLimiter(100, 30_000),
+            clone=_fake_clone(tmp_path, [], files),
+        )
+
+    assert str(refusal.value) == (
+        "owner/project at 1.0.0 has no Python code to index "
+        "(it has 2 JavaScript files and 1 Shell file); only Python is supported for now"
+    )
+    assert embedder.embedded_batches == []
+    assert RecordingChunkStore.instances == []
+
+
+def test_files_in_other_languages_are_recorded_with_the_version(tmp_path, ensured_search_indexes):
+    files = {**SOURCE_FILES, "pkg/_speedups.c": "int main(void) { return 0; }\n"}
+
+    run = index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, [], files),
+    )
+
+    expected = (OtherLanguageCount(language="C", files=1),)
+    assert run.other_languages == expected
+    assert RecordingChunkStore.instances[0].repositories[0].other_languages == expected
 
 
 def test_exactly_the_chunk_limit_is_allowed(tmp_path, ensured_search_indexes):

@@ -108,7 +108,7 @@ describe("adding a repository", () => {
       progress: null,
       error: null,
       resume_after: null,
-      indexed: { commit_id: block.commit_id, license: block.license },
+      indexed: { commit_id: block.commit_id, license: block.license, other_language_files: null },
       created_at: "2026-10-07T12:00:00.000Z",
       updated_at: "2026-10-07T12:00:00.000Z",
     });

@@ -306,6 +306,49 @@ describe("successful replies", () => {
     expect(error.status).toBe(502);
   });
 
+  test("files in other languages are copied with the repository block", async () => {
+    const block = {
+      ...REPOSITORY_BLOCK,
+      other_language_files: [
+        { language: "C", files: 214, internal_note: "dropped" },
+        { language: "C++", files: 12 },
+      ],
+    };
+    service.reply({ status: 200, body: { status: "already_indexed", repository: block } });
+
+    const reply = await client().startIndexing({ repository: "pallets/flask", version: "3.1.3" });
+
+    expect(reply.repository.other_language_files).toEqual([
+      { language: "C", files: 214 },
+      { language: "C++", files: 12 },
+    ]);
+  });
+
+  test("a version indexed before other languages were counted has no count", async () => {
+    service.reply({ status: 200, body: { status: "already_indexed", repository: REPOSITORY_BLOCK } });
+
+    const reply = await client().startIndexing({ repository: "pallets/flask", version: "3.1.3" });
+
+    expect(reply.repository.other_language_files).toBeNull();
+  });
+
+  test.each([
+    [[{ language: { html: "<b>" }, files: 2 }]],
+    [[{ language: "C", files: "214" }]],
+    [[{ language: "C", files: 0 }]],
+    [[{ language: "C", files: 1.5 }]],
+    ["C: 214"],
+  ])("other-language counts that are not a name and a count are a 502: %j", async (counts) => {
+    const block = { ...REPOSITORY_BLOCK, other_language_files: counts };
+    service.reply({ status: 200, body: { status: "already_indexed", repository: block } });
+
+    const error = await caught(
+      client().startIndexing({ repository: "pallets/flask", version: "3.1.3" }),
+    );
+
+    expect(error.status).toBe(502);
+  });
+
   test("an already indexed version comes back with its repository block", async () => {
     const alreadyIndexed = { status: "already_indexed", repository: REPOSITORY_BLOCK };
     service.reply({ status: 200, body: alreadyIndexed });

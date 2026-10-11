@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from retrieval.chunker import ChunkKind
+from retrieval.other_languages import OtherLanguageCount
 from retrieval.redaction import REDACTION_PLACEHOLDER
 from retrieval.repository_walker import (
     SkippedPath,
@@ -33,6 +34,12 @@ def repository_root(tmp_path: Path) -> Path:
     _write(root / "venv" / "lib" / "module.py", SMALL_SOURCE)
     _write(root / "src" / "package" / "__pycache__" / "cached.py", SMALL_SOURCE)
     _write(root / "build" / "generated.py", SMALL_SOURCE)
+    _write(root / "src" / "package" / "_speedups.c", "int add(int a, int b);\n")
+    _write(root / "src" / "package" / "_speedups.h", "int add(int a, int b);\n")
+    _write(root / "src" / "package" / "native.pyx", "def run():\n    pass\n")
+    _write(root / "docs" / "theme.JS", "console.log(1);\n")
+    _write(root / "node_modules" / "left-pad" / "index.js", "module.exports = 1;\n")
+    _write(root / ".github" / "scripts" / "release.sh", "echo release\n")
     return root
 
 
@@ -48,12 +55,27 @@ def test_python_files_are_found_with_sorted_repository_relative_paths(repository
     ]
 
 
+def test_files_in_other_languages_are_counted_by_language_and_never_indexed(repository_root):
+    walk_result = find_python_files(repository_root)
+
+    assert walk_result.other_languages == (
+        OtherLanguageCount(language="C", files=2),
+        OtherLanguageCount(language="Cython", files=1),
+        OtherLanguageCount(language="JavaScript", files=1),
+    )
+    assert not any(
+        source_file.relative_path.endswith((".c", ".h", ".pyx", ".JS"))
+        for source_file in walk_result.files
+    )
+
+
 def test_hidden_dependency_and_build_folders_are_skipped_and_reported(repository_root):
     walk_result = find_python_files(repository_root)
 
     assert walk_result.skipped == [
         SkippedPath(".github", SkipReason.EXCLUDED_DIRECTORY),
         SkippedPath("build", SkipReason.EXCLUDED_DIRECTORY),
+        SkippedPath("node_modules", SkipReason.EXCLUDED_DIRECTORY),
         SkippedPath("src/package/__pycache__", SkipReason.EXCLUDED_DIRECTORY),
         SkippedPath("venv", SkipReason.EXCLUDED_DIRECTORY),
     ]

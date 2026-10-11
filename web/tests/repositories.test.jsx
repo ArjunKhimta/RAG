@@ -114,6 +114,54 @@ describe("repositories page", () => {
     expect(within(card).queryByRole("link", { name: "BSD-3-Clause" })).toBeNull();
   });
 
+  it("says which files in other languages a ready repository left out", async () => {
+    const link = readyLink();
+    link.indexed = {
+      ...link.indexed,
+      other_language_files: [
+        { language: "C", files: 214 },
+        { language: "C++", files: 1 },
+      ],
+    };
+    repositoriesApi([link]);
+
+    renderApp("/repositories");
+
+    const card = await cardFor("pallets/flask");
+    expect(
+      within(card).getByText(
+        "Only the Python code was indexed; this repository also has 214 C files and 1 C++ file.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says nothing about other languages when there are none or none were counted", async () => {
+    const counted = readyLink();
+    counted.indexed = { ...counted.indexed, other_language_files: [] };
+    repositoriesApi([counted, readyLink({ id: "link-jinja", repository: "pallets/jinja" })]);
+
+    renderApp("/repositories");
+
+    await cardFor("pallets/jinja");
+    expect(screen.queryByText(/Only the Python code was indexed/)).toBeNull();
+  });
+
+  it("shows a repository with no Python code as a permanent failure", async () => {
+    repositoriesApi([
+      failedLink(
+        "no_python_code",
+        "someone/missing at 1.0.0 has no Python code to index (it has 40 JavaScript files); only Python is supported for now",
+      ),
+    ]);
+
+    renderApp("/repositories");
+
+    const card = await cardFor("someone/missing");
+    expect(within(card).getByText(/has no Python code to index/)).toBeTruthy();
+    expect(within(card).getByText(/Trying again would fail the same way/)).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: "Resume indexing" })).toBeNull();
+  });
+
   it("shows a permanent failure without a resume button", async () => {
     repositoriesApi([failedLink("not_found", "This repository does not exist on GitHub")]);
 

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { fetchOverview } from "../api/repositories.js";
 import FileConnections from "../components/FileConnections.jsx";
 import LicenseNotice from "../components/LicenseNotice.jsx";
+import PythonOnlyNote from "../components/PythonOnlyNote.jsx";
 import OverviewDiagram from "../components/OverviewDiagram.jsx";
 import ReadyRepository from "../components/ReadyRepository.jsx";
 import RequireSignIn from "../components/RequireSignIn.jsx";
@@ -52,6 +53,7 @@ function OverviewDetails({ overview }) {
         between files and {totals.calls_within_files} within a file.
       </p>
       <LeftOutNote leftOut={overview.left_out} />
+      <PythonOnlyNote counts={overview.repository.other_language_files} />
 
       {overview.links.length > 0 && (
         <section className="rail">

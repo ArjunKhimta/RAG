@@ -12,6 +12,7 @@ import {
 } from "../repositories/linkStatus.js";
 import { useSession } from "../session/SessionProvider.jsx";
 import { formatLocalTime, messageWithWait } from "../time.js";
+import PythonOnlyNote from "./PythonOnlyNote.jsx";
 
 export const POLL_INTERVAL_MILLISECONDS = 3000;
 
@@ -195,20 +196,23 @@ function IndexedDetails({ link }) {
   const licenseName = license?.spdx_id ?? license?.name ?? "Unknown license";
 
   return (
-    <p className="muted">
-      Indexed at commit{" "}
-      <a href={gitHubCommitLink(link.repository, commitId)} target="_blank" rel="noreferrer">
-        <code>{commitId.slice(0, SHORT_COMMIT_LENGTH)}</code>
-      </a>
-      {" · License: "}
-      {licenseLink === null ? (
-        licenseName
-      ) : (
-        <a href={licenseLink} target="_blank" rel="noreferrer">
-          {licenseName}
+    <>
+      <p className="muted">
+        Indexed at commit{" "}
+        <a href={gitHubCommitLink(link.repository, commitId)} target="_blank" rel="noreferrer">
+          <code>{commitId.slice(0, SHORT_COMMIT_LENGTH)}</code>
         </a>
-      )}
-    </p>
+        {" · License: "}
+        {licenseLink === null ? (
+          licenseName
+        ) : (
+          <a href={licenseLink} target="_blank" rel="noreferrer">
+            {licenseName}
+          </a>
+        )}
+      </p>
+      <PythonOnlyNote counts={link.indexed.other_language_files} />
+    </>
   );
 }
 

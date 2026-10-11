@@ -34,6 +34,7 @@ from retrieval.config import MAX_REPOSITORY_CHUNKS
 from retrieval.embedders import DocumentEmbedder
 from retrieval.github_urls import RepositoryReference
 from retrieval.indexer import IndexingReport, ProgressHook, index_chunks
+from retrieval.other_languages import OtherLanguageCount, describe_counts
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import ClonedRepository, CloneMetadata, clone_repository
 from retrieval.repository_walker import chunk_source_files, find_python_files
@@ -56,6 +57,10 @@ class TooManyChunksError(ValueError):
     """Raised before any embedding when a version has more chunks than indexing allows."""
 
 
+class NoPythonCodeError(ValueError):
+    """Raised before any embedding when a version has no Python code to index."""
+
+
 @dataclass(frozen=True)
 class RepositoryIndexingRun:
     metadata: CloneMetadata
@@ -70,6 +75,7 @@ class RepositoryIndexingRun:
     report: IndexingReport
     collection_statistics: dict[str, int]
     timings: dict[str, float]
+    other_languages: tuple[OtherLanguageCount, ...] = ()
 
 
 def index_repository_version(
@@ -94,6 +100,7 @@ def index_repository_version(
     walk_result = find_python_files(cloned.source_path)
     chunking = chunk_source_files(walk_result.files)
     timings["walk, scan, chunk"] = _milliseconds_since(stage_started)
+    _require_python_code(len(chunking.chunks), walk_result.other_languages, cloned.metadata)
     _require_chunk_count_within(len(chunking.chunks), max_chunk_count, cloned.metadata)
     announce_stage(IndexingStage.CALL_GRAPH)
     stage_started = time.perf_counter()
@@ -108,7 +115,13 @@ def index_repository_version(
     keyword_index_change = ensure_keyword_index(chunks_collection)
     stage_started = time.perf_counter()
     report = index_chunks(
-        cloned.metadata, chunks, embedder, store, rate_limiter, on_progress=on_progress
+        cloned.metadata,
+        chunks,
+        embedder,
+        store,
+        rate_limiter,
+        on_progress=on_progress,
+        other_languages=walk_result.other_languages,
     )
     timings["embed and store"] = _milliseconds_since(stage_started)
     resolved_call_count = sum(
@@ -127,6 +140,19 @@ def index_repository_version(
         report=report,
         collection_statistics=store.chunk_collection_statistics(),
         timings=timings,
+        other_languages=walk_result.other_languages,
+    )
+
+
+def _require_python_code(
+    chunk_count: int, other_languages: tuple[OtherLanguageCount, ...], metadata: CloneMetadata
+) -> None:
+    if chunk_count > 0:
+        return
+    found = f" (it has {describe_counts(other_languages)})" if other_languages else ""
+    raise NoPythonCodeError(
+        f"{metadata.repository} at {metadata.version} has no Python code to index{found}; "
+        "only Python is supported for now"
     )
 
 

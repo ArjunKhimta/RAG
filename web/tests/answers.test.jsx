@@ -99,6 +99,26 @@ describe("answer view", () => {
     );
   });
 
+  it("says when the repository also has code in other languages that was not searched", () => {
+    const reply = foundReply();
+    reply.repository = {
+      ...reply.repository,
+      other_language_files: [{ language: "Rust", files: 3 }],
+    };
+
+    renderAnswer(reply);
+
+    expect(
+      screen.getByText("Only the Python code was indexed; this repository also has 3 Rust files."),
+    ).toBeTruthy();
+  });
+
+  it("says nothing about other languages when the repository has none", () => {
+    renderAnswer(foundReply());
+
+    expect(screen.queryByText(/Only the Python code was indexed/)).toBeNull();
+  });
+
   it("links the license on an answer that found nothing, too", () => {
     renderAnswer(notFoundReply());
 

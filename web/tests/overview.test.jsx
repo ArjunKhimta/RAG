@@ -188,6 +188,23 @@ describe("overview page", () => {
     expect(screen.queryByText(/is left out of this overview/)).toBeNull();
   });
 
+  it("says when the repository also has code in other languages", async () => {
+    const overview = flaskOverview();
+    overview.repository = {
+      ...overview.repository,
+      other_language_files: [{ language: "C", files: 2 }],
+    };
+    overviewApi(overview);
+
+    renderApp("/repositories/link-flask/overview");
+
+    expect(
+      await screen.findByText(
+        "Only the Python code was indexed; this repository also has 2 C files.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("carries the license notice", async () => {
     overviewApi();
 

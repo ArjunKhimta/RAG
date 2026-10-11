@@ -36,7 +36,7 @@ const LinkStatus = Object.freeze({
  *   progress: { embedded: number | null, to_embed: number | null } | null,
  *   error: { code: string, message: string } | null,
  *   resumeAfter: Date | null,
- *   indexed: { commit_id: string, license: Record<string, string> } | null,
+ *   indexed: { commit_id: string, license: Record<string, string>, other_language_files: Array<{ language: string, files: number }> | null } | null,
  * }} LinkState
  *
  * @typedef {LinkState & {

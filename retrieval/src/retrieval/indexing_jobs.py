@@ -14,8 +14,8 @@ The job record carries the stage, the embedding progress ("300 of 1,009"), and t
 - `waiting_for_quota`, with `resume_after`, the next midnight Pacific: the day's indexing budget
   ran out, everything embedded so far is stored, and starting the same version again resumes it
 - `failed`, with an error code: `not_found`, `not_public`, `license_not_allowed`, `too_large`,
-  `too_many_chunks`, `clone_failed` (often a version that does not exist), or `unexpected`, whose
-  details go only to the log, redacted
+  `too_many_chunks`, `no_python_code`, `clone_failed` (often a version that does not exist), or
+  `unexpected`, whose details go only to the log, redacted
 - `interrupted`: the process stopped mid-job; at start-up every job still `running` is marked so
 
 A job deletes the checkout it cloned, whether it succeeds or fails, since answers and snippets come
@@ -63,6 +63,7 @@ from retrieval.repository_cloner import (
 )
 from retrieval.repository_indexing import (
     IndexingStage,
+    NoPythonCodeError,
     RepositoryIndexingRun,
     TooManyChunksError,
     index_repository_version,
@@ -102,6 +103,7 @@ class JobErrorCode(StrEnum):
     LICENSE_NOT_ALLOWED = "license_not_allowed"
     TOO_LARGE = "too_large"
     TOO_MANY_CHUNKS = "too_many_chunks"
+    NO_PYTHON_CODE = "no_python_code"
     CLONE_FAILED = "clone_failed"
     UNEXPECTED = "unexpected"
 
@@ -112,6 +114,7 @@ REFUSAL_CODES: tuple[tuple[type[Exception], JobErrorCode], ...] = (
     (UnacceptableLicenseError, JobErrorCode.LICENSE_NOT_ALLOWED),
     (RepositoryTooLargeError, JobErrorCode.TOO_LARGE),
     (TooManyChunksError, JobErrorCode.TOO_MANY_CHUNKS),
+    (NoPythonCodeError, JobErrorCode.NO_PYTHON_CODE),
 )
 
 

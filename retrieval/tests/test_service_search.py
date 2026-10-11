@@ -187,6 +187,7 @@ def test_a_query_returns_ranked_results_with_snippets_links_and_license():
             "path": "LICENSE.txt",
             "link": f"https://github.com/pallets/flask/blob/{COMMIT_ID}/LICENSE.txt",
         },
+        "other_language_files": None,
     }
     assert reply["usage"] == {"embedding": "from the cache"}
     assert reply["timings_ms"] == {"embed query": 31, "vector search": 48}

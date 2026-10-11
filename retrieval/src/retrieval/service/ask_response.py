@@ -15,6 +15,7 @@ from typing import Any
 
 from retrieval.answer_generation import AnswerSentence, Citation, GeneratedAnswer
 from retrieval.asking import AskRun
+from retrieval.chunk_store import OTHER_LANGUAGE_FILES_FIELD
 from retrieval.search_results import SearchResult
 from retrieval.snippets import (
     Snippet,
@@ -78,6 +79,7 @@ def repository_block(
             "path": license_path,
             "link": github_file_link(repository, commit_id, license_path),
         },
+        "other_language_files": repository_record.get(OTHER_LANGUAGE_FILES_FIELD),
     }
 
 
