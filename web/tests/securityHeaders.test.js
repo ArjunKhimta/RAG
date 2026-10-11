@@ -18,11 +18,20 @@ function directives(policy) {
 describe("content security policy", () => {
   const policy = directives(CONTENT_SECURITY_POLICY);
 
-  it("runs only scripts and styles served by the site itself", () => {
+  it("runs only scripts served by the site itself", () => {
     expect(policy["script-src"]).toEqual(["'self'"]);
-    expect(policy["style-src"]).toEqual(["'self'"]);
-    expect(CONTENT_SECURITY_POLICY).not.toContain("unsafe-inline");
     expect(CONTENT_SECURITY_POLICY).not.toContain("unsafe-eval");
+  });
+
+  it("allows inline styles, which Mermaid writes while measuring diagram labels", () => {
+    expect(policy["style-src"]).toEqual(["'self'", "'unsafe-inline'"]);
+  });
+
+  it("allows inline content for styles only", () => {
+    const directivesWithInline = Object.keys(policy).filter((name) =>
+      policy[name].includes("'unsafe-inline'"),
+    );
+    expect(directivesWithInline).toEqual(["style-src"]);
   });
 
   it("allows images only from the site, diagrams drawn in the page, and GitHub avatars", () => {

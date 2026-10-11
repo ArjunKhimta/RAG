@@ -5,7 +5,7 @@ export const GITHUB_AVATAR_ORIGIN = "https://avatars.githubusercontent.com";
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
   `img-src 'self' blob: ${GITHUB_AVATAR_ORIGIN}`,
   "connect-src 'self'",
   "font-src 'self'",
