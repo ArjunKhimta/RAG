@@ -12,7 +12,8 @@ const { RetrievalServiceError, UNKNOWN_JOB_MESSAGE } = require("../../src/retrie
  *
  * Every indexed version is at commit `c` repeated until `moveVersion` points its tag or branch
  * somewhere else; a refresh of a moved version starts a job, and finishing that job makes the new
- * commit the indexed one.
+ * commit the indexed one. `setIndexedCommit` changes the indexed commit at once, as a refresh by
+ * someone else would. Answers carry the version's indexed commit.
  */
 function createFakeRetrievalService() {
   const indexedVersions = new Set();
@@ -68,7 +69,7 @@ function createFakeRetrievalService() {
         nextAskError = null;
         throw error;
       }
-      return askReply(question);
+      return askReply(question, indexedCommitOf(question.repository, question.version));
     },
 
     async search(search) {
@@ -102,6 +103,11 @@ function createFakeRetrievalService() {
       if (targetCommitsByJob.has(jobId)) {
         indexedCommits.set(key(job.repository, job.version), targetCommitsByJob.get(jobId));
       }
+    },
+
+    setIndexedCommit(repository, version, commitId) {
+      indexedVersions.add(key(repository, version));
+      indexedCommits.set(key(repository, version), commitId);
     },
 
     moveVersion(repository, version, commitId) {
@@ -179,6 +185,10 @@ function createFakeRetrievalService() {
     },
   };
 
+  function indexedCommitOf(repository, version) {
+    return indexedCommits.get(key(repository, version)) ?? DEFAULT_COMMIT;
+  }
+
   function startJob(repository, version, targetCommit) {
     const running = [...jobs.values()].find(
       (job) =>
@@ -221,7 +231,7 @@ function repositoryBlock(repository, version, commitId = DEFAULT_COMMIT) {
   };
 }
 
-function askReply({ repository, version, question }) {
+function askReply({ repository, version, question }, commitId) {
   return {
     found_answer: true,
     answer: `An answer to: ${question} [1, 303-305].`,
@@ -230,7 +240,7 @@ function askReply({ repository, version, question }) {
     ],
     sources: [{ number: 1, file_path: "src/flask/sessions.py", start_line: 303, end_line: 321 }],
     snippets: [],
-    repository: repositoryBlock(repository, version),
+    repository: repositoryBlock(repository, version, commitId),
     usage: { embedding: "from the cache", answer_requests: 1, prompt_tokens: 2000, output_tokens: 100 },
     timings_ms: { checks: 30, "generate answer": 1500 },
   };

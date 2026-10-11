@@ -45,6 +45,7 @@ function ConversationView({ conversationId }) {
     setData((current) => ({
       ...current,
       title: current.title ?? question,
+      current_commit: message.reply.repository.commit_id,
       messages: [...current.messages, message],
     }));
   }
@@ -64,7 +65,11 @@ function ConversationView({ conversationId }) {
         <p className="muted">Ask the first question about this repository.</p>
       )}
       {conversation.messages.map((message) => (
-        <MessageView key={message.id} message={message} />
+        <MessageView
+          key={message.id}
+          message={message}
+          currentCommit={conversation.current_commit ?? null}
+        />
       ))}
       <AskForm onAsk={handleAsk} />
     </section>

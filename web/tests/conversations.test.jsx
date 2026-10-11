@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import { Timing } from "../src/timing.js";
 import { MAX_QUESTION_CHARACTERS } from "../src/components/AskForm.jsx";
 import { NO_CONTENT, SIGNED_IN, SIGNED_OUT } from "./support/accounts.js";
-import { conversation, foundReply, message, notFoundReply } from "./support/answers.js";
+import {
+  REPOSITORY_BLOCK,
+  conversation,
+  foundReply,
+  message,
+  notFoundReply,
+} from "./support/answers.js";
 import { installFakeApi, jsonReply } from "./support/fakeApi.js";
 import { renderApp } from "./support/renderApp.jsx";
 import { indexingLink, readyLink, replies } from "./support/repositories.js";
@@ -277,5 +283,78 @@ describe("starting a conversation", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Repository not found" })).toBeTruthy(),
     );
+  });
+});
+
+describe("answers from an older commit", () => {
+  const NEW_COMMIT = "81798b406f97ffe4795d2c9fc18db7db744a96dc";
+
+  function newerReply() {
+    return foundReply({ repository: { ...REPOSITORY_BLOCK, commit_id: NEW_COMMIT } });
+  }
+
+  function notes() {
+    return document.querySelectorAll(".older-commit-note");
+  }
+
+  it("marks an answer given from an older commit than the current one, and only that one", async () => {
+    installFakeApi({
+      "GET /api/me": SIGNED_IN,
+      "GET /api/conversations/conversation-1": jsonReply(200, {
+        ...conversation(),
+        current_commit: NEW_COMMIT,
+        messages: [message("m1", FIRST_QUESTION), message("m2", "And the key?", newerReply())],
+      }),
+    });
+
+    renderApp("/conversations/conversation-1");
+
+    await screen.findByRole("heading", { name: FIRST_QUESTION });
+    expect(notes()).toHaveLength(1);
+    expect(notes()[0].textContent).toBe(
+      "Answered from commit 22d9247; the repository has since been indexed again at 81798b4, " +
+        "so the code may have changed. The snippets and links below still show the code as it " +
+        "was. Ask again for an answer from the current code.",
+    );
+    expect(notes()[0].closest("article").textContent).toContain(FIRST_QUESTION);
+  });
+
+  it("marks nothing when the current commit is unknown or the same", async () => {
+    installFakeApi({
+      "GET /api/me": SIGNED_IN,
+      "GET /api/conversations/conversation-1": jsonReply(200, {
+        ...conversation(),
+        current_commit: null,
+        messages: [message("m1", FIRST_QUESTION)],
+      }),
+    });
+
+    renderApp("/conversations/conversation-1");
+
+    await screen.findByRole("heading", { name: FIRST_QUESTION });
+    expect(notes()).toHaveLength(0);
+  });
+
+  it("marks earlier answers once a new answer comes from a newer commit", async () => {
+    installFakeApi({
+      "GET /api/me": SIGNED_IN,
+      "GET /api/conversations/conversation-1": jsonReply(200, {
+        ...conversation(),
+        current_commit: REPOSITORY_BLOCK.commit_id,
+        messages: [message("m1", FIRST_QUESTION)],
+      }),
+      "POST /api/conversations/conversation-1/messages": jsonReply(
+        201,
+        message("m2", "And the key?", newerReply()),
+      ),
+    });
+    renderApp("/conversations/conversation-1");
+    await screen.findByRole("heading", { name: FIRST_QUESTION });
+    expect(notes()).toHaveLength(0);
+
+    await ask("And the key?");
+
+    await waitFor(() => expect(notes()).toHaveLength(1));
+    expect(notes()[0].closest("article").textContent).toContain(FIRST_QUESTION);
   });
 });

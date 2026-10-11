@@ -4,13 +4,18 @@
  *   repositories; 409 at 50 conversations (an old one must be deleted first: history is never
  *   deleted on the person's behalf)
  * - `GET /api/conversations`: the person's conversations, most recently used first
- * - `GET /api/conversations/:id`: one conversation with its messages, oldest first
+ * - `GET /api/conversations/:id`: one conversation with its messages, oldest first, and
+ *   `current_commit`: the commit its version was most recently seen indexed at (from the person's
+ *   link as of its last update, or the newest answer, whichever is more recent; null when neither
+ *   says), so the site can mark answers given from an older commit
  * - `POST /api/conversations/:id/messages` `{question, exclude_tests?}`: ask; the whole reply is
  *   saved and returned (201), and the first question becomes the title. The repository must still
  *   be linked and ready (409 otherwise; the history stays readable), and a conversation holds at
  *   most 100 messages (409). A refusal from the service (a used-up quota as 503 with
  *   `Retry-After`, an answer that failed its citation check as 502, a version that cannot be
- *   searched as 409) passes through and saves nothing
+ *   searched as 409) passes through and saves nothing. An answer from a newer commit than the
+ *   person's link shows (someone else refreshed the version) brings the link's commit and license
+ *   up to date, unless a refresh of the link is running
  * - `DELETE /api/conversations/:id`: delete the conversation and its messages
  *
  * Asking also uses one of the person's 5 questions a minute (in memory) and 30 a day (in the
@@ -24,6 +29,7 @@
 const express = require("express");
 
 const { ApiError } = require("./apiError");
+const { JobStatus, readyState } = require("./linkStates");
 const { LinkStatus } = require("./repositoryLinks");
 const { booleanField, requireFields, textField } = require("./requestFields");
 const { refusedBeforeGemini } = require("./retrievalService");
@@ -108,13 +114,22 @@ function createConversationRouter({
   router.get("/:conversationId", async (request, response) => {
     const conversation = await findOwnedConversation(request);
     const messages = await conversations.listMessages(conversation.id);
-    response.json({ ...publicConversation(conversation), messages: messages.map(publicMessage) });
+    const link = await repositoryLinks.findByTarget(
+      request.user.id,
+      conversation.repository,
+      conversation.version,
+    );
+    response.json({
+      ...publicConversation(conversation),
+      current_commit: latestKnownCommit(link, messages),
+      messages: messages.map(publicMessage),
+    });
   });
 
   router.post("/:conversationId/messages", async (request, response) => {
     const { question, excludeTests } = readQuestion(request.body);
     const conversation = await findOwnedConversation(request);
-    await requireReadyLink(request.user.id, conversation);
+    const link = await requireReadyLink(request.user.id, conversation);
     if ((await conversations.countMessages(conversation.id)) >= limits.messagesPerConversation) {
       throw new ApiError(CONFLICT_STATUS, conversationFullMessage(limits.messagesPerConversation));
     }
@@ -142,6 +157,7 @@ function createConversationRouter({
       title: titleFor(question),
       now: new Date(now()),
     });
+    await keepLinkCommitCurrent(request.user.id, link, reply.repository);
     response.status(CREATED_STATUS).json(publicMessage(message));
   });
 
@@ -210,6 +226,21 @@ function createConversationRouter({
     if (link.status !== LinkStatus.READY) {
       throw new ApiError(CONFLICT_STATUS, NOT_READY_MESSAGE);
     }
+    return link;
+  }
+
+  /**
+   * @param {string} userId
+   * @param {import("./repositoryLinks").RepositoryLink} link
+   * @param {{ commit_id: string, license: Record<string, string>, other_language_files?: Array<{ language: string, files: number }> | null }} repositoryBlock
+   */
+  async function keepLinkCommitCurrent(userId, link, repositoryBlock) {
+    const isRefreshing = link.refresh !== null && link.refresh.status === JobStatus.RUNNING;
+    const linkCommit = link.indexed === null ? null : link.indexed.commit_id;
+    if (isRefreshing || linkCommit === repositoryBlock.commit_id) {
+      return;
+    }
+    await repositoryLinks.saveState(userId, link.id, readyState(repositoryBlock), new Date(now()));
   }
 
   return router;
@@ -261,6 +292,32 @@ function publicConversation(conversation) {
   };
 }
 
+/**
+ * The commit a version was most recently seen indexed at: the person's link as of its last update,
+ * or the newest answer, whichever is more recent; null when neither says.
+ * @param {import("./repositoryLinks").RepositoryLink | null} link
+ * @param {import("./conversations").Message[]} messages oldest first
+ * @returns {string | null}
+ */
+function latestKnownCommit(link, messages) {
+  const sightings = [];
+  if (link !== null && link.indexed !== null) {
+    sightings.push({ commitId: link.indexed.commit_id, seenAt: link.updatedAt });
+  }
+  const newest = messages.at(-1);
+  const newestCommit = newest?.reply?.repository?.commit_id;
+  if (typeof newestCommit === "string") {
+    sightings.push({ commitId: newestCommit, seenAt: newest.createdAt });
+  }
+  if (sightings.length === 0) {
+    return null;
+  }
+  const latest = sightings.reduce((kept, sighting) =>
+    sighting.seenAt > kept.seenAt ? sighting : kept,
+  );
+  return latest.commitId;
+}
+
 /** @param {import("./conversations").Message} message */
 function publicMessage(message) {
   return {
@@ -280,6 +337,7 @@ module.exports = {
   UNKNOWN_LINK_MESSAGE,
   conversationFullMessage,
   createConversationRouter,
+  latestKnownCommit,
   titleFor,
   tooManyConversationsMessage,
 };

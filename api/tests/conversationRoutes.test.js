@@ -7,6 +7,7 @@ const {
   tooManyConversationsMessage,
   UNKNOWN_CONVERSATION_MESSAGE,
   UNKNOWN_LINK_MESSAGE,
+  latestKnownCommit,
   titleFor,
 } = require("../src/conversationRoutes");
 const {
@@ -327,5 +328,86 @@ describe("titles", () => {
     const title = titleFor("🙂".repeat(100));
 
     expect(Array.from(title)).toEqual([...Array(79).fill("🙂"), "…"]);
+  });
+});
+
+
+describe("answers from an older commit", () => {
+  const OLD_COMMIT = "c".repeat(40);
+
+  const NEW_COMMIT = "d".repeat(40);
+
+  function readConversation(conversationId) {
+    return send("get", `/api/conversations/${conversationId}`);
+  }
+
+  test("a conversation names the commit its version is indexed at, from the link", async () => {
+    const { conversation } = await startConversation();
+
+    const response = await readConversation(conversation.id);
+
+    expect(response.body.current_commit).toBe(OLD_COMMIT);
+  });
+
+  test("an answer from a newer commit moves the link and the conversation's current commit", async () => {
+    const { link, conversation } = await startConversation();
+    await ask(conversation.id);
+    service.setIndexedCommit("pallets/flask", "3.1.3", NEW_COMMIT);
+    built.clock.advanceSeconds(60);
+
+    await ask(conversation.id, { question: "And the secret key?" });
+    const read = await readConversation(conversation.id);
+    const linkNow = await send("get", `/api/repositories/${link.id}`);
+
+    expect(read.body.messages.map((message) => message.reply.repository.commit_id)).toEqual([
+      OLD_COMMIT,
+      NEW_COMMIT,
+    ]);
+    expect(read.body.current_commit).toBe(NEW_COMMIT);
+    expect(linkNow.body.indexed.commit_id).toBe(NEW_COMMIT);
+    expect(linkNow.body.indexed.license.link).toContain(NEW_COMMIT);
+  });
+
+  test("a link whose refresh is running is left for the refresh to update", async () => {
+    const { link, conversation } = await startConversation();
+    service.moveVersion("pallets/flask", "3.1.3", NEW_COMMIT);
+    await send("post", `/api/repositories/${link.id}/refresh`);
+    service.setIndexedCommit("pallets/flask", "3.1.3", "e".repeat(40));
+
+    await ask(conversation.id);
+    const linkNow = await send("get", `/api/repositories/${link.id}`);
+
+    expect(linkNow.body.indexed.commit_id).toBe(OLD_COMMIT);
+    expect(linkNow.body.refresh.status).toBe("running");
+  });
+});
+
+describe("the latest known commit", () => {
+  const EARLY = new Date("2026-10-07T12:00:00Z");
+
+  const LATE = new Date("2026-10-07T13:00:00Z");
+
+  function linkAt(commitId, updatedAt) {
+    return { indexed: { commit_id: commitId }, updatedAt };
+  }
+
+  function messageAt(commitId, createdAt) {
+    return { reply: { repository: { commit_id: commitId } }, createdAt };
+  }
+
+  test("is whichever was seen last: the link or the newest answer", () => {
+    expect(latestKnownCommit(linkAt("a", LATE), [messageAt("b", EARLY)])).toBe("a");
+    expect(latestKnownCommit(linkAt("a", EARLY), [messageAt("x", EARLY), messageAt("b", LATE)])).toBe(
+      "b",
+    );
+  });
+
+  test("uses the answers alone once the repository is removed", () => {
+    expect(latestKnownCommit(null, [messageAt("b", EARLY)])).toBe("b");
+  });
+
+  test("is unknown with no link and no answers", () => {
+    expect(latestKnownCommit(null, [])).toBeNull();
+    expect(latestKnownCommit({ indexed: null, updatedAt: LATE }, [])).toBeNull();
   });
 });
