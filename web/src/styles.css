@@ -438,3 +438,52 @@ a {
 .search-results {
   margin-top: 16px;
 }
+
+.site-footer {
+  padding: 16px 0 32px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+.privacy {
+  max-width: 760px;
+}
+
+.privacy .notice {
+  display: block;
+}
+
+.privacy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.privacy-table th,
+.privacy-table td {
+  padding: 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.privacy-table th {
+  background: var(--surface);
+}
+
+@media (max-width: 600px) {
+  .privacy-table,
+  .privacy-table tbody,
+  .privacy-table tr,
+  .privacy-table td {
+    display: block;
+  }
+
+  .privacy-table thead {
+    display: none;
+  }
+
+  .privacy-table tr {
+    margin-bottom: 12px;
+  }
+}

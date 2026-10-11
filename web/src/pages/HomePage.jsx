@@ -18,9 +18,14 @@ export default function HomePage() {
         GitHub.
       </p>
       {session.status === SessionStatus.SIGNED_OUT && (
-        <p>
-          <SignInButton />
-        </p>
+        <>
+          <p>
+            <SignInButton />
+          </p>
+          <p className="muted">
+            Before signing in, see <Link to="/privacy">what is stored and who receives it</Link>.
+          </p>
+        </>
       )}
       {session.status === SessionStatus.SIGNED_IN && (
         <p>

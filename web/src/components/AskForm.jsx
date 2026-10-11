@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isSignedOutError } from "../api/account.js";
+import { Link } from "react-router";
 import { useSession } from "../session/SessionProvider.jsx";
 import { messageWithWait } from "../time.js";
 
@@ -65,6 +66,10 @@ export default function AskForm({ onAsk }) {
           {asking ? "Answering…" : "Ask"}
         </button>
       </div>
+      <p className="muted">
+        Questions are sent to Google&apos;s Gemini on its free tier, where Google may read them;
+        leave out anything personal or confidential. <Link to="/privacy">Privacy</Link>
+      </p>
       {asking && (
         <p className="muted" role="status">
           Searching the code and writing an answer; this usually takes a few seconds.

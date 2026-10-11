@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
+import { GITHUB_AUTHORIZED_APPS_URL } from "../privacy/policy.js";
 import { useSession } from "../session/SessionProvider.jsx";
 import { AccountNoticeKind } from "./AccountNotice.jsx";
-
-const GITHUB_AUTHORIZED_APPS_URL = "https://github.com/settings/applications";
 
 export function confirmationMatches(typed, login) {
   return typed.trim().toLowerCase() === login.toLowerCase();
@@ -49,7 +48,7 @@ export default function DeleteAccountForm() {
         <a href={GITHUB_AUTHORIZED_APPS_URL} target="_blank" rel="noreferrer">
           GitHub&apos;s authorized apps
         </a>
-        .
+        . The <Link to="/privacy">privacy page</Link> explains what is stored and for how long.
       </p>
       <label htmlFor="confirm-login">
         Type your GitHub username, <strong>{user.login}</strong>, to confirm
