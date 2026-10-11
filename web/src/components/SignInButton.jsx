@@ -1,0 +1,9 @@
+import { SIGN_IN_PATH } from "../api/account.js";
+
+export default function SignInButton() {
+  return (
+    <a className="button" href={SIGN_IN_PATH}>
+      Sign in with GitHub
+    </a>
+  );
+}
