@@ -30,9 +30,13 @@ function createClock(startMilliseconds = START_TIME) {
  * The whole app over in-memory stores, a fake GitHub, a fake retrieval service, and a hand-moved
  * clock, with the real limits unless `limits` overrides some. `sessionCookieFor(profile)` signs
  * someone in directly and returns their cookie.
- * @param {{ limits?: Partial<typeof import("../../src/limits").DEFAULT_LIMITS> }} [options]
+ * @param {{
+ *   limits?: Partial<typeof import("../../src/limits").DEFAULT_LIMITS>,
+ *   trustProxyHops?: number,
+ *   forwardingCheck?: boolean,
+ * }} [options]
  */
-function buildTestApp({ limits } = {}) {
+function buildTestApp({ limits, trustProxyHops = 0, forwardingCheck = false } = {}) {
   const clock = createClock();
   const users = createMemoryUserStore();
   const repositoryLinks = createMemoryRepositoryLinkStore();
@@ -59,6 +63,8 @@ function buildTestApp({ limits } = {}) {
     usage,
     limits: withLimits(limits),
     now: clock.now,
+    trustProxyHops,
+    forwardingCheck,
   });
 
   async function sessionCookieFor(profile) {

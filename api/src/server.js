@@ -16,6 +16,7 @@ const {
   readConfig,
   readDatabaseSettings,
   readGitHubSettings,
+  readProxySettings,
   readRetrievalServiceSettings,
   readSessionSettings,
 } = require("./config");
@@ -43,6 +44,7 @@ async function main() {
   const gitHubSettings = readGitHubSettings(process.env);
   const retrievalServiceSettings = readRetrievalServiceSettings(process.env);
   const databaseSettings = readDatabaseSettings(process.env);
+  const proxySettings = readProxySettings(process.env);
 
   const { client: databaseClient, database } = await connectToDatabase(
     databaseSettings.mongodbUri,
@@ -74,7 +76,12 @@ async function main() {
     repositoryLinks,
     conversations,
     usage,
+    trustProxyHops: proxySettings.trustProxyHops,
+    forwardingCheck: proxySettings.forwardingCheck,
   });
+  if (proxySettings.forwardingCheck) {
+    logInfo("The forwarding check route is on; turn it off once the proxy hops are counted");
+  }
   const server = app.listen(config.port, config.host, () => {
     logInfo(`Listening on http://${config.host}:${config.port}`);
   });

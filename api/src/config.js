@@ -8,6 +8,13 @@
  *
  * The API listens on 127.0.0.1 unless `HOST` says otherwise, so a local run is not reachable from
  * other machines on the network; the deployment sets `HOST` explicitly.
+ *
+ * `TRUST_PROXY_HOPS` says how many proxies stand between visitors and the API (0 locally; Vercel
+ * and Render in production). Express then takes the visitor's address from that many entries of
+ * `X-Forwarded-For`, counted from the right, where the proxies add them. At 0 the header is
+ * ignored, so nobody can claim another address; too high a number would let a visitor put any
+ * address at the left of the header and have it believed. `FORWARDING_CHECK=on` turns on a route
+ * that shows callers their own forwarding chain, used once to count the hops on a new host.
  */
 
 const fs = require("node:fs");
@@ -41,6 +48,14 @@ const GITHUB_CLIENT_ID_VARIABLE = "GITHUB_CLIENT_ID";
 const GITHUB_CLIENT_SECRET_VARIABLE = "GITHUB_CLIENT_SECRET";
 
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+const TRUST_PROXY_HOPS_VARIABLE = "TRUST_PROXY_HOPS";
+
+const MAX_TRUST_PROXY_HOPS = 3;
+
+const FORWARDING_CHECK_VARIABLE = "FORWARDING_CHECK";
+
+const FORWARDING_CHECK_ON = "on";
 
 class MissingConfigError extends Error {
   /** @param {string} variableName */
@@ -227,6 +242,47 @@ function readRequired(environment, variableName) {
   return value;
 }
 
+/**
+ * Read how many proxies to trust for the visitor's address, and whether the forwarding check
+ * route is on.
+ * @param {NodeJS.ProcessEnv} environment
+ * @returns {{ trustProxyHops: number, forwardingCheck: boolean }}
+ */
+function readProxySettings(environment) {
+  return {
+    trustProxyHops: readTrustProxyHops(environment),
+    forwardingCheck: readForwardingCheck(environment),
+  };
+}
+
+/** @param {NodeJS.ProcessEnv} environment */
+function readTrustProxyHops(environment) {
+  const text = environment[TRUST_PROXY_HOPS_VARIABLE];
+  if (!text) {
+    return 0;
+  }
+  const hops = Number(text);
+  if (!/^\d+$/.test(text) || hops > MAX_TRUST_PROXY_HOPS) {
+    throw new InvalidConfigError(
+      TRUST_PROXY_HOPS_VARIABLE,
+      `must be a whole number from 0 to ${MAX_TRUST_PROXY_HOPS}`,
+    );
+  }
+  return hops;
+}
+
+/** @param {NodeJS.ProcessEnv} environment */
+function readForwardingCheck(environment) {
+  const text = environment[FORWARDING_CHECK_VARIABLE];
+  if (!text) {
+    return false;
+  }
+  if (text !== FORWARDING_CHECK_ON) {
+    throw new InvalidConfigError(FORWARDING_CHECK_VARIABLE, `must be "${FORWARDING_CHECK_ON}" or unset`);
+  }
+  return true;
+}
+
 /** @param {NodeJS.ProcessEnv} environment */
 function readHost(environment) {
   return environment.HOST || DEFAULT_HOST;
@@ -256,6 +312,7 @@ module.exports = {
   readConfig,
   readDatabaseSettings,
   readGitHubSettings,
+  readProxySettings,
   readRequired,
   readRequiredSecret,
   readRetrievalServiceSettings,

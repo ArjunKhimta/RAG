@@ -16,7 +16,7 @@ export default [
     },
   },
   {
-    files: ["vite.config.js", "eslint.config.js", "securityHeaders.js"],
+    files: ["vite.config.js", "eslint.config.js", "securityHeaders.js", "vercelConfig.js", "scripts/**/*.js"],
     languageOptions: {
       globals: globals.node,
     },

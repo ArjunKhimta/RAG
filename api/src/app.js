@@ -23,6 +23,7 @@ const helmet = require("helmet");
 const { createAccountRouter } = require("./accountRoutes");
 const { createAuthentication } = require("./authentication");
 const { createConversationRouter } = require("./conversationRoutes");
+const { createForwardingCheckRouter } = require("./forwardingCheck");
 const { registerErrorReplies } = require("./errors");
 const { createGitHubSignInRouter } = require("./githubSignInRoutes");
 const { DEFAULT_LIMITS } = require("./limits");
@@ -73,6 +74,8 @@ function createApp({
   usage,
   limits = DEFAULT_LIMITS,
   now = Date.now,
+  trustProxyHops = 0,
+  forwardingCheck = false,
 }) {
   const authentication = createAuthentication({ sessions, users });
   const dailyLimits = createDailyLimits({ usage, limits, now });
@@ -87,10 +90,16 @@ function createApp({
     now,
   });
   const app = express();
+  if (trustProxyHops > 0) {
+    app.set("trust proxy", trustProxyHops);
+  }
   app.use(helmet({ contentSecurityPolicy: JSON_API_CONTENT_SECURITY_POLICY }));
   app.use(express.json({ limit: MAX_REQUEST_BYTES }));
   app.get("/health", reportHealth);
   app.use(API_PATH, requireSameOrigin(appOrigin));
+  if (forwardingCheck) {
+    app.use(API_PATH, createForwardingCheckRouter({ trustProxyHops }));
+  }
   app.use(
     API_PATH,
     createGitHubSignInRouter({
