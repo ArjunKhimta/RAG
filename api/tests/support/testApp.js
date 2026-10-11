@@ -34,9 +34,15 @@ function createClock(startMilliseconds = START_TIME) {
  *   limits?: Partial<typeof import("../../src/limits").DEFAULT_LIMITS>,
  *   trustProxyHops?: number,
  *   forwardingCheck?: boolean,
+ *   originSecret?: string | null,
  * }} [options]
  */
-function buildTestApp({ limits, trustProxyHops = 0, forwardingCheck = false } = {}) {
+function buildTestApp({
+  limits,
+  trustProxyHops = 0,
+  forwardingCheck = false,
+  originSecret = null,
+} = {}) {
   const clock = createClock();
   const users = createMemoryUserStore();
   const repositoryLinks = createMemoryRepositoryLinkStore();
@@ -65,6 +71,7 @@ function buildTestApp({ limits, trustProxyHops = 0, forwardingCheck = false } = 
     now: clock.now,
     trustProxyHops,
     forwardingCheck,
+    originSecret,
   });
 
   async function sessionCookieFor(profile) {

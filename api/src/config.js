@@ -15,6 +15,9 @@
  * ignored, so nobody can claim another address; too high a number would let a visitor put any
  * address at the left of the header and have it believed. `FORWARDING_CHECK=on` turns on a route
  * that shows callers their own forwarding chain, used once to count the hops on a new host.
+ *
+ * `ORIGIN_SECRET` is the value Vercel adds to every request it forwards (see `originSecret.js`).
+ * It is required, at least 32 characters, whenever `APP_ORIGIN` uses https, and optional locally.
  */
 
 const fs = require("node:fs");
@@ -56,6 +59,10 @@ const MAX_TRUST_PROXY_HOPS = 3;
 const FORWARDING_CHECK_VARIABLE = "FORWARDING_CHECK";
 
 const FORWARDING_CHECK_ON = "on";
+
+const ORIGIN_SECRET_VARIABLE = "ORIGIN_SECRET";
+
+const HTTPS_PROTOCOL = "https:";
 
 class MissingConfigError extends Error {
   /** @param {string} variableName */
@@ -243,6 +250,21 @@ function readRequired(environment, variableName) {
 }
 
 /**
+ * Read the secret that proves a request came through the website: required for an https site,
+ * optional locally (null turns the check off).
+ * @param {NodeJS.ProcessEnv} environment
+ * @param {string} appOrigin
+ * @returns {string | null}
+ */
+function readOriginSecret(environment, appOrigin) {
+  const isPublicSite = new URL(appOrigin).protocol === HTTPS_PROTOCOL;
+  if (!isPublicSite && !environment[ORIGIN_SECRET_VARIABLE]) {
+    return null;
+  }
+  return readRequiredSecret(environment, ORIGIN_SECRET_VARIABLE);
+}
+
+/**
  * Read how many proxies to trust for the visitor's address, and whether the forwarding check
  * route is on.
  * @param {NodeJS.ProcessEnv} environment
@@ -312,6 +334,7 @@ module.exports = {
   readConfig,
   readDatabaseSettings,
   readGitHubSettings,
+  readOriginSecret,
   readProxySettings,
   readRequired,
   readRequiredSecret,

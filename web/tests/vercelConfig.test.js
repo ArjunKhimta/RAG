@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { BUILT_SITE_HEADERS } from "../securityHeaders.js";
 import {
   API_PATH_PATTERN,
+  API_ROUTE_SOURCE,
+  ORIGIN_SECRET_HEADER,
   ASSETS_PATTERN,
   IMMUTABLE_CACHE,
   PAGE_FALLBACK_PATTERN,
@@ -24,9 +26,31 @@ describe("the committed vercel.json", () => {
   });
 
   it("forwards /api to an https address, keeping the rest of the path", () => {
-    const apiRewrite = committed.rewrites.find((rewrite) => rewrite.source === API_PATH_PATTERN);
+    const apiRoute = committed.routes.find((route) => route.src === API_ROUTE_SOURCE);
 
-    expect(apiRewrite.destination).toMatch(/^https:\/\/[a-z0-9.-]+\/api\/:path\*$/);
+    expect(apiRoute.dest).toMatch(/^https:\/\/[a-z0-9.-]+\/api\/\$1$/);
+    expect(new RegExp(API_ROUTE_SOURCE).exec("/api/auth/github/callback")[1]).toBe(
+      "auth/github/callback",
+    );
+  });
+
+  it("replaces any origin secret a visitor sends with the project's own", () => {
+    const [deletion, setting] = committed.routes[0].transforms;
+
+    expect(deletion).toEqual({
+      type: "request.headers",
+      op: "delete",
+      target: { key: ORIGIN_SECRET_HEADER },
+    });
+    expect(setting).toMatchObject({ op: "set", target: { key: ORIGIN_SECRET_HEADER } });
+    expect(setting.args).toBe("$ORIGIN_SECRET");
+    expect(setting.env).toEqual(["ORIGIN_SECRET"]);
+  });
+
+  it("never caches the API's replies", () => {
+    const apiRule = committed.headers.find((rule) => rule.source === API_PATH_PATTERN);
+
+    expect(apiRule.headers).toEqual([{ key: "x-vercel-enable-rewrite-caching", value: "0" }]);
   });
 
   it("installs from the lockfile without install scripts", () => {

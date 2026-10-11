@@ -4,17 +4,48 @@
   "installCommand": "npm ci --ignore-scripts",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://repositorycite-api.onrender.com/api/:path*"
-    },
+      "src": "^/api/(.*)$",
+      "dest": "https://repositorycite-api.onrender.com/api/$1",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "delete",
+          "target": {
+            "key": "x-origin-secret"
+          }
+        },
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": {
+            "key": "x-origin-secret"
+          },
+          "args": "$ORIGIN_SECRET",
+          "env": [
+            "ORIGIN_SECRET"
+          ]
+        }
+      ]
+    }
+  ],
+  "rewrites": [
     {
       "source": "/((?!api/|assets/).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
+    },
     {
       "source": "/((?!api/).*)",
       "headers": [

@@ -1,6 +1,18 @@
-export const POLICY_UPDATED = "11 October 2026";
+export const POLICY_UPDATED = "12 October 2026";
 
-export const PRIVACY_CONTACT = null;
+export const PRIVACY_CONTACT_URL = "https://github.com/ArjunKhimta/RAG/issues";
+
+export const VERCEL_PRIVACY_URL = "https://vercel.com/legal/privacy-policy";
+
+export const RENDER_PRIVACY_URL = "https://render.com/privacy";
+
+export const SERVER_LOCATION = "Singapore";
+
+export const DATABASE_LOCATION = "Mumbai, India";
+
+export const VERCEL_LOG_RETENTION = "1 hour";
+
+export const RENDER_LOG_RETENTION = "7 days";
 
 export const GEMINI_TERMS_URL = "https://ai.google.dev/gemini-api/terms";
 

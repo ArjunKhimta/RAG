@@ -3,6 +3,7 @@ const http = require("node:http");
 const {
   NOT_SEARCHABLE_MESSAGE,
   REJECTED_ANSWER_MESSAGE,
+  TIMEOUT_MILLISECONDS,
   UNAVAILABLE_MESSAGE,
   UNEXPECTED_REPLY_MESSAGE,
   UNKNOWN_JOB_MESSAGE,
@@ -695,5 +696,33 @@ describe("refreshing an indexed version", () => {
     const error = await caught(client().startIndexing({ repository: "a/b", version: "1" }));
 
     expect(error.status).toBe(502);
+  });
+});
+
+describe("checking the service's health", () => {
+  test("a healthy service answers GET /health", async () => {
+    service.reply({ status: 200, body: { status: "ok" } });
+
+    const health = await client().checkHealth();
+
+    expect(health.healthy).toBe(true);
+    expect(service.requests[0]).toMatchObject({ method: "GET", path: "/health" });
+  });
+
+  test("a service that is down is reported as not healthy, never thrown", async () => {
+    await service.close();
+
+    const health = await client().checkHealth();
+
+    expect(health.healthy).toBe(false);
+    expect(loggedText()).toContain("GET /health failed");
+  });
+
+  test("a service that answers too slowly is not healthy", async () => {
+    service.reply({ status: 200, body: { status: "ok" }, delayMilliseconds: 200 });
+
+    const health = await client({ timeouts: { ...TIMEOUT_MILLISECONDS, wake: 50 } }).checkHealth();
+
+    expect(health.healthy).toBe(false);
   });
 });

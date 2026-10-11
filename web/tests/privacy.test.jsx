@@ -70,7 +70,7 @@ describe("privacy page", () => {
     expect(screen.getByText(/No analytics, advertising, or tracking/)).toBeTruthy();
   });
 
-  it("links to deleting the account and shows the contact placeholder", () => {
+  it("links to deleting the account and to the public contact, warning that it is public", () => {
     installFakeApi({ "GET /api/me": SIGNED_OUT });
 
     renderApp("/privacy");
@@ -79,8 +79,26 @@ describe("privacy page", () => {
       "/account",
     );
     expect(
-      screen.getByText(/will be listed here before anyone other than the developer can sign in/),
-    ).toBeTruthy();
+      screen.getByRole("link", { name: "project's GitHub issues page" }).getAttribute("href"),
+    ).toBe("https://github.com/ArjunKhimta/RAG/issues");
+    expect(screen.getByText(/Issues are public/).textContent).toContain(
+      "Do not write personal details",
+    );
+  });
+
+  it("names the hosts that see visitors' addresses, how long they keep them, and where data is", () => {
+    installFakeApi({ "GET /api/me": SIGNED_OUT });
+
+    renderApp("/privacy");
+
+    const vercel = screen.getByText("Vercel").closest("li");
+    const render = screen.getByText("Render").closest("li");
+    const atlas = screen.getByText("MongoDB Atlas").closest("li");
+    expect(vercel.textContent).toContain("receives your internet address");
+    expect(vercel.textContent).toContain("for 1 hour");
+    expect(render.textContent).toContain("in Singapore");
+    expect(render.textContent).toContain("for 7 days");
+    expect(atlas.textContent).toContain("Mumbai, India");
   });
 });
 

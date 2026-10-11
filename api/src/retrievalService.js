@@ -31,6 +31,7 @@ const TIMEOUT_MILLISECONDS = {
   index: 30_000,
   refresh: 45_000,
   ask: 90_000,
+  wake: 90_000,
 };
 
 const UNAVAILABLE_RETRY_SECONDS = 30;
@@ -162,6 +163,21 @@ function createRetrievalService({
   }
 
   return {
+    /**
+     * Ask the service whether it is up, waiting long enough for a sleeping free-tier service to
+     * start. Never throws: a failure is logged and reported as not healthy.
+     * @returns {Promise<{ healthy: boolean, milliseconds: number }>}
+     */
+    async checkHealth() {
+      const started = Date.now();
+      try {
+        const reply = await call("GET", "/health", undefined, timeouts.wake);
+        return { healthy: reply.status === 200, milliseconds: Date.now() - started };
+      } catch {
+        return { healthy: false, milliseconds: Date.now() - started };
+      }
+    },
+
     /**
      * @param {{
      *   repository: string, version: string, question: string, excludeTests?: boolean,

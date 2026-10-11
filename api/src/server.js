@@ -16,6 +16,7 @@ const {
   readConfig,
   readDatabaseSettings,
   readGitHubSettings,
+  readOriginSecret,
   readProxySettings,
   readRetrievalServiceSettings,
   readSessionSettings,
@@ -45,6 +46,7 @@ async function main() {
   const retrievalServiceSettings = readRetrievalServiceSettings(process.env);
   const databaseSettings = readDatabaseSettings(process.env);
   const proxySettings = readProxySettings(process.env);
+  const originSecret = readOriginSecret(process.env, sessionSettings.appOrigin);
 
   const { client: databaseClient, database } = await connectToDatabase(
     databaseSettings.mongodbUri,
@@ -66,18 +68,20 @@ async function main() {
     clientSecret: gitHubSettings.githubClientSecret,
   });
 
+  const retrievalService = createRetrievalService(retrievalServiceSettings);
   const app = createApp({
     appOrigin: sessionSettings.appOrigin,
     github,
     signInAttempts: createSignInAttempts(cookieSettings),
     sessions: createSessions(cookieSettings),
     users,
-    retrievalService: createRetrievalService(retrievalServiceSettings),
+    retrievalService,
     repositoryLinks,
     conversations,
     usage,
     trustProxyHops: proxySettings.trustProxyHops,
     forwardingCheck: proxySettings.forwardingCheck,
+    originSecret,
   });
   if (proxySettings.forwardingCheck) {
     logInfo("The forwarding check route is on; turn it off once the proxy hops are counted");
@@ -87,6 +91,19 @@ async function main() {
   });
   server.on("error", stopWithError);
   stopOnSignals({ server, databaseClient });
+  wakeRetrievalService(retrievalService);
+}
+
+/**
+ * On the free tier the retrieval service sleeps after 15 idle minutes and takes about a minute to
+ * wake. Asking for its health check as soon as the API starts lets it wake while the first visitor
+ * is still loading the page, rather than on their first question. The result is only logged.
+ */
+function wakeRetrievalService(retrievalService) {
+  retrievalService.checkHealth().then(({ healthy, milliseconds }) => {
+    const outcome = healthy ? "answered its health check" : "did not answer its health check";
+    logInfo(`The retrieval service ${outcome} after ${milliseconds} ms`);
+  });
 }
 
 /** @param {unknown} error */

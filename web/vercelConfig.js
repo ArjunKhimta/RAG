@@ -5,7 +5,12 @@
  *
  * - `/api/...` is forwarded to the Node API on Render, so the browser sees one site: the session
  *   cookie stays first-party and `SameSite=Strict`, and the content security policy's
- *   `connect-src 'self'` holds.
+ *   `connect-src 'self'` holds. The forwarding is a `routes` entry rather than a rewrite because
+ *   only routes can change request headers: it deletes any `X-Origin-Secret` the visitor sent,
+ *   then sets the real one from the project's `ORIGIN_SECRET` setting, so the API can refuse
+ *   every request that did not come through here (see `api/src/originSecret.js`). Vercel never
+ *   caches what the API returns (`x-vercel-enable-rewrite-caching: 0`; the API also sends
+ *   `Cache-Control: no-store`), since a cached personal reply could be shown to someone else.
  * - Any other path that is not a file the build produced gets `index.html`, so the site's own
  *   routes (such as `/repositories`) load on a refresh. Vercel serves real files first, and paths
  *   under `/assets/` are left out, so a missing script is a 404 rather than a page of HTML.
@@ -17,6 +22,12 @@
 import { BUILT_SITE_HEADERS } from "./securityHeaders.js";
 
 export const API_PATH_PATTERN = "/api/:path*";
+
+export const API_ROUTE_SOURCE = "^/api/(.*)$";
+
+export const ORIGIN_SECRET_HEADER = "x-origin-secret";
+
+export const ORIGIN_SECRET_SETTING = "ORIGIN_SECRET";
 
 export const PAGE_FALLBACK_PATTERN = "/((?!api/|assets/).*)";
 
@@ -36,11 +47,28 @@ export function vercelConfig(apiOrigin) {
     installCommand: "npm ci --ignore-scripts",
     buildCommand: "npm run build",
     outputDirectory: "dist",
-    rewrites: [
-      { source: API_PATH_PATTERN, destination: `${requireHttpsOrigin(apiOrigin)}${API_PATH_PATTERN}` },
-      { source: PAGE_FALLBACK_PATTERN, destination: "/index.html" },
+    routes: [
+      {
+        src: API_ROUTE_SOURCE,
+        dest: `${requireHttpsOrigin(apiOrigin)}/api/$1`,
+        transforms: [
+          { type: "request.headers", op: "delete", target: { key: ORIGIN_SECRET_HEADER } },
+          {
+            type: "request.headers",
+            op: "set",
+            target: { key: ORIGIN_SECRET_HEADER },
+            args: `$${ORIGIN_SECRET_SETTING}`,
+            env: [ORIGIN_SECRET_SETTING],
+          },
+        ],
+      },
     ],
+    rewrites: [{ source: PAGE_FALLBACK_PATTERN, destination: "/index.html" }],
     headers: [
+      {
+        source: API_PATH_PATTERN,
+        headers: [{ key: "x-vercel-enable-rewrite-caching", value: "0" }],
+      },
       {
         source: SITE_HEADERS_PATTERN,
         headers: Object.entries(BUILT_SITE_HEADERS).map(([key, value]) => ({ key, value })),
@@ -52,8 +80,8 @@ export function vercelConfig(apiOrigin) {
 
 /** The origin the committed configuration forwards `/api` to. */
 export function apiOriginOf(config) {
-  const apiRewrite = config.rewrites.find((rewrite) => rewrite.source === API_PATH_PATTERN);
-  return apiRewrite.destination.slice(0, -API_PATH_PATTERN.length);
+  const apiRoute = config.routes.find((route) => route.src === API_ROUTE_SOURCE);
+  return new URL(apiRoute.dest.replace("$1", "")).origin;
 }
 
 function requireHttpsOrigin(text) {

@@ -27,6 +27,7 @@ const { createForwardingCheckRouter } = require("./forwardingCheck");
 const { registerErrorReplies } = require("./errors");
 const { createGitHubSignInRouter } = require("./githubSignInRoutes");
 const { DEFAULT_LIMITS } = require("./limits");
+const { requireOriginSecret } = require("./originSecret");
 const { createRepositoryRouter } = require("./repositoryRoutes");
 const { requireSameOrigin } = require("./sameOrigin");
 const { createSlidingWindowLimiter } = require("./slidingWindowLimiter");
@@ -76,6 +77,7 @@ function createApp({
   now = Date.now,
   trustProxyHops = 0,
   forwardingCheck = false,
+  originSecret = null,
 }) {
   const authentication = createAuthentication({ sessions, users });
   const dailyLimits = createDailyLimits({ usage, limits, now });
@@ -94,8 +96,12 @@ function createApp({
     app.set("trust proxy", trustProxyHops);
   }
   app.use(helmet({ contentSecurityPolicy: JSON_API_CONTENT_SECURITY_POLICY }));
-  app.use(express.json({ limit: MAX_REQUEST_BYTES }));
   app.get("/health", reportHealth);
+  app.use(API_PATH, neverCache);
+  if (originSecret !== null) {
+    app.use(API_PATH, requireOriginSecret(originSecret));
+  }
+  app.use(express.json({ limit: MAX_REQUEST_BYTES }));
   app.use(API_PATH, requireSameOrigin(appOrigin));
   if (forwardingCheck) {
     app.use(API_PATH, createForwardingCheckRouter({ trustProxyHops }));
@@ -157,6 +163,15 @@ function createApp({
  * @param {import("express").Request} request
  * @param {import("express").Response} response
  */
+/**
+ * Every API reply is about one person or one moment, so no browser or CDN may keep a copy: a
+ * cached `/api/me` shown to the next visitor would be another person's account.
+ */
+function neverCache(request, response, next) {
+  response.set("Cache-Control", "no-store");
+  next();
+}
+
 function reportHealth(request, response) {
   response.json({ status: "ok" });
 }

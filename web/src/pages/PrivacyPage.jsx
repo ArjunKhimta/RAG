@@ -7,8 +7,14 @@ import {
   GITHUB_PRIVACY_URL,
   MONGODB_PRIVACY_URL,
   NOT_STORED,
+  DATABASE_LOCATION,
   POLICY_UPDATED,
-  PRIVACY_CONTACT,
+  PRIVACY_CONTACT_URL,
+  RENDER_LOG_RETENTION,
+  RENDER_PRIVACY_URL,
+  SERVER_LOCATION,
+  VERCEL_LOG_RETENTION,
+  VERCEL_PRIVACY_URL,
   STORED_DATA,
 } from "../privacy/policy.js";
 
@@ -126,9 +132,27 @@ export default function PrivacyPage() {
           </a>
         </li>
         <li>
-          <strong>MongoDB Atlas</strong> hosts the database that holds everything listed above.{" "}
+          <strong>MongoDB Atlas</strong> hosts the database that holds everything listed above, in{" "}
+          {DATABASE_LOCATION}, on Amazon Web Services.{" "}
           <a href={MONGODB_PRIVACY_URL} target="_blank" rel="noreferrer">
             MongoDB&apos;s privacy policy
+          </a>
+        </li>
+        <li>
+          <strong>Vercel</strong> serves the website and passes your requests on to the servers.
+          Like any web host it receives your internet address with every request, and keeps it in
+          its own request logs for {VERCEL_LOG_RETENTION}.{" "}
+          <a href={VERCEL_PRIVACY_URL} target="_blank" rel="noreferrer">
+            Vercel&apos;s privacy policy
+          </a>
+        </li>
+        <li>
+          <strong>Render</strong> runs the servers that answer questions, in {SERVER_LOCATION}, and
+          keeps their logs for {RENDER_LOG_RETENTION}; those logs follow the rule above and leave out
+          your questions, GitHub details, and address, though Render&apos;s own systems also see where
+          each request came from.{" "}
+          <a href={RENDER_PRIVACY_URL} target="_blank" rel="noreferrer">
+            Render&apos;s privacy policy
           </a>
         </li>
       </ul>
@@ -164,13 +188,21 @@ export default function PrivacyPage() {
 }
 
 function PrivacyContact() {
-  if (PRIVACY_CONTACT === null) {
-    return (
+  return (
+    <>
       <p>
-        A contact for privacy questions and requests will be listed here before anyone other than
-        the developer can sign in.
+        For privacy questions and requests, open an issue on the{" "}
+        <a href={PRIVACY_CONTACT_URL} target="_blank" rel="noreferrer">
+          project&apos;s GitHub issues page
+        </a>
+        .
       </p>
-    );
-  }
-  return <p>For privacy questions and requests, contact {PRIVACY_CONTACT}.</p>;
+      <p>
+        Issues are public: anyone can read them, with your GitHub username. Do not write personal
+        details in one. To ask for your data, or for something deleted that you cannot delete
+        yourself, title the issue &ldquo;Privacy request&rdquo; and give only your GitHub username;
+        the request is answered there, and nothing more is needed from you.
+      </p>
+    </>
+  );
 }

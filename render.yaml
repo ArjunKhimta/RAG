@@ -1,0 +1,69 @@
+# Render Blueprint: the retrieval service and the Node API, both from their Dockerfiles, on the
+# free plan in Singapore (the Render region nearest the Atlas cluster in Mumbai; Render has no
+# India region). Each deploys only after GitHub Actions passes, and only when its own folder
+# changes. Secrets are never written here: `sync: false` makes Render ask for them once, when the
+# Blueprint is created; `generateValue` makes Render create a random value nobody has to see or
+# paste; `fromService` copies the service token to the API, so both always hold the same one.
+#
+# Shutdown: Render sends SIGTERM and waits `maxShutdownDelaySeconds` before killing the process.
+# gunicorn gives requests in progress 30 s and the API 25 s, so 40 s lets both finish cleanly.
+
+services:
+  - type: web
+    name: repositorycite-retrieval
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./retrieval/Dockerfile
+    dockerContext: ./retrieval
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 40
+    buildFilter:
+      paths:
+        - retrieval/**
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: RETRIEVAL_SERVICE_TOKEN
+        generateValue: true
+
+  - type: web
+    name: repositorycite-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 40
+    buildFilter:
+      paths:
+        - api/**
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: ORIGIN_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: RETRIEVAL_SERVICE_TOKEN
+        fromService:
+          type: web
+          name: repositorycite-retrieval
+          envVarKey: RETRIEVAL_SERVICE_TOKEN
+      - key: RETRIEVAL_SERVICE_URL
+        value: https://repositorycite-retrieval.onrender.com
+      - key: APP_ORIGIN
+        value: https://repositorycite.vercel.app
+      - key: TRUST_PROXY_HOPS
+        value: "0"
+      - key: FORWARDING_CHECK
+        value: "on"
