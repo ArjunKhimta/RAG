@@ -310,7 +310,26 @@ function overviewReply(body) {
     files: listOf(reply.files, (file) => pick(file, OVERVIEW_FILE_FIELDS)),
     links: listOf(reply.links, (link) => pick(link, ["from", "to", "calls"])),
     totals: pick(reply.totals, OVERVIEW_TOTAL_FIELDS),
+    left_out: leftOut(reply.left_out),
     timings_ms: timings(reply.timings_ms),
+  };
+}
+
+/**
+ * What the overview left out: folder names as text, and how many files and calls.
+ * @param {unknown} value
+ */
+function leftOut(value) {
+  const fields = requireObject(value, "left out");
+  return {
+    folders: listOf(fields.folders, (folder) => {
+      if (typeof folder !== "string") {
+        throw new UnexpectedReplyError("a left-out folder that is not text");
+      }
+      return folder;
+    }),
+    files: fields.files,
+    calls: fields.calls,
   };
 }
 

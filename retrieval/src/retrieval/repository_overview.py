@@ -8,6 +8,12 @@ are counted for that file instead. Test files are left out, as the call graph le
 
 Classes and functions are counted from the first part of each definition, so a long function
 split into parts counts once. Module-level chunks are not definitions, but their files are listed.
+
+Files under a top-level `examples/` folder are left out of the overview, with every call from or
+into them, so the picture is of the project rather than its sample apps (decided 2026-10-11: in
+Flask, the tutorial app's calls into Flask's helpers led the diagram). The overview counts what it
+left out, so its calls plus the left-out calls still equal the stored edge count. Search, answers,
+and indexing still include those files.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ FUNCTION_KINDS = frozenset({ChunkKind.FUNCTION.value, ChunkKind.METHOD.value})
 
 FIRST_PART = 1
 
+LEFT_OUT_FOLDERS = ("examples",)
+
 
 @dataclass(frozen=True)
 class FileOverview:
@@ -54,6 +62,9 @@ class FileLink:
 class RepositoryOverview:
     files: list[FileOverview]
     links: list[FileLink]
+    left_out_folders: tuple[str, ...] = ()
+    left_out_file_count: int = 0
+    left_out_call_count: int = 0
 
     @property
     def call_count(self) -> int:
@@ -80,8 +91,18 @@ def file_of(symbol: str) -> str:
     return symbol.rpartition(SYMBOL_SEPARATOR)[0]
 
 
-def summarize_chunks(documents: Iterable[dict[str, Any]]) -> RepositoryOverview:
+def is_left_out(path: str, left_out_folders: tuple[str, ...]) -> bool:
+    """Whether `path` sits under one of `left_out_folders` at the repository's top level."""
+    top_folder, separator, _ = path.partition("/")
+    return separator != "" and top_folder in left_out_folders
+
+
+def summarize_chunks(
+    documents: Iterable[dict[str, Any]], left_out_folders: tuple[str, ...] = ()
+) -> RepositoryOverview:
     paths: set[str] = set()
+    left_out_paths: set[str] = set()
+    left_out_calls = 0
     class_counts: Counter[str] = Counter()
     function_counts: Counter[str] = Counter()
     calls_within: Counter[str] = Counter()
@@ -91,6 +112,10 @@ def summarize_chunks(documents: Iterable[dict[str, Any]]) -> RepositoryOverview:
 
     for document in documents:
         caller_file = document["file_path"]
+        if is_left_out(caller_file, left_out_folders):
+            left_out_paths.add(caller_file)
+            left_out_calls += len(document.get("calls", []))
+            continue
         paths.add(caller_file)
         if document.get("part_number", FIRST_PART) == FIRST_PART:
             if document["kind"] == ChunkKind.CLASS.value:
@@ -99,6 +124,9 @@ def summarize_chunks(documents: Iterable[dict[str, Any]]) -> RepositoryOverview:
                 function_counts[caller_file] += 1
         for callee in document.get("calls", []):
             callee_file = file_of(callee)
+            if is_left_out(callee_file, left_out_folders):
+                left_out_calls += 1
+                continue
             paths.add(callee_file)
             if callee_file == caller_file:
                 calls_within[caller_file] += 1
@@ -124,7 +152,13 @@ def summarize_chunks(documents: Iterable[dict[str, Any]]) -> RepositoryOverview:
             link_counts.items(), key=lambda item: (-item[1], item[0])
         )
     ]
-    return RepositoryOverview(files=files, links=links)
+    return RepositoryOverview(
+        files=files,
+        links=links,
+        left_out_folders=left_out_folders,
+        left_out_file_count=len(left_out_paths),
+        left_out_call_count=left_out_calls,
+    )
 
 
 class RepositoryOverviewBuilder:
@@ -149,7 +183,7 @@ class RepositoryOverviewBuilder:
             {"repository": repository, "version": version, "is_test_file": False},
             OVERVIEW_PROJECTION,
         )
-        overview = summarize_chunks(documents)
+        overview = summarize_chunks(documents, LEFT_OUT_FOLDERS)
         timings["summarize call graph"] = _milliseconds_since(stage_started)
         return OverviewRun(overview=overview, repository_record=repository_record, timings=timings)
 

@@ -37,6 +37,7 @@ export function flaskOverview() {
       calls_between_files: 13,
       calls_within_files: 15,
     },
+    left_out: { folders: ["examples/"], files: 10, calls: 41 },
     timings_ms: { checks: 31, "summarize call graph": 19 },
   };
 }

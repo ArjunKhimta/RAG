@@ -69,6 +69,7 @@ function OverviewDetails({ overview }) {
         on objects whose type it cannot tell, are left out, as are test files. A missing arrow does
         not prove two files are unrelated.
       </p>
+      <LeftOutNote leftOut={overview.left_out} />
 
       <h2>Every file</h2>
       <div className="table-scroll">
@@ -92,6 +93,23 @@ function OverviewDetails({ overview }) {
       </div>
       <LicenseNotice repository={overview.repository} />
     </>
+  );
+}
+
+function LeftOutNote({ leftOut }) {
+  if (leftOut.files === 0) {
+    return null;
+  }
+  const folders = leftOut.folders.join(", ");
+  const fileWord = leftOut.files === 1 ? "file" : "files";
+  const callWord = leftOut.calls === 1 ? "call" : "calls";
+
+  return (
+    <p className="muted">
+      Sample code in {folders} is left out of this overview ({leftOut.files} {fileWord} and{" "}
+      {leftOut.calls} {callWord} from or into them), so it shows the project itself. Search and
+      answers still include it.
+    </p>
   );
 }
 

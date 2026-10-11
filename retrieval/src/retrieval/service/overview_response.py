@@ -1,6 +1,7 @@
 """The JSON reply of `POST /overview`: every source file with its classes, functions, and calls,
-the file-to-file links with how many calls each carries, totals, and the repository block with the
-license link. Locations and counts only, never code."""
+the file-to-file links with how many calls each carries, totals, what was left out (folders, and
+how many files and calls), and the repository block with the license link. Locations and counts
+only, never code."""
 
 from __future__ import annotations
 
@@ -25,6 +26,11 @@ def overview_response(run: OverviewRun, repository: str, version: str) -> dict[s
             "calls": overview.call_count,
             "calls_between_files": overview.calls_between_files,
             "calls_within_files": overview.calls_within_files,
+        },
+        "left_out": {
+            "folders": [f"{folder}/" for folder in overview.left_out_folders],
+            "files": overview.left_out_file_count,
+            "calls": overview.left_out_call_count,
         },
         "timings_ms": rounded_timings(run.timings),
     }

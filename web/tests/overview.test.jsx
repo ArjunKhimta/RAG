@@ -128,6 +128,28 @@ describe("overview page", () => {
     expect(await screen.findByText(/A missing arrow does\s+not prove two files are unrelated/)).toBeTruthy();
   });
 
+  it("says what sample code was left out and that search still includes it", async () => {
+    overviewApi();
+
+    renderApp("/repositories/link-flask/overview");
+
+    expect(
+      await screen.findByText(
+        /Sample code in examples\/ is left out of this overview \(10 files and\s+41 calls from or into them\)/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Search and\s+answers still include it/)).toBeTruthy();
+  });
+
+  it("says nothing about left-out code when nothing was left out", async () => {
+    overviewApi({ ...flaskOverview(), left_out: { folders: ["examples/"], files: 0, calls: 0 } });
+
+    renderApp("/repositories/link-flask/overview");
+
+    await screen.findByRole("link", { name: "src/flask/app.py" });
+    expect(screen.queryByText(/is left out of this overview/)).toBeNull();
+  });
+
   it("carries the license notice", async () => {
     overviewApi();
 

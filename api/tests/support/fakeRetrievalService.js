@@ -196,6 +196,7 @@ function overviewReply({ repository, version }) {
     files: [{ path: "src/flask/app.py", classes: 1, functions: 40, calls_within: 12, calls_out: 9, calls_in: 2 }],
     links: [{ from: "src/flask/app.py", to: "src/flask/helpers.py", calls: 9 }],
     totals: { files: 1, classes: 1, functions: 40, calls: 21, calls_between_files: 9, calls_within_files: 12 },
+    left_out: { folders: ["examples/"], files: 10, calls: 41 },
     timings_ms: { checks: 31, "summarize call graph": 19 },
   };
 }

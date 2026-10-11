@@ -117,6 +117,7 @@ const OVERVIEW_REPLY = {
     calls_within_files: 12,
     extra: "dropped",
   },
+  left_out: { folders: ["examples/"], files: 10, calls: 41, extra: "dropped" },
   timings_ms: { checks: 31, "summarize call graph": 19 },
   debug: "dropped",
 };
@@ -280,8 +281,20 @@ describe("successful replies", () => {
     ]);
     expect(reply.links).toEqual([{ from: "src/flask/app.py", to: "src/flask/helpers.py", calls: 9 }]);
     expect(reply.totals.extra).toBeUndefined();
+    expect(reply.left_out).toEqual({ folders: ["examples/"], files: 10, calls: 41 });
     expect(reply.debug).toBeUndefined();
     expect(reply.repository.license.internal_note).toBeUndefined();
+  });
+
+  test("an overview whose left-out folders are not text is a 502", async () => {
+    service.reply({
+      status: 200,
+      body: { ...OVERVIEW_REPLY, left_out: { folders: [{ html: "<b>" }], files: 1, calls: 1 } },
+    });
+
+    const error = await caught(client().overview({ repository: "pallets/flask", version: "3.1.3" }));
+
+    expect(error.status).toBe(502);
   });
 
   test("an overview missing its file list is a 502", async () => {

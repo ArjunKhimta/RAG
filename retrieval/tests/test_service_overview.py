@@ -34,6 +34,9 @@ OVERVIEW = RepositoryOverview(
         FileLink("src/flask/app.py", "src/flask/helpers.py", 9),
         FileLink("src/flask/helpers.py", "src/flask/app.py", 2),
     ],
+    left_out_folders=("examples",),
+    left_out_file_count=10,
+    left_out_call_count=41,
 )
 
 
@@ -114,6 +117,7 @@ def test_an_overview_lists_files_links_totals_and_the_license():
     assert reply["repository"]["license"]["link"] == (
         f"https://github.com/pallets/flask/blob/{COMMIT}/LICENSE.txt"
     )
+    assert reply["left_out"] == {"folders": ["examples/"], "files": 10, "calls": 41}
     assert reply["timings_ms"] == {"checks": 31, "summarize call graph": 19}
 
 

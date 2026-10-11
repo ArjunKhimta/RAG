@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from retrieval.repository_overview import (
+    LEFT_OUT_FOLDERS,
     OVERVIEW_PROJECTION,
     RepositoryOverviewBuilder,
     file_of,
+    is_left_out,
     summarize_chunks,
 )
 from retrieval.search_results import SearchRefusedError
@@ -98,6 +100,45 @@ def test_links_are_ordered_by_calls_then_by_files():
     ]
 
 
+def test_only_a_top_level_folder_counts_as_left_out():
+    assert is_left_out("examples/tutorial/flaskr/blog.py", ("examples",))
+    assert not is_left_out("src/examples/helpers.py", ("examples",))
+    assert not is_left_out("examples.py", ("examples",))
+    assert not is_left_out("src/flask/app.py", ("examples",))
+
+
+def test_left_out_files_and_every_call_from_or_into_them_are_counted_apart():
+    blog = "examples/tutorial/flaskr/blog.py"
+    documents = [
+        chunk(blog, "function", calls=[f"{HELPERS}::url_for", f"{HELPERS}::redirect"]),
+        chunk(APP, "method", calls=[f"{HELPERS}::url_for", f"{blog}::index"]),
+        chunk(HELPERS, "function"),
+    ]
+
+    overview = summarize_chunks(documents, ("examples",))
+
+    assert [file.path for file in overview.files] == [APP, HELPERS]
+    assert [(link.caller_file, link.callee_file, link.call_count) for link in overview.links] == [
+        (APP, HELPERS, 1)
+    ]
+    assert overview.left_out_folders == ("examples",)
+    assert overview.left_out_file_count == 1
+    assert overview.left_out_call_count == 3
+    stored_edges = sum(len(document["calls"]) for document in documents)
+    assert overview.call_count + overview.left_out_call_count == stored_edges
+
+
+def test_nothing_is_left_out_unless_folders_are_named():
+    overview = summarize_chunks([chunk("examples/app.py", "function")])
+
+    assert [file.path for file in overview.files] == ["examples/app.py"]
+    assert overview.left_out_file_count == 0
+
+
+def test_the_overview_leaves_out_the_examples_folder():
+    assert LEFT_OUT_FOLDERS == ("examples",)
+
+
 def test_an_empty_version_has_no_files_or_links():
     overview = summarize_chunks([])
 
@@ -165,19 +206,22 @@ def stored_chunk(file_path, kind, calls=(), is_test_file=False, version="3.1.3")
     }
 
 
-def test_the_builder_reads_only_the_versions_source_chunks():
+def test_the_builder_reads_only_the_versions_source_chunks_and_leaves_out_examples():
     database = FakeDatabase(
         flask_record(),
         [
             stored_chunk(APP, "function", calls=[f"{HELPERS}::url_for"]),
             stored_chunk("tests/test_basic.py", "function", is_test_file=True),
             stored_chunk(SESSIONS, "function", version="3.1.2"),
+            stored_chunk("examples/celery/make_celery.py", "function", calls=[f"{APP}::run"]),
         ],
     )
 
     run = RepositoryOverviewBuilder(database).overview("pallets/flask", "3.1.3")
 
     assert [file.path for file in run.overview.files] == [APP, HELPERS]
+    assert run.overview.left_out_file_count == 1
+    assert run.overview.left_out_call_count == 1
     assert database["chunks"].queries == [
         (
             {"repository": "pallets/flask", "version": "3.1.3", "is_test_file": False},
