@@ -6,6 +6,8 @@ let renderCount = 0;
 
 const SYSTEM_FONTS = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
+export const LAYOUT_ENGINE = "dagre";
+
 function prefersDark() {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 }
@@ -20,6 +22,7 @@ function loadMermaid() {
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
+        layout: LAYOUT_ENGINE,
         htmlLabels: false,
         flowchart: { htmlLabels: false, useMaxWidth: false },
         theme: prefersDark() ? "dark" : "neutral",
