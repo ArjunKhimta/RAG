@@ -25,7 +25,7 @@ export default function HomePage() {
       {session.status === SessionStatus.SIGNED_IN && (
         <p>
           Signed in as {session.user.name ?? session.user.login}.{" "}
-          <Link to="/account">Your account</Link>
+          <Link to="/repositories">Go to your repositories</Link>
         </p>
       )}
       {session.status === SessionStatus.UNAVAILABLE && <ServerUnavailable />}

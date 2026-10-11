@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { confirmationMatches } from "../src/components/DeleteAccountForm.jsx";
-import { formatResetTime } from "../src/components/UsagePanel.jsx";
+import { formatLocalTime } from "../src/time.js";
 import { NO_CONTENT, SIGNED_IN, SIGNED_OUT, USAGE } from "./support/accounts.js";
 import { installFakeApi, jsonReply } from "./support/fakeApi.js";
 import { renderApp } from "./support/renderApp.jsx";
@@ -40,7 +40,7 @@ describe("account page", () => {
       "Linked repositories2 of 5",
     ]);
     expect(screen.getByText(/Daily counts reset at midnight Pacific time/).textContent).toContain(
-      formatResetTime("2026-10-12T07:00:00.000Z"),
+      formatLocalTime("2026-10-12T07:00:00.000Z"),
     );
   });
 

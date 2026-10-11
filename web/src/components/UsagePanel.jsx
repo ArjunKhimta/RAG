@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchUsage, isSignedOutError } from "../api/account.js";
 import { useSession } from "../session/SessionProvider.jsx";
+import { formatLocalTime } from "../time.js";
 
 const USAGE_ROWS = Object.freeze([
   { key: "questions", label: "Questions today" },
@@ -8,13 +9,6 @@ const USAGE_ROWS = Object.freeze([
   { key: "indexing_requests", label: "New repositories to index today" },
   { key: "linked_repositories", label: "Linked repositories" },
 ]);
-
-export function formatResetTime(isoTime) {
-  return new Date(isoTime).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 export default function UsagePanel() {
   const { markSignedOut } = useSession();
@@ -67,7 +61,7 @@ export default function UsagePanel() {
         </tbody>
       </table>
       <p className="muted">
-        Daily counts reset at midnight Pacific time, which is {formatResetTime(usage.resets_at)}{" "}
+        Daily counts reset at midnight Pacific time, which is {formatLocalTime(usage.resets_at)}{" "}
         where you are.
       </p>
     </>

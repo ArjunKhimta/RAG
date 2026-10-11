@@ -9,6 +9,7 @@
   --warning-border: #d4a72c;
   --danger: #cf222e;
   --danger-text: #ffffff;
+  --success: #1a7f37;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
 }
@@ -23,6 +24,7 @@
     --surface: #151b23;
     --warning-border: #9e6a03;
     --danger: #da3633;
+    --success: #3fb950;
   }
 }
 
@@ -170,4 +172,106 @@ a {
   background: var(--background);
   color: var(--text);
   font: inherit;
+}
+
+.site-account {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.add-repository {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text);
+  font: inherit;
+}
+
+.field-help {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.repository-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repository-card {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.repository-card p {
+  margin: 8px 0;
+}
+
+.repository-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.repository-version {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.status {
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 0.85em;
+  font-weight: normal;
+}
+
+.status-ready {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.status-failed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.status-waiting_for_quota,
+.status-interrupted {
+  border-color: var(--warning-border);
+}
+
+.indexing-progress progress {
+  width: 100%;
+  max-width: 360px;
+}
+
+.repository-actions,
+.removal-confirmation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }

@@ -11,7 +11,12 @@ export default function SiteHeader() {
         RepositoryCite
       </Link>
       <nav className="site-account">
-        {session.status === SessionStatus.SIGNED_IN && <AccountLink user={session.user} />}
+        {session.status === SessionStatus.SIGNED_IN && (
+          <>
+            <Link to="/repositories">Repositories</Link>
+            <AccountLink user={session.user} />
+          </>
+        )}
         {session.status === SessionStatus.SIGNED_OUT && <SignInButton />}
       </nav>
     </header>
