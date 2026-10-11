@@ -36,6 +36,9 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "\\.integration\\.test\\.js$"
+    ],
+    "setupFiles": [
+      "<rootDir>/tests/support/loopbackServers.js"
     ]
   }
 }
