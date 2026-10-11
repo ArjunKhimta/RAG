@@ -5,13 +5,14 @@ Run from the repository root with the virtual environment active:
     python retrieval/scripts/index_repository.py https://github.com/pallets/flask --version 3.1.3
 
 Embeddings are cached by content hash in the chunks collection, so running it again for the same
-version makes no embedding requests. Each chunk is stored with the symbols it calls, from the
-repository's call graph. Also creates the Atlas vector and keyword search indexes if
-they are missing, or updates them if their definitions changed. Prints what the run cost: cache
-hits, requests, retries, estimated tokens, the time for each stage, and the chunk collection's
-size. Exits 0 on success and 1 on any refusal or failure. Every printed line passes through the
-redaction module. The steps themselves live in `retrieval.repository_indexing`, shared with the
-retrieval service.
+version makes no embedding requests. Indexing a version again patches what is stored when its
+fingerprints allow: chunks of unchanged files are kept, not rewritten. Each chunk is stored with
+the symbols it calls, from the repository's call graph. Also creates the Atlas vector and keyword
+search indexes if they are missing, or updates them if their definitions changed. Prints what the
+run cost: cache hits, requests, retries, estimated tokens, the time for each stage, and the chunk
+collection's size. Exits 0 on success and 1 on any refusal or failure. Every printed line passes
+through the redaction module. The steps themselves live in `retrieval.repository_indexing`, shared
+with the retrieval service.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
 from retrieval.indexer import IndexingReport
 from retrieval.other_languages import describe_counts
 from retrieval.redaction import redact
+from retrieval.refresh_planning import RefreshPlan
 from retrieval.repository_cloner import RepositoryError
 from retrieval.repository_indexing import (
     NoPythonCodeError,
@@ -101,6 +103,7 @@ def main() -> int:
         _row("Call sites resolved", f"{run.resolved_call_count} of {run.call_site_count}"),
         _row("Call graph edges", run.call_graph_edge_count),
         _row("Fingerprint root", _describe_fingerprints(run.fingerprints)),
+        _row("Index mode", _describe_refresh(run.refresh)),
         "",
         *_report_lines(run.report),
         "",
@@ -140,6 +143,9 @@ def _report_lines(report: IndexingReport) -> list[str]:
         _row("Exact token counts", report.token_count_request_count),
         _row("Estimated tokens sent", report.estimated_tokens_sent),
         _row("Truncated chunks", report.truncated_chunk_count),
+        _row("Chunks written", report.written_chunk_count),
+        _row("Chunks kept as stored", report.kept_chunk_count),
+        _row("Call links updated", report.updated_calls_count),
         _row("Stale chunks deleted", report.deleted_stale_chunk_count),
         _row("Rate-limit waiting", f"{report.rate_limit_wait_seconds:.1f} s"),
         _row("Retry waiting", f"{report.retry_wait_seconds:.1f} s"),
@@ -150,6 +156,16 @@ def _describe_fingerprints(fingerprints: VersionFingerprints) -> str:
     return (
         f"{fingerprints.root[:FINGERPRINT_PREFIX_LENGTH]} "
         f"({len(fingerprints.files)} files, {len(fingerprints.folders)} folders)"
+    )
+
+
+def _describe_refresh(refresh: RefreshPlan) -> str:
+    comparison = refresh.comparison
+    if comparison is None:
+        return f"full ({refresh.full_index_reason})"
+    return (
+        f"incremental ({len(comparison.added)} added, {len(comparison.changed)} changed, "
+        f"{len(comparison.removed)} removed, {comparison.unchanged_file_count} unchanged files)"
     )
 
 

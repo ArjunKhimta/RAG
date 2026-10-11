@@ -9,8 +9,11 @@ The steps, in order, each timed:
 4. Refuse a version with more than 3,000 chunks before spending any embedding quota: at most 800
    texts a day may be embedded for indexing, so 3,000 new chunks is about four days.
 5. Make sure the chunk store's indexes and the Atlas vector and keyword search indexes exist.
-6. Embed and store the chunks, reusing cached embeddings, then record the version.
-7. Store the fingerprints of the indexed files (a hash tree; see `fingerprints.py`), so a later
+6. Compare with what is stored for the version (see `refresh_planning.py`): if it can be patched,
+   keep the chunks of unchanged files and update only their call links and commit ID; otherwise
+   index in full and report why.
+7. Embed and store the chunks to write, reusing cached embeddings, then record the version.
+8. Store the fingerprints of the indexed files (a hash tree; see `fingerprints.py`), so a later
    refresh can tell which files changed.
 
 Optional hooks hear each stage as it starts and the embedding progress, so a background job can
@@ -40,6 +43,7 @@ from retrieval.github_urls import RepositoryReference
 from retrieval.indexer import IndexingReport, ProgressHook, index_chunks
 from retrieval.other_languages import OtherLanguageCount, describe_counts
 from retrieval.rate_limiter import RateLimiter
+from retrieval.refresh_planning import RefreshPlan, plan_refresh
 from retrieval.repository_cloner import ClonedRepository, CloneMetadata, clone_repository
 from retrieval.repository_walker import chunk_source_files, find_python_files
 from retrieval.search_indexes import SearchIndexChange, ensure_keyword_index, ensure_vector_index
@@ -80,6 +84,7 @@ class RepositoryIndexingRun:
     collection_statistics: dict[str, int]
     timings: dict[str, float]
     fingerprints: VersionFingerprints
+    refresh: RefreshPlan
     other_languages: tuple[OtherLanguageCount, ...] = ()
 
 
@@ -119,6 +124,18 @@ def index_repository_version(
     chunks_collection = database[CHUNKS_COLLECTION]
     vector_index_change = ensure_vector_index(chunks_collection, embedder.dimensions)
     keyword_index_change = ensure_keyword_index(chunks_collection)
+    fingerprint_store = MongoFingerprintStore(database)
+    stage_started = time.perf_counter()
+    refresh = plan_refresh(
+        store,
+        fingerprint_store,
+        cloned.metadata,
+        chunks,
+        fingerprints,
+        embedder,
+        INDEX_FORMAT_VERSION,
+    )
+    timings["compare with stored index"] = _milliseconds_since(stage_started)
     stage_started = time.perf_counter()
     report = index_chunks(
         cloned.metadata,
@@ -128,10 +145,11 @@ def index_repository_version(
         rate_limiter,
         on_progress=on_progress,
         other_languages=walk_result.other_languages,
+        kept=refresh.kept,
     )
     timings["embed and store"] = _milliseconds_since(stage_started)
     stage_started = time.perf_counter()
-    MongoFingerprintStore(database).save(cloned.metadata, fingerprints, INDEX_FORMAT_VERSION)
+    fingerprint_store.save(cloned.metadata, fingerprints, INDEX_FORMAT_VERSION)
     timings["store fingerprints"] = _milliseconds_since(stage_started)
     resolved_call_count = sum(
         1 for resolved in call_graph.resolved_calls if resolved.outcome in RESOLVED_OUTCOMES
@@ -150,6 +168,7 @@ def index_repository_version(
         collection_statistics=store.chunk_collection_statistics(),
         timings=timings,
         fingerprints=fingerprints,
+        refresh=refresh,
         other_languages=walk_result.other_languages,
     )
 

@@ -3,15 +3,17 @@ thread starter that runs work only when the test says so, so nothing reaches the
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from retrieval.embedding_budget import EmbeddingBudgetExhaustedError
+from retrieval.fingerprint_comparison import FingerprintComparison
 from retrieval.fingerprints import build_version_fingerprints
 from retrieval.github_urls import RepositoryReference
-from retrieval.indexer import IndexingReport
+from retrieval.indexer import IndexingReport, KeptChunks
 from retrieval.indexing_jobs import (
     CLONE_FAILED_MESSAGE,
     UNEXPECTED_MESSAGE,
@@ -21,7 +23,9 @@ from retrieval.indexing_jobs import (
     StartKind,
     interrupted_fields,
     new_job_document,
+    refresh_result_fields,
 )
+from retrieval.refresh_planning import FullIndexReason, RefreshPlan
 from retrieval.repository_cloner import (
     ClonedRepository,
     CloneFailedError,
@@ -77,6 +81,9 @@ INDEXING_RUN = RepositoryIndexingRun(
     collection_statistics={},
     timings={"clone or reuse": 812.4, "embed and store": 30_100.6},
     fingerprints=build_version_fingerprints([]),
+    refresh=RefreshPlan(
+        full_index_reason=FullIndexReason.NOT_INDEXED_BEFORE, comparison=None, kept=None
+    ),
 )
 
 
@@ -208,6 +215,9 @@ def test_a_started_job_is_running_until_its_thread_runs_then_succeeds(tmp_path):
     assert job["result"]["cache_hit_count"] == 20
     assert job["result"]["commit_id"] == "a" * 40
     assert job["result"]["rate_limit_wait_seconds"] == 12.3
+    assert job["result"]["index_mode"] == "full"
+    assert job["result"]["full_index_reason"] == "not indexed before"
+    assert job["result"]["changed_file_count"] is None
     assert job["timings_ms"] == {"clone or reuse": 812, "embed and store": 30101}
     assert job["finished_at"] == NOON_PACIFIC
     assert job["error_code"] is None
@@ -373,3 +383,37 @@ def test_job_ids_are_random_and_unguessable(tmp_path):
 
     assert len(job_id) == 32
     assert int(job_id, 16) >= 0
+
+
+def test_a_patched_version_reports_what_changed_and_what_was_kept():
+    comparison = FingerprintComparison(
+        added=("pkg/new.py",),
+        changed=("pkg/app.py", "pkg/cli.py"),
+        removed=(),
+        unchanged_file_count=9,
+        skipped_folder_count=2,
+        opened_folder_count=2,
+    )
+    report = replace(
+        INDEXING_RUN.report, written_chunk_count=14, kept_chunk_count=166, updated_calls_count=3
+    )
+    patched_run = replace(
+        INDEXING_RUN,
+        report=report,
+        refresh=RefreshPlan(
+            full_index_reason=None,
+            comparison=comparison,
+            kept=KeptChunks(chunk_ids=frozenset(), calls_to_update={}),
+        ),
+    )
+
+    assert refresh_result_fields(patched_run) == {
+        "index_mode": "incremental",
+        "full_index_reason": None,
+        "added_file_count": 1,
+        "changed_file_count": 2,
+        "removed_file_count": 0,
+        "written_chunk_count": 14,
+        "kept_chunk_count": 166,
+        "updated_calls_count": 3,
+    }

@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from retrieval.chunk_store import CachedEmbedding, IndexedVersion, StoredChunk
+from retrieval.chunk_store import CachedEmbedding, IndexedVersion, StoredChunk, chunk_id_for
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.embedders import EmbeddingRequestError
 from retrieval.embedding_budget import (
@@ -15,7 +15,7 @@ from retrieval.embedding_budget import (
     EmbeddingLane,
     MeteredDocumentEmbedder,
 )
-from retrieval.indexer import IndexingSettings, index_chunks
+from retrieval.indexer import IndexingSettings, KeptChunks, index_chunks
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import CloneMetadata
 
@@ -82,6 +82,17 @@ class InMemoryChunkStore:
         for chunk_id in stale_ids:
             del self.chunks[chunk_id]
         return len(stale_ids)
+
+    def update_chunk_calls(self, calls_by_chunk_id: dict[str, list[str]]) -> None:
+        for chunk_id, calls in calls_by_chunk_id.items():
+            stored = self.chunks[chunk_id]
+            self.chunks[chunk_id] = replace(stored, chunk=replace(stored.chunk, calls=tuple(calls)))
+
+    def set_commit_id(self, repository: str, version: str, commit_id: str) -> None:
+        for chunk_id, stored in self.chunks.items():
+            if (stored.metadata.repository, stored.metadata.version) == (repository, version):
+                new_metadata = replace(stored.metadata, commit_id=commit_id)
+                self.chunks[chunk_id] = replace(stored, metadata=new_metadata)
 
     def upsert_repository(self, indexed_version: IndexedVersion) -> None:
         self.repositories.append(indexed_version)
@@ -527,3 +538,59 @@ def test_each_embedding_retry_and_the_give_up_are_logged_with_their_reason(caplo
         "retrying in 1.0 s",
         "Gemini embedding of 1 texts gave up after 2 attempts (timed out after 30 s)",
     ]
+
+
+def test_kept_chunks_are_neither_embedded_nor_rewritten_but_are_counted_and_recorded():
+    store = InMemoryChunkStore()
+    chunks = [_function_chunk(index) for index in range(3)]
+    _index(chunks, FakeEmbedder(), store)
+    next_commit = replace(METADATA, commit_id="1" * 40)
+    changed_chunks = [*chunks[:2], _function_chunk(2, text="def function_2():\n    return 22")]
+    kept_ids = frozenset(chunk_id_for(next_commit, chunk) for chunk in chunks[:2])
+    embedder = FakeEmbedder()
+    store.upsert_batches.clear()
+    clock = FakeClock()
+
+    report = index_chunks(
+        next_commit,
+        changed_chunks,
+        embedder,
+        store,
+        RateLimiter(1000, 1_000_000, clock=clock.time, sleep=clock.sleep),
+        kept=KeptChunks(chunk_ids=kept_ids, calls_to_update={}),
+    )
+
+    assert report.written_chunk_count == 1
+    assert report.kept_chunk_count == 2
+    assert report.unique_input_count == 1
+    assert [len(batch) for batch in embedder.embedded_batches] == [1]
+    assert sum(store.upsert_batches) == 1
+    assert store.repositories[-1].chunk_count == 3
+    assert store.repositories[-1].metadata.commit_id == "1" * 40
+    assert {stored.metadata.commit_id for stored in store.chunks.values()} == {"1" * 40}
+
+
+def test_kept_chunks_get_their_new_calls_and_the_record_counts_every_edge():
+    store = InMemoryChunkStore()
+    chunks = [_function_chunk(0), _function_chunk(1)]
+    _index(chunks, FakeEmbedder(), store)
+    caller_id = chunk_id_for(METADATA, chunks[0])
+    linked_chunks = [replace(chunks[0], calls=("pkg/module.py::function_1",)), chunks[1]]
+    clock = FakeClock()
+
+    report = index_chunks(
+        METADATA,
+        linked_chunks,
+        FakeEmbedder(),
+        store,
+        RateLimiter(1000, 1_000_000, clock=clock.time, sleep=clock.sleep),
+        kept=KeptChunks(
+            chunk_ids=frozenset(chunk_id_for(METADATA, chunk) for chunk in chunks),
+            calls_to_update={caller_id: ["pkg/module.py::function_1"]},
+        ),
+    )
+
+    assert report.updated_calls_count == 1
+    assert report.written_chunk_count == 0
+    assert store.chunks[caller_id].chunk.calls == ("pkg/module.py::function_1",)
+    assert store.repositories[-1].call_graph_edge_count == 1

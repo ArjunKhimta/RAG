@@ -11,6 +11,10 @@ The steps, in order:
    as soon as it returns, so an interrupted run resumes from the cache.
 4. Delete chunks of this version that no longer exist, then record the version.
 
+A refresh passes the chunks it can keep: chunks already stored unchanged from the version's
+previous commit. They are counted and kept but never embedded or rewritten; only their call links
+that changed are updated, and the whole version is given the new commit ID before the record.
+
 An optional progress hook hears how many inputs still needed embedding after the cache lookup, and
 the running count after each batch, so a caller can show "300 of 1,009".
 
@@ -75,6 +79,9 @@ class IndexingReport:
     token_count_request_count: int = 0
     estimated_tokens_sent: int = 0
     truncated_chunk_count: int = 0
+    written_chunk_count: int = 0
+    kept_chunk_count: int = 0
+    updated_calls_count: int = 0
     deleted_stale_chunk_count: int = 0
     rate_limit_wait_seconds: float = 0.0
     retry_wait_seconds: float = 0.0
@@ -85,6 +92,15 @@ class _PendingInput:
     embedding_key: str
     input_text: str
     estimated_tokens: int
+
+
+@dataclass(frozen=True)
+class KeptChunks:
+    """Chunks stored unchanged from the version's previous commit, and new calls for those whose
+    call links changed."""
+
+    chunk_ids: frozenset[str]
+    calls_to_update: dict[str, list[str]]
 
 
 @dataclass(frozen=True)
@@ -106,17 +122,27 @@ def index_chunks(
     jitter_fraction: Callable[[], float] = random.random,
     on_progress: ProgressHook | None = None,
     other_languages: tuple[OtherLanguageCount, ...] = (),
+    kept: KeptChunks | None = None,
 ) -> IndexingReport:
     """Embed and store `chunks` as the given repository version, and return what it cost.
 
     `on_progress`, if given, is called with (inputs embedded so far, inputs to embed).
     `other_languages` is recorded with the version: the files the walker counted but did not read.
+    `kept`, if given, names chunks already stored unchanged, which are kept without being written.
     """
     active_settings = settings or IndexingSettings()
     report = IndexingReport(chunk_count=len(chunks))
-    chunk_ids = [chunk_id_for(metadata, chunk) for chunk in chunks]
-    _require_unique(chunk_ids)
-    input_texts = [build_embedding_input(chunk) for chunk in chunks]
+    all_chunk_ids = [chunk_id_for(metadata, chunk) for chunk in chunks]
+    _require_unique(all_chunk_ids)
+    kept_ids = kept.chunk_ids if kept is not None else frozenset()
+    positions_to_write = [
+        position for position, chunk_id in enumerate(all_chunk_ids) if chunk_id not in kept_ids
+    ]
+    chunk_ids = [all_chunk_ids[position] for position in positions_to_write]
+    chunks_to_write = [chunks[position] for position in positions_to_write]
+    report.written_chunk_count = len(chunks_to_write)
+    report.kept_chunk_count = len(chunks) - len(chunks_to_write)
+    input_texts = [build_embedding_input(chunk) for chunk in chunks_to_write]
     embedding_keys = [compute_embedding_key(embedder, input_text) for input_text in input_texts]
     unique_inputs = dict(zip(embedding_keys, input_texts, strict=True))
     report.unique_input_count = len(unique_inputs)
@@ -129,7 +155,7 @@ def index_chunks(
             StoredChunk(
                 chunk_id=chunk_ids[position],
                 metadata=metadata,
-                chunk=chunks[position],
+                chunk=chunks_to_write[position],
                 embedding_key=embedding_key,
                 embedding=embedding,
             )
@@ -167,8 +193,12 @@ def index_chunks(
         store_chunks_for(batch_embeddings)
         if on_progress is not None:
             on_progress(report.embedded_input_count, len(pending_inputs))
+    if kept is not None:
+        store.update_chunk_calls(kept.calls_to_update)
+        report.updated_calls_count = len(kept.calls_to_update)
+        store.set_commit_id(metadata.repository, metadata.version, metadata.commit_id)
     report.deleted_stale_chunk_count = store.delete_chunks_except(
-        metadata.repository, metadata.version, set(chunk_ids)
+        metadata.repository, metadata.version, set(all_chunk_ids)
     )
     store.upsert_repository(
         IndexedVersion(

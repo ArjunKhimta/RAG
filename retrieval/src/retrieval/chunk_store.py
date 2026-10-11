@@ -17,6 +17,10 @@ Each chunk also stores its `symbol` (file path and qualified name) and `calls`, 
 calls, so `$graphLookup` can walk from a chunk to its callers and callees. Both are indexed within
 a repository version.
 
+A refresh of a version leaves the chunks of unchanged files in place: it reads every chunk's ID and
+`calls` (never the vectors), updates only the calls that changed, and sets the new commit ID on the
+whole version in one command.
+
 `repositories` holds one document per indexed version, including the license that answers show,
 the path of its license file for answers to link to, and the number of call graph edges. A record
 without that count was indexed before the call graph existed; one without the license path was
@@ -30,7 +34,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from bson.binary import Binary, BinaryVectorDtype
-from pymongo import ASCENDING, ReplaceOne
+from pymongo import ASCENDING, ReplaceOne, UpdateOne
 from pymongo.database import Database
 
 from retrieval.chunker import CodeChunk
@@ -81,6 +85,10 @@ class ChunkStore(Protocol):
     def upsert_chunks(self, stored_chunks: list[StoredChunk]) -> None: ...
 
     def delete_chunks_except(self, repository: str, version: str, kept_ids: set[str]) -> int: ...
+
+    def update_chunk_calls(self, calls_by_chunk_id: dict[str, list[str]]) -> None: ...
+
+    def set_commit_id(self, repository: str, version: str, commit_id: str) -> None: ...
 
     def upsert_repository(self, indexed_version: IndexedVersion) -> None: ...
 
@@ -138,6 +146,25 @@ class MongoChunkStore:
             {"repository": repository, "version": version, "_id": {"$nin": sorted(kept_ids)}}
         )
         return result.deleted_count
+
+    def find_chunk_calls(self, repository: str, version: str) -> dict[str, list[str]]:
+        """Return each stored chunk's ID and calls for the version, without reading any vector."""
+        documents = self._chunks.find({"repository": repository, "version": version}, {"calls": 1})
+        return {document["_id"]: list(document.get("calls", [])) for document in documents}
+
+    def update_chunk_calls(self, calls_by_chunk_id: dict[str, list[str]]) -> None:
+        if not calls_by_chunk_id:
+            return
+        operations = [
+            UpdateOne({"_id": chunk_id}, {"$set": {"calls": calls}})
+            for chunk_id, calls in calls_by_chunk_id.items()
+        ]
+        self._chunks.bulk_write(operations, ordered=False)
+
+    def set_commit_id(self, repository: str, version: str, commit_id: str) -> None:
+        self._chunks.update_many(
+            {"repository": repository, "version": version}, {"$set": {"commit_id": commit_id}}
+        )
 
     def upsert_repository(self, indexed_version: IndexedVersion) -> None:
         document = repository_document(indexed_version)

@@ -3,17 +3,27 @@ fake clone, a fake embedder, and an in-memory store, so nothing reaches the netw
 
 from __future__ import annotations
 
+import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from retrieval import repository_indexing
-from retrieval.chunk_store import CHUNKS_COLLECTION, CachedEmbedding, IndexedVersion, StoredChunk
+from retrieval.chunk_store import (
+    CHUNKS_COLLECTION,
+    CachedEmbedding,
+    IndexedVersion,
+    StoredChunk,
+    repository_document,
+)
 from retrieval.config import INDEX_FORMAT_VERSION
+from retrieval.fingerprint_store import StoredFingerprints
 from retrieval.fingerprints import PathFingerprint, build_version_fingerprints, fingerprint_bytes
 from retrieval.github_urls import RepositoryReference
 from retrieval.other_languages import OtherLanguageCount
 from retrieval.rate_limiter import RateLimiter
+from retrieval.refresh_planning import FullIndexReason
 from retrieval.repository_cloner import ClonedRepository, CloneMetadata, RepositoryNotPublicError
 from retrieval.repository_indexing import (
     IndexingStage,
@@ -64,30 +74,78 @@ class FakeEmbedder:
 
 
 class RecordingChunkStore:
+    """An in-memory chunk store whose contents outlive each run, like Atlas, so a second run can
+    patch what the first stored. The fixture empties it before each test."""
+
     instances: list[RecordingChunkStore] = []
+    chunks: dict[str, StoredChunk] = {}
+    repositories: list[IndexedVersion] = []
+    written_chunk_ids: list[str] = []
+    calls_updates: list[dict[str, list[str]]] = []
+    commit_updates: list[str] = []
 
     def __init__(self, database) -> None:
         self.database = database
-        self.chunks: dict[str, StoredChunk] = {}
-        self.repositories: list[IndexedVersion] = []
         self.ensured_indexes = False
         RecordingChunkStore.instances.append(self)
+
+    @classmethod
+    def empty(cls) -> None:
+        cls.instances = []
+        cls.chunks = {}
+        cls.repositories = []
+        cls.written_chunk_ids = []
+        cls.calls_updates = []
+        cls.commit_updates = []
 
     def ensure_indexes(self) -> None:
         self.ensured_indexes = True
 
     def find_cached_embeddings(self, embedding_keys: list[str]) -> dict[str, CachedEmbedding]:
-        return {}
+        wanted_keys = set(embedding_keys)
+        return {
+            stored.embedding_key: stored.embedding
+            for stored in self.chunks.values()
+            if stored.embedding_key in wanted_keys
+        }
 
     def upsert_chunks(self, stored_chunks: list[StoredChunk]) -> None:
         for stored in stored_chunks:
             self.chunks[stored.chunk_id] = stored
+            self.written_chunk_ids.append(stored.chunk_id)
+
+    def find_chunk_calls(self, repository: str, version: str) -> dict[str, list[str]]:
+        return {
+            chunk_id: list(stored.chunk.calls)
+            for chunk_id, stored in self.chunks.items()
+            if (stored.metadata.repository, stored.metadata.version) == (repository, version)
+        }
+
+    def update_chunk_calls(self, calls_by_chunk_id: dict[str, list[str]]) -> None:
+        self.calls_updates.append(dict(calls_by_chunk_id))
+        for chunk_id, calls in calls_by_chunk_id.items():
+            stored = self.chunks[chunk_id]
+            self.chunks[chunk_id] = replace(stored, chunk=replace(stored.chunk, calls=tuple(calls)))
+
+    def set_commit_id(self, repository: str, version: str, commit_id: str) -> None:
+        self.commit_updates.append(commit_id)
+        for chunk_id, stored in self.chunks.items():
+            new_metadata = replace(stored.metadata, commit_id=commit_id)
+            self.chunks[chunk_id] = replace(stored, metadata=new_metadata)
 
     def delete_chunks_except(self, repository: str, version: str, kept_ids: set[str]) -> int:
-        return 0
+        stale_ids = [chunk_id for chunk_id in self.chunks if chunk_id not in kept_ids]
+        for chunk_id in stale_ids:
+            del self.chunks[chunk_id]
+        return len(stale_ids)
 
     def upsert_repository(self, indexed_version: IndexedVersion) -> None:
         self.repositories.append(indexed_version)
+
+    def find_repository_record(self, repository: str, version: str) -> dict | None:
+        if not self.repositories:
+            return None
+        return repository_document(self.repositories[-1])
 
     def chunk_collection_statistics(self) -> dict[str, int]:
         return COLLECTION_STATISTICS
@@ -102,10 +160,22 @@ class RecordingFingerprintStore:
     def save(self, metadata, fingerprints, format_version) -> None:
         RecordingFingerprintStore.saved.append((metadata, fingerprints, format_version))
 
+    def find(self, repository: str, version: str) -> StoredFingerprints | None:
+        if not RecordingFingerprintStore.saved:
+            return None
+        metadata, fingerprints, format_version = RecordingFingerprintStore.saved[-1]
+        return StoredFingerprints(
+            repository=metadata.repository,
+            version=metadata.version,
+            commit_id=metadata.commit_id,
+            format_version=format_version,
+            fingerprints=fingerprints,
+        )
+
 
 @pytest.fixture
 def ensured_search_indexes(monkeypatch) -> list[tuple]:
-    RecordingChunkStore.instances = []
+    RecordingChunkStore.empty()
     RecordingFingerprintStore.saved = []
     monkeypatch.setattr(repository_indexing, "MongoChunkStore", RecordingChunkStore)
     monkeypatch.setattr(repository_indexing, "MongoFingerprintStore", RecordingFingerprintStore)
@@ -124,8 +194,15 @@ def ensured_search_indexes(monkeypatch) -> list[tuple]:
     return ensured
 
 
-def _fake_clone(tmp_path: Path, clone_calls: list[tuple], files: dict[str, str] = SOURCE_FILES):
+def _fake_clone(
+    tmp_path: Path,
+    clone_calls: list[tuple],
+    files: dict[str, str] = SOURCE_FILES,
+    metadata: CloneMetadata = METADATA,
+):
     source_path = tmp_path / "source"
+    if source_path.exists():
+        shutil.rmtree(source_path)
     for relative_path, text in files.items():
         file_path = source_path / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,7 +211,7 @@ def _fake_clone(tmp_path: Path, clone_calls: list[tuple], files: dict[str, str] 
     def clone(reference, version):
         clone_calls.append((reference, version))
         return ClonedRepository(
-            path=tmp_path, source_path=source_path, metadata=METADATA, was_reused=False
+            path=tmp_path, source_path=source_path, metadata=metadata, was_reused=False
         )
 
     return clone
@@ -180,6 +257,7 @@ def test_a_version_is_cloned_chunked_graphed_embedded_and_recorded(
         "clone or reuse",
         "walk, scan, chunk",
         "call graph",
+        "compare with stored index",
         "embed and store",
         "store fingerprints",
     ]
@@ -348,3 +426,144 @@ def test_exactly_the_chunk_limit_is_allowed(tmp_path, ensured_search_indexes):
     )
 
     assert run.report.chunk_count == 3
+
+
+NEXT_COMMIT_METADATA = replace(METADATA, commit_id="1" * 40)
+
+CALLING_FILES = {
+    "pkg/app.py": "from pkg.helpers import helper\n\n\ndef run():\n    return helper()\n",
+    "pkg/helpers.py": "def helper():\n    return 1\n",
+}
+
+
+def _index_files(tmp_path, files, metadata=METADATA, embedder=None):
+    return index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        embedder or FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, [], files, metadata),
+    )
+
+
+def _start_second_run() -> None:
+    RecordingChunkStore.written_chunk_ids.clear()
+    RecordingChunkStore.calls_updates.clear()
+    RecordingChunkStore.commit_updates.clear()
+
+
+def test_a_version_indexed_for_the_first_time_is_indexed_in_full(tmp_path, ensured_search_indexes):
+    run = _index_files(tmp_path, SOURCE_FILES)
+
+    assert run.refresh.full_index_reason == FullIndexReason.NOT_INDEXED_BEFORE
+    assert run.refresh.comparison is None
+    assert run.report.written_chunk_count == 3
+    assert run.report.kept_chunk_count == 0
+    assert RecordingChunkStore.commit_updates == []
+
+
+def test_indexing_unchanged_files_again_writes_nothing_and_embeds_nothing(
+    tmp_path, ensured_search_indexes
+):
+    _index_files(tmp_path, SOURCE_FILES)
+    _start_second_run()
+    embedder = FakeEmbedder()
+
+    run = _index_files(tmp_path, SOURCE_FILES, NEXT_COMMIT_METADATA, embedder)
+
+    assert run.refresh.full_index_reason is None
+    assert not run.refresh.comparison.has_changes
+    assert run.report.written_chunk_count == 0
+    assert run.report.kept_chunk_count == 3
+    assert embedder.embedded_batches == []
+    assert RecordingChunkStore.written_chunk_ids == []
+    assert RecordingChunkStore.commit_updates == ["1" * 40]
+    assert {stored.metadata.commit_id for stored in RecordingChunkStore.chunks.values()} == {
+        "1" * 40
+    }
+    assert RecordingChunkStore.repositories[-1].metadata.commit_id == "1" * 40
+    assert RecordingChunkStore.repositories[-1].chunk_count == 3
+
+
+def test_only_the_chunks_of_a_changed_file_are_written_and_embedded(
+    tmp_path, ensured_search_indexes
+):
+    _index_files(tmp_path, SOURCE_FILES)
+    _start_second_run()
+    changed_files = {**SOURCE_FILES, "tests/test_app.py": "def test_greet():\n    assert 1\n"}
+    embedder = FakeEmbedder()
+
+    run = _index_files(tmp_path, changed_files, NEXT_COMMIT_METADATA, embedder)
+
+    assert run.refresh.comparison.changed == ("tests/test_app.py",)
+    assert run.report.written_chunk_count == 1
+    assert run.report.kept_chunk_count == 2
+    assert [len(batch) for batch in embedder.embedded_batches] == [1]
+    assert RecordingChunkStore.written_chunk_ids == [
+        "owner/project@1.0.0:tests/test_app.py:1:function:1"
+    ]
+
+
+def test_chunks_of_a_removed_file_are_deleted(tmp_path, ensured_search_indexes):
+    _index_files(tmp_path, SOURCE_FILES)
+    _start_second_run()
+    fewer_files = {"pkg/app.py": SOURCE_FILES["pkg/app.py"]}
+
+    run = _index_files(tmp_path, fewer_files, NEXT_COMMIT_METADATA)
+
+    assert run.refresh.comparison.removed == ("tests/test_app.py",)
+    assert run.report.deleted_stale_chunk_count == 1
+    assert sorted(
+        stored.chunk.qualified_name for stored in RecordingChunkStore.chunks.values()
+    ) == [
+        "greet",
+        "make_greeting",
+    ]
+
+
+def test_a_call_link_that_changed_in_an_unchanged_file_is_updated_without_rewriting_it(
+    tmp_path, ensured_search_indexes
+):
+    _index_files(tmp_path, CALLING_FILES)
+    _start_second_run()
+    renamed_helper = {**CALLING_FILES, "pkg/helpers.py": "def helper_v2():\n    return 1\n"}
+
+    run = _index_files(tmp_path, renamed_helper, NEXT_COMMIT_METADATA)
+
+    run_chunk_id = "owner/project@1.0.0:pkg/app.py:4:function:1"
+    assert run.refresh.comparison.changed == ("pkg/helpers.py",)
+    assert RecordingChunkStore.calls_updates == [{run_chunk_id: []}]
+    assert run.report.updated_calls_count == 1
+    assert run_chunk_id not in RecordingChunkStore.written_chunk_ids
+    assert RecordingChunkStore.chunks[run_chunk_id].chunk.calls == ()
+    assert RecordingChunkStore.repositories[-1].call_graph_edge_count == 0
+
+
+def test_a_chunk_missing_from_the_store_is_written_again_rather_than_trusted(
+    tmp_path, ensured_search_indexes
+):
+    _index_files(tmp_path, SOURCE_FILES)
+    del RecordingChunkStore.chunks["owner/project@1.0.0:pkg/app.py:1:function:1"]
+    _start_second_run()
+
+    run = _index_files(tmp_path, SOURCE_FILES, NEXT_COMMIT_METADATA)
+
+    assert not run.refresh.comparison.has_changes
+    assert RecordingChunkStore.written_chunk_ids == ["owner/project@1.0.0:pkg/app.py:1:function:1"]
+    assert run.report.kept_chunk_count == 2
+
+
+def test_fingerprints_from_another_commit_mean_a_full_index(tmp_path, ensured_search_indexes):
+    _index_files(tmp_path, SOURCE_FILES)
+    metadata, fingerprints, format_version = RecordingFingerprintStore.saved[-1]
+    RecordingFingerprintStore.saved.append(
+        (replace(metadata, commit_id="f" * 40), fingerprints, format_version)
+    )
+    _start_second_run()
+
+    run = _index_files(tmp_path, SOURCE_FILES, NEXT_COMMIT_METADATA)
+
+    assert run.refresh.full_index_reason == FullIndexReason.OTHER_COMMIT
+    assert run.report.written_chunk_count == 3
+    assert RecordingChunkStore.commit_updates == []

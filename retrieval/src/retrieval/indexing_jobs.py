@@ -344,11 +344,31 @@ def succeeded_fields(indexing_run: RepositoryIndexingRun) -> dict[str, Any]:
             "retry_count": report.retry_count,
             "truncated_chunk_count": report.truncated_chunk_count,
             "deleted_stale_chunk_count": report.deleted_stale_chunk_count,
+            **refresh_result_fields(indexing_run),
             "rate_limit_wait_seconds": round(report.rate_limit_wait_seconds, 1),
         },
         "timings_ms": {
             stage: round(milliseconds) for stage, milliseconds in indexing_run.timings.items()
         },
+    }
+
+
+def refresh_result_fields(indexing_run: RepositoryIndexingRun) -> dict[str, Any]:
+    """Say whether the stored index was patched or indexed in full (and why), and what changed."""
+    refresh = indexing_run.refresh
+    report = indexing_run.report
+    comparison = refresh.comparison
+    return {
+        "index_mode": "full" if comparison is None else "incremental",
+        "full_index_reason": None
+        if refresh.full_index_reason is None
+        else str(refresh.full_index_reason),
+        "added_file_count": None if comparison is None else len(comparison.added),
+        "changed_file_count": None if comparison is None else len(comparison.changed),
+        "removed_file_count": None if comparison is None else len(comparison.removed),
+        "written_chunk_count": report.written_chunk_count,
+        "kept_chunk_count": report.kept_chunk_count,
+        "updated_calls_count": report.updated_calls_count,
     }
 
 
