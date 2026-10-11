@@ -1,6 +1,7 @@
 /**
  * Start the API: load `api/.env` if present, read and check every setting, connect to the
- * database and make sure its indexes exist, and listen.
+ * database and make sure its indexes exist, and listen. A stop signal from the host stops it
+ * cleanly (see `shutdown.js`).
  *
  * A setting that is missing or unsafe stops start-up with a message naming the variable, never
  * its value; settings are all checked before connecting, so a typo is reported without waiting on
@@ -26,6 +27,7 @@ const { redactError } = require("./redaction");
 const { createMongoRepositoryLinkStore } = require("./repositoryLinks");
 const { createRetrievalService } = require("./retrievalService");
 const { createSessions } = require("./sessions");
+const { stopOnSignals } = require("./shutdown");
 const { createSignInAttempts } = require("./signInAttempts");
 const { createMongoUsageStore } = require("./usage");
 const { createMongoUserStore } = require("./users");
@@ -42,7 +44,9 @@ async function main() {
   const retrievalServiceSettings = readRetrievalServiceSettings(process.env);
   const databaseSettings = readDatabaseSettings(process.env);
 
-  const { database } = await connectToDatabase(databaseSettings.mongodbUri);
+  const { client: databaseClient, database } = await connectToDatabase(
+    databaseSettings.mongodbUri,
+  );
   const users = createMongoUserStore(database);
   await users.ensureIndexes();
   const repositoryLinks = createMongoRepositoryLinkStore(database);
@@ -75,6 +79,7 @@ async function main() {
     logInfo(`Listening on http://${config.host}:${config.port}`);
   });
   server.on("error", stopWithError);
+  stopOnSignals({ server, databaseClient });
 }
 
 /** @param {unknown} error */

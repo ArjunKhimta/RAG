@@ -1,0 +1,33 @@
+# Both services on this machine, built from their Dockerfiles: `docker compose up --build`.
+#
+# Settings come from retrieval/.env and api/.env, read by Docker and passed in as environment
+# variables; the files themselves are never copied into an image. The API shares the retrieval
+# service's network, so it reaches the service at 127.0.0.1:5001 (the address it is allowed to
+# use without https), and the service listens only there: nothing outside the pair can reach it.
+# Only the API is published, on this machine's 127.0.0.1:3000, where the website's development
+# and preview servers send /api.
+name: repositorycite
+
+services:
+  retrieval:
+    build: ./retrieval
+    env_file: retrieval/.env
+    environment:
+      HOST: 127.0.0.1
+      PORT: "5001"
+    ports:
+      - "127.0.0.1:3000:3000"
+    stop_grace_period: 35s
+
+  api:
+    build: ./api
+    env_file: api/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      RETRIEVAL_SERVICE_URL: http://127.0.0.1:5001
+    network_mode: "service:retrieval"
+    depends_on:
+      retrieval:
+        condition: service_healthy
+    stop_grace_period: 35s

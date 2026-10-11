@@ -1,0 +1,8 @@
+# Only what the image needs is sent to the builder; everything else, including any .env file,
+# the virtual environment, tests, and scripts, never leaves this machine.
+*
+!requirements.lock
+!gunicorn.conf.py
+!src/
+**/__pycache__
+src/*.egg-info

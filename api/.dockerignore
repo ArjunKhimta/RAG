@@ -1,0 +1,7 @@
+# Only what the image needs is sent to the builder; everything else, including any .env file,
+# node_modules, and tests, never leaves this machine.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!src/
