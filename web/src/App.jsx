@@ -7,6 +7,7 @@ import ConversationsPage from "./pages/ConversationsPage.jsx";
 import HomePage from "./pages/HomePage.jsx";
 import NewConversationPage from "./pages/NewConversationPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
+import OverviewPage from "./pages/OverviewPage.jsx";
 import PrivacyPage from "./pages/PrivacyPage.jsx";
 import RepositoriesPage from "./pages/RepositoriesPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/repositories" element={<RepositoriesPage />} />
           <Route path="/repositories/:linkId/ask" element={<NewConversationPage />} />
           <Route path="/repositories/:linkId/search" element={<SearchPage />} />
+          <Route path="/repositories/:linkId/overview" element={<OverviewPage />} />
           <Route path="/conversations" element={<ConversationsPage />} />
           <Route path="/conversations/:conversationId" element={<ConversationPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />

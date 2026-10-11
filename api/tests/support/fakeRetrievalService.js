@@ -6,8 +6,9 @@ const { RetrievalServiceError, UNKNOWN_JOB_MESSAGE } = require("../../src/retrie
  * A stand-in for the retrieval service client that keeps indexed versions and jobs in memory, as
  * the service does: an indexed version is `already_indexed`; the same version while its job runs
  * gets that job's ID; otherwise a new job starts. Tests move jobs along with `updateJob` and
- * `finishJob`, and make the next call fail with `failNextStart`, `failNextJob`, `failNextAsk`, or
- * `failNextSearch`. Questions and searches get a fixed reply naming what was asked.
+ * `finishJob`, and make the next call fail with `failNextStart`, `failNextJob`, `failNextAsk`,
+ * `failNextSearch`, or `failNextOverview`. Questions, searches, and overviews get a fixed reply
+ * naming what was asked.
  */
 function createFakeRetrievalService() {
   const indexedVersions = new Set();
@@ -16,6 +17,7 @@ function createFakeRetrievalService() {
   let nextJobError = null;
   let nextAskError = null;
   let nextSearchError = null;
+  let nextOverviewError = null;
 
   function key(repository, version) {
     return `${repository}@${version}`;
@@ -26,6 +28,7 @@ function createFakeRetrievalService() {
     jobCalls: [],
     askCalls: [],
     searchCalls: [],
+    overviewCalls: [],
 
     failNextAsk(error) {
       nextAskError = error;
@@ -33,6 +36,20 @@ function createFakeRetrievalService() {
 
     failNextSearch(error) {
       nextSearchError = error;
+    },
+
+    failNextOverview(error) {
+      nextOverviewError = error;
+    },
+
+    async overview(target) {
+      this.overviewCalls.push(target);
+      if (nextOverviewError !== null) {
+        const error = nextOverviewError;
+        nextOverviewError = null;
+        throw error;
+      }
+      return overviewReply(target);
     },
 
     async ask(question) {
@@ -170,6 +187,16 @@ function searchReply({ repository, version, query }) {
     repository: repositoryBlock(repository, version),
     usage: { embedding: "from the cache" },
     timings_ms: { "vector search": 45 },
+  };
+}
+
+function overviewReply({ repository, version }) {
+  return {
+    repository: repositoryBlock(repository, version),
+    files: [{ path: "src/flask/app.py", classes: 1, functions: 40, calls_within: 12, calls_out: 9, calls_in: 2 }],
+    links: [{ from: "src/flask/app.py", to: "src/flask/helpers.py", calls: 9 }],
+    totals: { files: 1, classes: 1, functions: 40, calls: 21, calls_between_files: 9, calls_within_files: 12 },
+    timings_ms: { checks: 31, "summarize call graph": 19 },
   };
 }
 

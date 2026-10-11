@@ -33,3 +33,7 @@ export function searchRepository(linkId, { query, limit, excludeTests }) {
     body: { query, limit, exclude_tests: excludeTests },
   });
 }
+
+export function fetchOverview(linkId) {
+  return apiRequest(`${linkPath(linkId)}/overview`);
+}

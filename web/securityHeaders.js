@@ -6,7 +6,7 @@ export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self'",
-  `img-src 'self' ${GITHUB_AVATAR_ORIGIN}`,
+  `img-src 'self' blob: ${GITHUB_AVATAR_ORIGIN}`,
   "connect-src 'self'",
   "font-src 'self'",
   "object-src 'none'",

@@ -2,8 +2,8 @@
  * The one place the API calls the retrieval service (the Flask app in `retrieval/`).
  *
  * Every call sends the shared token as `Authorization: Bearer <token>` and has its own time limit:
- * a search takes tens of milliseconds, starting or checking an indexing job one database round
- * trip, and a question can wait up to a minute for Gemini's per-minute limit before its answer
+ * a search takes tens of milliseconds, an overview one database read of the stored call graph,
+ * starting or checking an indexing job one database round trip, and a question can wait up to a minute for Gemini's per-minute limit before its answer
  * takes a few seconds, so its limit is the longest.
  *
  * A successful reply is copied field by field into a new object, so a field the service adds later
@@ -26,6 +26,7 @@ const { redact, redactError } = require("./redaction");
 
 const TIMEOUT_MILLISECONDS = {
   search: 15_000,
+  overview: 15_000,
   index: 30_000,
   ask: 90_000,
 };
@@ -174,6 +175,13 @@ function createRetrievalService({
     },
 
     /** @param {{ repository: string, version: string }} target */
+    overview({ repository, version }) {
+      return request("POST", "/overview", { repository, version }, timeouts.overview, (reply) =>
+        overviewReply(reply.body),
+      );
+    },
+
+    /** @param {{ repository: string, version: string }} target */
     startIndexing({ repository, version }) {
       return request("POST", "/index", { repository, version }, timeouts.index, startReply);
     },
@@ -291,6 +299,21 @@ function searchReply(body) {
   };
 }
 
+/**
+ * A repository version's files and the calls between them, from the stored call graph.
+ * @param {unknown} body
+ */
+function overviewReply(body) {
+  const reply = requireObject(body, "overview reply");
+  return {
+    repository: repositoryBlock(reply.repository),
+    files: listOf(reply.files, (file) => pick(file, OVERVIEW_FILE_FIELDS)),
+    links: listOf(reply.links, (link) => pick(link, ["from", "to", "calls"])),
+    totals: pick(reply.totals, OVERVIEW_TOTAL_FIELDS),
+    timings_ms: timings(reply.timings_ms),
+  };
+}
+
 function jobReply(body) {
   const reply = requireObject(body, "job reply");
   return {
@@ -311,6 +334,25 @@ function jobReply(body) {
     timings_ms: reply.timings_ms === null ? null : timings(reply.timings_ms),
   };
 }
+
+const OVERVIEW_FILE_FIELDS = [
+  "path",
+  "classes",
+  "functions",
+  "calls_within",
+  "calls_out",
+  "calls_in",
+  "link",
+];
+
+const OVERVIEW_TOTAL_FIELDS = [
+  "files",
+  "classes",
+  "functions",
+  "calls",
+  "calls_between_files",
+  "calls_within_files",
+];
 
 const ASK_USAGE_FIELDS = ["embedding", "answer_requests", "prompt_tokens", "output_tokens"];
 

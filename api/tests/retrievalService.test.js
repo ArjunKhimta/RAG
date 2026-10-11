@@ -93,6 +93,34 @@ const SEARCH_REPLY = {
   timings_ms: { checks: 31, "embed query": 706, "vector search": 50 },
 };
 
+const OVERVIEW_REPLY = {
+  repository: REPOSITORY_BLOCK,
+  files: [
+    {
+      path: "src/flask/app.py",
+      classes: 1,
+      functions: 40,
+      calls_within: 12,
+      calls_out: 9,
+      calls_in: 2,
+      link: "https://github.com/pallets/flask/blob/22d9247/src/flask/app.py",
+      text: "dropped: overviews never carry code",
+    },
+  ],
+  links: [{ from: "src/flask/app.py", to: "src/flask/helpers.py", calls: 9, weight: "dropped" }],
+  totals: {
+    files: 1,
+    classes: 1,
+    functions: 40,
+    calls: 21,
+    calls_between_files: 9,
+    calls_within_files: 12,
+    extra: "dropped",
+  },
+  timings_ms: { checks: 31, "summarize call graph": 19 },
+  debug: "dropped",
+};
+
 const JOB_REPLY = {
   job_id: JOB_ID,
   repository: "pallets/itsdangerous",
@@ -226,6 +254,43 @@ describe("successful replies", () => {
       { number: 303, text: "    def get_signing_serializer(self, app):" },
     ]);
     expect(reply.usage).toEqual({ embedding: "embedded" });
+  });
+
+  test("an overview is posted for the version and loses unknown fields", async () => {
+    service.reply({ status: 200, body: OVERVIEW_REPLY });
+
+    const reply = await client().overview({ repository: "pallets/flask", version: "3.1.3" });
+
+    expect(service.requests[0].method).toBe("POST");
+    expect(service.requests[0].path).toBe("/overview");
+    expect(JSON.parse(service.requests[0].body)).toEqual({
+      repository: "pallets/flask",
+      version: "3.1.3",
+    });
+    expect(reply.files).toEqual([
+      {
+        path: "src/flask/app.py",
+        classes: 1,
+        functions: 40,
+        calls_within: 12,
+        calls_out: 9,
+        calls_in: 2,
+        link: "https://github.com/pallets/flask/blob/22d9247/src/flask/app.py",
+      },
+    ]);
+    expect(reply.links).toEqual([{ from: "src/flask/app.py", to: "src/flask/helpers.py", calls: 9 }]);
+    expect(reply.totals.extra).toBeUndefined();
+    expect(reply.debug).toBeUndefined();
+    expect(reply.repository.license.internal_note).toBeUndefined();
+  });
+
+  test("an overview missing its file list is a 502", async () => {
+    service.reply({ status: 200, body: { ...OVERVIEW_REPLY, files: undefined } });
+
+    const error = await caught(client().overview({ repository: "pallets/flask", version: "3.1.3" }));
+
+    expect(error).toBeInstanceOf(RetrievalServiceError);
+    expect(error.status).toBe(502);
   });
 
   test("an already indexed version comes back with its repository block", async () => {

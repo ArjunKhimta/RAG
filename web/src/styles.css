@@ -487,3 +487,40 @@ a {
     margin-bottom: 12px;
   }
 }
+
+.overview-diagram img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0;
+}
+
+.mermaid-source {
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.overview-table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.overview-table th,
+.overview-table td {
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.overview-table td {
+  text-align: right;
+}
+
+.overview-table tbody th {
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}

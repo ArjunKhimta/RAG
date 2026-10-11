@@ -23,6 +23,10 @@ The question asker and the indexing job runner are built once, at start-up, shar
 connection and one Gemini client, so a missing setting or unreachable database stops the service
 at launch rather than on the first request. Building the runner also marks any job left running
 by a previous process as interrupted. Tests pass their own asker and runner instead.
+
+`POST /overview` summarizes a version's stored call graph. Its builder holds no state, so it takes
+no lock; it is built from the same database connection, and registered only when built or passed
+in, so tests of the other routes need not supply one.
 """
 
 from __future__ import annotations
@@ -48,9 +52,11 @@ from retrieval.config import (
 )
 from retrieval.indexing_jobs import IndexingJobRunner, build_indexing_job_runner
 from retrieval.redaction import redact, register_secret
+from retrieval.repository_overview import RepositoryOverviewBuilder
 from retrieval.service.ask_route import register_ask_route
 from retrieval.service.errors import register_error_replies
 from retrieval.service.index_routes import register_index_routes
+from retrieval.service.overview_route import register_overview_route
 from retrieval.service.search_route import register_search_route
 
 BEARER_PREFIX = "Bearer "
@@ -75,17 +81,20 @@ def create_app(
     asker: QuestionAsker | None = None,
     indexing_runner: IndexingJobRunner | None = None,
     now: Callable[[], datetime] | None = None,
+    overview_builder: RepositoryOverviewBuilder | None = None,
 ) -> Flask:
     """Build the service. Tests pass a token, an asker, a runner, and a clock; otherwise the token
     comes from the environment, the asker and runner are wired to Atlas and Gemini, and the clock
-    is real. The asker and runner are passed together or not at all."""
+    is real. The asker and runner are passed together or not at all; the overview builder is
+    built with them, or passed in by tests that need the overview route."""
     token = service_token if service_token is not None else _token_from_environment()
     _require_strong_token(token)
     register_secret(token)
     if (asker is None) != (indexing_runner is None):
         raise ValueError("Pass both the asker and the indexing runner, or neither")
     if asker is None or indexing_runner is None:
-        asker, indexing_runner = _build_asker_and_runner()
+        asker, indexing_runner, built_overview_builder = _build_services()
+        overview_builder = overview_builder or built_overview_builder
     clock = now or _utc_now
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = SERVICE_MAX_REQUEST_BYTES
@@ -95,6 +104,8 @@ def create_app(
     register_ask_route(app, asker, request_lock)
     register_search_route(app, asker, request_lock)
     register_index_routes(app, indexing_runner, clock)
+    if overview_builder is not None:
+        register_overview_route(app, overview_builder)
     register_error_replies(app, clock)
     app.before_request(_token_check(token))
     app.register_error_handler(HTTPException, _http_error)
@@ -107,13 +118,14 @@ def _token_from_environment() -> str:
     return get_required_env(SERVICE_TOKEN_VARIABLE)
 
 
-def _build_asker_and_runner() -> tuple[QuestionAsker, IndexingJobRunner]:
+def _build_services() -> tuple[QuestionAsker, IndexingJobRunner, RepositoryOverviewBuilder]:
     load_environment()
     database = build_mongo_client()[MONGODB_DATABASE]
     gemini_client = build_gemini_client()
     return (
         build_question_asker(database, gemini_client),
         build_indexing_job_runner(database, gemini_client),
+        RepositoryOverviewBuilder(database),
     )
 
 

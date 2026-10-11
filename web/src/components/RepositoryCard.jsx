@@ -132,6 +132,9 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
             <Link to={`/repositories/${link.id}/search`} className="button">
               Search the code
             </Link>
+            <Link to={`/repositories/${link.id}/overview`} className="button">
+              Overview
+            </Link>
           </>
         )}
         {resume.canResume && (

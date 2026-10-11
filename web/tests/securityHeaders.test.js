@@ -25,8 +25,12 @@ describe("content security policy", () => {
     expect(CONTENT_SECURITY_POLICY).not.toContain("unsafe-eval");
   });
 
-  it("allows images only from the site and GitHub avatars", () => {
-    expect(policy["img-src"]).toEqual(["'self'", "https://avatars.githubusercontent.com"]);
+  it("allows images only from the site, diagrams drawn in the page, and GitHub avatars", () => {
+    expect(policy["img-src"]).toEqual([
+      "'self'",
+      "blob:",
+      "https://avatars.githubusercontent.com",
+    ]);
   });
 
   it("sends requests only to the site itself", () => {

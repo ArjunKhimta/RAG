@@ -510,6 +510,79 @@ describe("searching a repository", () => {
   });
 });
 
+describe("a repository's overview", () => {
+  function overview(linkId, as = cookie) {
+    return request(app).get(`/api/repositories/${linkId}/overview`).set("Cookie", as);
+  }
+
+  test("a ready link's overview comes from the service for its version", async () => {
+    service.markIndexed("pallets/flask", "3.1.3");
+    const link = (await addLink(FLASK)).body;
+
+    const response = await overview(link.id);
+
+    expect(response.status).toBe(200);
+    expect(response.body.links[0]).toEqual({
+      from: "src/flask/app.py",
+      to: "src/flask/helpers.py",
+      calls: 9,
+    });
+    expect(response.body.repository.license.link).toContain("LICENSE.txt");
+    expect(service.overviewCalls).toEqual([{ repository: "pallets/flask", version: "3.1.3" }]);
+  });
+
+  test("it uses no daily slot", async () => {
+    service.markIndexed("pallets/flask", "3.1.3");
+    const link = (await addLink(FLASK)).body;
+
+    await overview(link.id);
+    await overview(link.id);
+
+    const usage = await request(app).get("/api/me/usage").set("Cookie", cookie);
+    expect(usage.body.searches.used).toBe(0);
+    expect(usage.body.questions.used).toBe(0);
+  });
+
+  test("a link still indexing is a 409 and asks the service nothing", async () => {
+    const { link } = await indexingLink();
+
+    const response = await overview(link.id);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: NOT_READY_MESSAGE });
+    expect(service.overviewCalls).toHaveLength(0);
+  });
+
+  test("another person's link is a 404", async () => {
+    service.markIndexed("pallets/flask", "3.1.3");
+    const theirs = (await addLink(FLASK, hubotCookie)).body;
+
+    const response = await overview(theirs.id);
+
+    expect(response.status).toBe(404);
+    expect(service.overviewCalls).toHaveLength(0);
+  });
+
+  test("the service's refusal passes through with its Retry-After", async () => {
+    service.markIndexed("pallets/flask", "3.1.3");
+    const link = (await addLink(FLASK)).body;
+    service.failNextOverview(
+      new RetrievalServiceError(503, "The database is unavailable for now; try again shortly", 30),
+    );
+
+    const response = await overview(link.id);
+
+    expect(response.status).toBe(503);
+    expect(response.headers["retry-after"]).toBe("30");
+  });
+
+  test("without a session it is a 401", async () => {
+    const response = await request(app).get("/api/repositories/anything/overview");
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe("removing a repository", () => {
   test("removes only the person's link", async () => {
     const mine = await addLink(FLASK);

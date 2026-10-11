@@ -13,6 +13,8 @@
  *   the failure will recur, or before the quota resets (with `Retry-After`)
  * - `POST /api/repositories/:id/search` `{query, limit?, exclude_tests?}`: search a ready link's
  *   version with the service's vector search; results are shown, not kept in history
+ * - `GET /api/repositories/:id/overview`: a ready link's files and the calls between them, from
+ *   the call graph stored at indexing; it asks Gemini nothing, so it uses no daily slot
  * - `DELETE /api/repositories/:id`: remove the link only; the shared index stays
  *
  * Limits (`limits.js`): at most 5 links at a time (409 to add a sixth); 2 new indexing requests a
@@ -188,6 +190,16 @@ function createRepositoryRouter({
       throw error;
     }
     response.json(results);
+  });
+
+  router.get("/:linkId/overview", async (request, response) => {
+    const link = await findOwnedLink(request);
+    if (link.status !== LinkStatus.READY) {
+      throw new ApiError(CONFLICT_STATUS, NOT_READY_MESSAGE);
+    }
+    response.json(
+      await retrievalService.overview({ repository: link.repository, version: link.version }),
+    );
   });
 
   router.delete("/:linkId", async (request, response) => {
