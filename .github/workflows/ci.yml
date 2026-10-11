@@ -1,0 +1,122 @@
+# Checks every push to main and every pull request: the unit tests and lints of all four parts,
+# the website's production build, and both container images.
+#
+# The workflow can only read the repository: it gets no secrets and no write permission, so a
+# pull request cannot use it to publish anything. Each action is pinned to the commit its release
+# tag pointed to (the tag is in the comment), so a moved tag cannot change what runs. Python
+# packages are installed from requirements-dev.lock as hash-checked wheels; npm packages from the
+# lockfiles without install scripts, with their registry signatures verified. Integration tests
+# are not run here: they reach Atlas and Gemini and spend the free quotas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (retrieval and eval)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: retrieval/src
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+          cache: pip
+          cache-dependency-path: retrieval/requirements-dev.lock
+      - name: Install hash-checked packages
+        run: |
+          python -m pip install --require-hashes --only-binary :all: --no-deps --requirement retrieval/requirements-dev.lock
+      - name: Lint retrieval
+        run: ruff check retrieval
+      - name: Test retrieval
+        run: pytest retrieval/tests
+      - name: Lint eval
+        working-directory: eval
+        run: ruff check .
+      - name: Test eval
+        run: pytest eval/tests
+
+  api:
+    name: Node API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: api/.node-version
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install from the lockfile
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures
+        run: npm audit signatures
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+
+  web:
+    name: Website
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install from the lockfile
+        run: npm ci --ignore-scripts
+      - name: Verify registry signatures
+        run: npm audit signatures
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  images:
+    name: Container images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the retrieval service
+        run: docker build --tag repositorycite-retrieval:ci retrieval
+      - name: Build the Node API
+        run: docker build --tag repositorycite-api:ci api
+      - name: Check each image loads its code as an unprivileged user
+        run: |
+          docker run --rm --entrypoint python repositorycite-retrieval:ci -c "import os, retrieval.service; assert os.getuid() != 0"
+          docker run --rm --entrypoint node repositorycite-api:ci -e "require('./src/app'); process.exit(process.getuid() === 0 ? 1 : 0)"

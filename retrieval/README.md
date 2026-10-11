@@ -102,8 +102,31 @@ flask --app retrieval.service run --port 5001
 curl http://127.0.0.1:5001/health
 ```
 
-Every path except `/health` needs `Authorization: Bearer <token>`. This is Flask's development
-server; a production server comes with deployment in Phase 7.
+Every path except `/health` needs `Authorization: Bearer <token>`. That is Flask's development
+server, for working on the code. Production runs gunicorn (from the repository root):
+
+```bash
+gunicorn --config retrieval/gunicorn.conf.py
+```
+
+It listens on 127.0.0.1:5001 unless `HOST` and `PORT` say otherwise (the deployment sets both),
+with exactly one worker process running a few threads: the one-job and one-question rules live in
+that process's memory, so a second worker would break them. The config file loads only
+`retrieval.config` and `retrieval.server_settings`, never the app, because gunicorn's main process
+forks the worker and libraries such as onnxruntime start native threads when imported; forking a
+process with threads is unsafe, and macOS crashes the worker outright. gunicorn's control socket
+is off, and no access log is written.
+
+The container image (`retrieval/Dockerfile`) runs the same command as an unprivileged user,
+installing every package from `requirements.lock`, hash-checked wheels only. After changing
+`requirements.txt` or `requirements-dev.txt`, install the change, run the tests, then regenerate
+both locks (`requirements-dev.lock`, the same packages plus the test tools, is what CI installs):
+
+```bash
+python retrieval/scripts/lock_requirements.py
+```
+
+`docker compose up --build` at the repository root runs this service and the Node API together.
 
 ## Tests
 
