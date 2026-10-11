@@ -3,31 +3,18 @@ import { isSignedOutError } from "../api/account.js";
 import { listRepositories } from "../api/repositories.js";
 import AddRepositoryForm from "../components/AddRepositoryForm.jsx";
 import RepositoryCard from "../components/RepositoryCard.jsx";
-import ServerUnavailable from "../components/ServerUnavailable.jsx";
-import SignInButton from "../components/SignInButton.jsx";
-import { SessionStatus, useSession } from "../session/SessionProvider.jsx";
+import RequireSignIn from "../components/RequireSignIn.jsx";
+import { useSession } from "../session/SessionProvider.jsx";
 
 export default function RepositoriesPage() {
-  const session = useSession();
-
-  if (session.status === SessionStatus.LOADING) {
-    return <p>Loading…</p>;
-  }
-  if (session.status === SessionStatus.UNAVAILABLE) {
-    return <ServerUnavailable />;
-  }
-  if (session.status === SessionStatus.SIGNED_OUT) {
-    return (
-      <section>
-        <h1>Your repositories</h1>
-        <p>Sign in to add repositories and ask questions about them.</p>
-        <p>
-          <SignInButton />
-        </p>
-      </section>
-    );
-  }
-  return <RepositoryList />;
+  return (
+    <RequireSignIn
+      title="Your repositories"
+      prompt="Sign in to add repositories and ask questions about them."
+    >
+      <RepositoryList />
+    </RequireSignIn>
+  );
 }
 
 function RepositoryList() {

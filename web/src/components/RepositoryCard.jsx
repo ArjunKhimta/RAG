@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { isSignedOutError } from "../api/account.js";
 import { fetchRepository, removeRepository, resumeRepository } from "../api/repositories.js";
 import { useCurrentTime } from "../hooks/useCurrentTime.js";
@@ -123,6 +124,16 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
       {actionErrorMessage !== null && <p role="alert">{actionErrorMessage}</p>}
 
       <div className="repository-actions">
+        {link.status === LinkStatus.READY && (
+          <>
+            <Link to={`/repositories/${link.id}/ask`} className="button">
+              Ask a question
+            </Link>
+            <Link to={`/repositories/${link.id}/search`} className="button">
+              Search the code
+            </Link>
+          </>
+        )}
         {resume.canResume && (
           <button type="button" className="button" onClick={handleResume} disabled={busy}>
             Resume indexing

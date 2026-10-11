@@ -275,3 +275,166 @@ a {
   align-items: center;
   gap: 8px;
 }
+
+.ask-form,
+.search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.ask-form textarea,
+.search-form input[type="search"],
+.search-form select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text);
+  font: inherit;
+}
+
+.ask-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.ask-controls .button {
+  margin-left: auto;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.over-limit {
+  color: var(--danger);
+}
+
+.conversation-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.conversation-heading h1 {
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-list li {
+  display: flex;
+  flex-direction: column;
+}
+
+.message {
+  margin: 24px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.message-question {
+  font-weight: 600;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer-text {
+  line-height: 1.7;
+}
+
+.citation a {
+  text-decoration: none;
+}
+
+.answer-not-found {
+  color: var(--muted);
+}
+
+.code-snippet {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.code-snippet:target {
+  border-color: var(--link);
+}
+
+.code-snippet figcaption {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  margin: 0;
+  padding: 8px 0;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.code-line {
+  display: block;
+  padding-right: 12px;
+}
+
+.line-number {
+  display: inline-block;
+  width: 4em;
+  margin-right: 12px;
+  padding-right: 8px;
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+
+.snippet-more {
+  margin: 0;
+  padding: 4px 12px 8px;
+  font-size: 0.9em;
+}
+
+.answer-sources {
+  margin: 8px 0;
+  font-size: 0.9em;
+}
+
+.answer-sources li {
+  overflow-wrap: anywhere;
+}
+
+.license-notice {
+  font-size: 0.9em;
+}
+
+.search-results {
+  margin-top: 16px;
+}

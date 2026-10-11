@@ -26,3 +26,10 @@ export function resumeRepository(linkId) {
 export function removeRepository(linkId) {
   return apiRequest(linkPath(linkId), { method: "DELETE" });
 }
+
+export function searchRepository(linkId, { query, limit, excludeTests }) {
+  return apiRequest(`${linkPath(linkId)}/search`, {
+    method: "POST",
+    body: { query, limit, exclude_tests: excludeTests },
+  });
+}

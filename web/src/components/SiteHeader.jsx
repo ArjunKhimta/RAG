@@ -14,6 +14,7 @@ export default function SiteHeader() {
         {session.status === SessionStatus.SIGNED_IN && (
           <>
             <Link to="/repositories">Repositories</Link>
+            <Link to="/conversations">Conversations</Link>
             <AccountLink user={session.user} />
           </>
         )}
