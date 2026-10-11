@@ -12,8 +12,10 @@
  * So a server listening on every address (`::`) reports the IPv6 loopback, `::1`, as its address,
  * and supertest connects there, where no program holding 127.0.0.1 can answer. Only a program
  * listening on `::1` at the same port could still intercept, and none does on the machines used
- * so far. Servers that name their own address, like the fake services, are unchanged. Loaded for
- * every test file through Jest's `setupFiles`.
+ * so far. Servers that name their own address, like the fake services, are unchanged. Linux
+ * refuses to give a server on every address a port another program holds on 127.0.0.1, so the
+ * problem cannot arise there (CI's runners), and the change is harmless. Loaded for every test
+ * file through Jest's `setupFiles`.
  */
 
 const net = require("node:net");

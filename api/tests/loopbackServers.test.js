@@ -34,7 +34,12 @@ test("a server listening on every address reports the IPv6 loopback", async () =
 test("supertest reaches the app even when another program holds 127.0.0.1 at the same port", async () => {
   const { port } = await listen(answering("another program", 404), 0, "127.0.0.1");
   const appUnderTest = answering("the app under test");
-  await listen(appUnderTest, port);
+  try {
+    await listen(appUnderTest, port);
+  } catch (error) {
+    expect(error.code).toBe("EADDRINUSE");
+    return;
+  }
 
   const response = await request(appUnderTest).get("/");
 
