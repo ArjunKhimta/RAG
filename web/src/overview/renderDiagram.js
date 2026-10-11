@@ -4,12 +4,40 @@ let mermaidPromise = null;
 
 let renderCount = 0;
 
-const SYSTEM_FONTS = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const DIAGRAM_FONTS = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
 
 export const LAYOUT_ENGINE = "dagre";
 
-function prefersDark() {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+const DARK_DIAGRAM_COLOURS = Object.freeze({
+  background: "#0f1318",
+  primaryColor: "#161c24",
+  primaryTextColor: "#e6ebf1",
+  primaryBorderColor: "#2c3440",
+  lineColor: "#f0b44c",
+  textColor: "#e6ebf1",
+  clusterBkg: "#0c0f13",
+  clusterBorder: "#2c3440",
+  edgeLabelBackground: "#0f1318",
+});
+
+const LIGHT_DIAGRAM_COLOURS = Object.freeze({
+  background: "#ffffff",
+  primaryColor: "#eef1f5",
+  primaryTextColor: "#12161c",
+  primaryBorderColor: "#c3cad4",
+  lineColor: "#8a5300",
+  textColor: "#12161c",
+  clusterBkg: "#f7f8fa",
+  clusterBorder: "#c3cad4",
+  edgeLabelBackground: "#ffffff",
+});
+
+function prefersLight() {
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
+}
+
+export function diagramColours() {
+  return prefersLight() ? LIGHT_DIAGRAM_COLOURS : DARK_DIAGRAM_COLOURS;
 }
 
 function importMermaid() {
@@ -25,8 +53,9 @@ function loadMermaid() {
         layout: LAYOUT_ENGINE,
         htmlLabels: false,
         flowchart: { htmlLabels: false, useMaxWidth: false },
-        theme: prefersDark() ? "dark" : "neutral",
-        fontFamily: SYSTEM_FONTS,
+        theme: "base",
+        themeVariables: { ...diagramColours(), fontFamily: DIAGRAM_FONTS },
+        fontFamily: DIAGRAM_FONTS,
       });
       return mermaid;
     });

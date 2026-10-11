@@ -97,7 +97,7 @@ function RepositorySearch({ link }) {
             </select>
             results
           </label>
-          <button type="submit" className="button" disabled={!sendable || searching}>
+          <button type="submit" className="button button-primary" disabled={!sendable || searching}>
             {searching ? "Searching…" : "Search"}
           </button>
         </div>

@@ -1,10 +1,11 @@
 import { safeGitHubLink } from "../links.js";
+import HighlightedCode from "./HighlightedCode.jsx";
 
-export default function CodeSnippet({ snippet, link, heading, anchor }) {
+export default function CodeSnippet({ snippet, link, heading, anchor, hidden = false }) {
   const safeLink = safeGitHubLink(link);
 
   return (
-    <figure className="code-snippet" id={anchor}>
+    <figure className="code-snippet" id={anchor} hidden={hidden}>
       <figcaption>
         {safeLink === null ? (
           heading
@@ -15,17 +16,7 @@ export default function CodeSnippet({ snippet, link, heading, anchor }) {
         )}
         {snippet.is_outline && <span className="muted"> · class outline, method bodies left out</span>}
       </figcaption>
-      <pre className="code">
-        <code>
-          {snippet.lines.map((line, index) => (
-            <span className="code-line" key={index}>
-              <span className="line-number">{line.number ?? ""}</span>
-              {line.text}
-              {"\n"}
-            </span>
-          ))}
-        </code>
-      </pre>
+      <HighlightedCode lines={snippet.lines} />
       {snippet.more_lines > 0 && (
         <p className="muted snippet-more">
           {snippet.more_lines} more {snippet.more_lines === 1 ? "line" : "lines"}

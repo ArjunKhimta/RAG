@@ -17,7 +17,7 @@ export default function RequireSignIn({ title, prompt, children }) {
         <h1>{title}</h1>
         <p>{prompt}</p>
         <p>
-          <SignInButton />
+          <SignInButton prominent />
         </p>
       </section>
     );

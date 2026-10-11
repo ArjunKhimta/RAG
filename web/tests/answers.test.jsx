@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   citationTitle,
@@ -136,5 +137,63 @@ describe("answer view", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toContain('<img src=x onerror="alert(1)">');
+  });
+});
+
+describe("answer view, choosing the cited code", () => {
+  function snippetAt(container, index) {
+    return container.querySelector(`#${snippetAnchor("m1", index)}`);
+  }
+
+  it("shows the first cited snippet beside the answer and keeps the others ready", () => {
+    const { container } = renderAnswer(foundReply());
+
+    expect(snippetAt(container, 0).hidden).toBe(false);
+    expect(snippetAt(container, 1).hidden).toBe(true);
+    expect(snippetAt(container, 2).hidden).toBe(true);
+    expect(screen.getByRole("button", { name: "[1] lines 303–314" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("switches the shown snippet from its tab", async () => {
+    const { container } = renderAnswer(foundReply());
+
+    await userEvent.click(screen.getByRole("button", { name: "[1] lines 315–320" }));
+
+    expect(snippetAt(container, 0).hidden).toBe(true);
+    expect(snippetAt(container, 1).hidden).toBe(false);
+  });
+
+  it("switches the shown snippet from a citation marker", async () => {
+    const { container } = renderAnswer(foundReply());
+
+    await userEvent.click(screen.getAllByRole("link", { name: "[2]" })[0]);
+
+    expect(snippetAt(container, 2).hidden).toBe(false);
+    expect(snippetAt(container, 0).hidden).toBe(true);
+  });
+
+  it("marks the sentences that cite the shown snippet", async () => {
+    const { container } = renderAnswer(foundReply());
+    const selectedText = () =>
+      [...container.querySelectorAll(".answer-sentence.is-selected")].map((node) => node.textContent);
+
+    expect(selectedText()).toEqual(["Flask builds a signing serializer from the app's secret key."]);
+
+    await userEvent.click(screen.getByRole("button", { name: "[1] lines 315–320" }));
+
+    expect(selectedText()).toEqual(["The serializer signs the session with HMAC."]);
+  });
+
+  it("colours code without changing its text", () => {
+    const { container } = renderAnswer(foundReply());
+
+    const first = snippetAt(container, 0);
+    expect(first.querySelector(".token-keyword").textContent).toBe("def");
+    expect(first.querySelector(".token-definition").textContent).toBe("get_signing_serializer");
+    expect(first.querySelector("code").textContent).toContain(
+      "def get_signing_serializer(self, app: Flask) -> URLSafeTimedSerializer | None:",
+    );
   });
 });

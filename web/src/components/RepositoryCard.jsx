@@ -126,7 +126,7 @@ export default function RepositoryCard({ link, onChange, onRemoved }) {
       <div className="repository-actions">
         {link.status === LinkStatus.READY && (
           <>
-            <Link to={`/repositories/${link.id}/ask`} className="button">
+            <Link to={`/repositories/${link.id}/ask`} className="button button-outline">
               Ask a question
             </Link>
             <Link to={`/repositories/${link.id}/search`} className="button">

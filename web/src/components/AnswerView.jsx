@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   citationTitle,
   lineRangeText,
@@ -10,15 +11,34 @@ import CodeSnippet from "./CodeSnippet.jsx";
 import LicenseNotice from "./LicenseNotice.jsx";
 
 export default function AnswerView({ messageId, reply }) {
+  const [selectedSnippet, setSelectedSnippet] = useState(0);
+
   return (
     <div className="answer">
-      {reply.found_answer ? (
-        <AnswerSentences messageId={messageId} reply={reply} />
-      ) : (
-        <p className="answer-not-found">{reply.answer}</p>
-      )}
+      <div className="answer-main">
+        {reply.found_answer ? (
+          <AnswerSentences
+            messageId={messageId}
+            reply={reply}
+            selectedSnippet={selectedSnippet}
+            onSelectSnippet={setSelectedSnippet}
+          />
+        ) : (
+          <p className="answer-not-found">{reply.answer}</p>
+        )}
+        {reply.sources.length > 0 && <SourceList sources={reply.sources} />}
+        <LicenseNotice repository={reply.repository} />
+      </div>
       {reply.snippets.length > 0 && (
         <div className="answer-snippets">
+          {reply.snippets.length > 1 && (
+            <SnippetTabs
+              messageId={messageId}
+              snippets={reply.snippets}
+              selectedSnippet={selectedSnippet}
+              onSelectSnippet={setSelectedSnippet}
+            />
+          )}
           {reply.snippets.map((snippet, index) => (
             <CodeSnippet
               key={index}
@@ -26,28 +46,49 @@ export default function AnswerView({ messageId, reply }) {
               snippet={snippet}
               link={snippet.link}
               heading={snippetHeading(snippet, reply.sources)}
+              hidden={index !== selectedSnippet}
             />
           ))}
         </div>
       )}
-      {reply.sources.length > 0 && <SourceList sources={reply.sources} />}
-      <LicenseNotice repository={reply.repository} />
     </div>
   );
 }
 
-function AnswerSentences({ messageId, reply }) {
+function SnippetTabs({ messageId, snippets, selectedSnippet, onSelectSnippet }) {
+  return (
+    <div className="tabs" role="group" aria-label="Cited code">
+      {snippets.map((snippet, index) => (
+        <button
+          type="button"
+          className="tab"
+          key={index}
+          aria-pressed={index === selectedSnippet}
+          aria-controls={snippetAnchor(messageId, index)}
+          onClick={() => onSelectSnippet(index)}
+        >
+          [{snippet.source}] {lineRangeText(snippet.start_line, snippet.end_line)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AnswerSentences({ messageId, reply, selectedSnippet, onSelectSnippet }) {
   return (
     <p className="answer-text">
       {reply.sentences.map((sentence, sentenceIndex) => (
         <span key={sentenceIndex}>
-          {sentence.text}
+          <span className={sentenceClassName(sentence, reply.snippets, selectedSnippet)}>
+            {sentence.text}
+          </span>
           {sentence.citations.map((citation, citationIndex) => (
             <CitationMarker
               key={citationIndex}
               messageId={messageId}
               citation={citation}
               reply={reply}
+              onSelectSnippet={onSelectSnippet}
             />
           ))}{" "}
         </span>
@@ -56,7 +97,14 @@ function AnswerSentences({ messageId, reply }) {
   );
 }
 
-function CitationMarker({ messageId, citation, reply }) {
+function sentenceClassName(sentence, snippets, selectedSnippet) {
+  const citesSelected = sentence.citations.some(
+    (citation) => snippetIndexFor(citation, snippets) === selectedSnippet,
+  );
+  return citesSelected ? "answer-sentence is-selected" : "answer-sentence";
+}
+
+function CitationMarker({ messageId, citation, reply, onSelectSnippet }) {
   const snippetIndex = snippetIndexFor(citation, reply.snippets);
   const label = `[${citation.source}]`;
   const title = citationTitle(citation, reply.sources);
@@ -70,7 +118,11 @@ function CitationMarker({ messageId, citation, reply }) {
   }
   return (
     <sup className="citation">
-      <a href={`#${snippetAnchor(messageId, snippetIndex)}`} title={title}>
+      <a
+        href={`#${snippetAnchor(messageId, snippetIndex)}`}
+        title={title}
+        onClick={() => onSelectSnippet(snippetIndex)}
+      >
         {label}
       </a>
     </sup>

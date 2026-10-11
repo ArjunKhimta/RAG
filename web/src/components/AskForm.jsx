@@ -65,7 +65,7 @@ export default function AskForm({ onAsk }) {
         <span className={characterCount > MAX_QUESTION_CHARACTERS ? "over-limit" : "muted"}>
           {characterCount} / {MAX_QUESTION_CHARACTERS}
         </span>
-        <button type="submit" className="button" disabled={!sendable || asking}>
+        <button type="submit" className="button button-primary" disabled={!sendable || asking}>
           {asking ? "Answering…" : "Ask"}
         </button>
       </div>

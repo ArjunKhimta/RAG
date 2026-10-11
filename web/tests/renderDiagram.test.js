@@ -29,6 +29,29 @@ describe("drawing a diagram with Mermaid", () => {
     );
   });
 
+  it("draws in the site's dark colours unless the visitor asks for light", async () => {
+    const { renderDiagram } = await freshRenderModule();
+
+    await renderDiagram("flowchart LR\n  f0 --> f1");
+
+    const settings = fakeMermaid.initialize.mock.calls[0][0];
+    expect(settings.theme).toBe("base");
+    expect(settings.themeVariables).toMatchObject({ lineColor: "#f0b44c", background: "#0f1318" });
+  });
+
+  it("draws in the light colours when the visitor's system asks for light", async () => {
+    window.matchMedia = (query) => ({ matches: query === "(prefers-color-scheme: light)" });
+    const { renderDiagram } = await freshRenderModule();
+
+    await renderDiagram("flowchart LR\n  f0 --> f1");
+
+    expect(fakeMermaid.initialize.mock.calls[0][0].themeVariables).toMatchObject({
+      lineColor: "#8a5300",
+      background: "#ffffff",
+    });
+    delete window.matchMedia;
+  });
+
   it("starts Mermaid once and draws each diagram under a new ID", async () => {
     const { renderDiagram } = await freshRenderModule();
 

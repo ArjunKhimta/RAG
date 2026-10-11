@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, NavLink } from "react-router";
 import { SessionStatus, useSession } from "../session/SessionProvider.jsx";
 import SignInButton from "./SignInButton.jsx";
 
@@ -13,8 +13,8 @@ export default function SiteHeader() {
       <nav className="site-account">
         {session.status === SessionStatus.SIGNED_IN && (
           <>
-            <Link to="/repositories">Repositories</Link>
-            <Link to="/conversations">Conversations</Link>
+            <NavLink to="/repositories">Repositories</NavLink>
+            <NavLink to="/conversations">Conversations</NavLink>
             <AccountLink user={session.user} />
           </>
         )}

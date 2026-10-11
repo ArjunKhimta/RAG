@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DIAGRAM_DESCRIPTION } from "../src/components/OverviewDiagram.jsx";
 import { renderDiagram } from "../src/overview/renderDiagram.js";
@@ -77,6 +78,29 @@ describe("overview page", () => {
     expect(performance.getEntriesByName(Timing.SHOWN_DIAGRAM, "measure")).toHaveLength(0);
     fireEvent.load(image);
     expect(performance.getEntriesByName(Timing.SHOWN_DIAGRAM, "measure")).toHaveLength(1);
+  });
+
+  it("lets a visitor pick a file and see what it calls and what calls it", async () => {
+    overviewApi();
+
+    renderApp("/repositories/link-flask/overview");
+
+    const files = await screen.findByRole("list", {
+      name: "Files that call or are called by another file",
+    });
+    const buttons = within(files).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "src/flask/helpers.py13",
+      "src/flask/app.py11",
+      "src/flask/sessions.py2",
+    ]);
+    expect(screen.getByRole("heading", { name: "src/flask/helpers.py", level: 3 })).toBeTruthy();
+
+    await userEvent.click(buttons[1]);
+
+    expect(screen.getByRole("heading", { name: "src/flask/app.py", level: 3 })).toBeTruthy();
+    expect(screen.getByText("→ src/flask/helpers.py")).toBeTruthy();
+    expect(screen.getByText("← src/flask/helpers.py")).toBeTruthy();
   });
 
   it("offers the Mermaid source to copy", async () => {

@@ -65,7 +65,7 @@ export default function AddRepositoryForm({ onAdded }) {
           onChange={(event) => setVersion(event.target.value)}
         />
       </div>
-      <button type="submit" className="button" disabled={!complete || adding}>
+      <button type="submit" className="button button-primary" disabled={!complete || adding}>
         {adding ? "Adding…" : "Add repository"}
       </button>
       <p className="muted field-help">
