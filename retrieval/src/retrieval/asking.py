@@ -21,12 +21,17 @@ The search is one of three. Vector (the default) uses vector search's top 5 dire
 code name to keyword search and anything else to hybrid search with reranking. Hybrid sends every
 question to hybrid search with reranking.
 
-Not safe to share between threads: the rate limiter and the cache's counters are plain Python
-state, so a caller handles one question at a time per asker.
+Safe to share between threads: the service answers searches while a question is being answered.
+The rate limiters lock their own state, each request counts its own embedding use through
+`CachingQueryEmbedder.for_one_request()` rather than reading shared counters, the reranker is
+loaded under a lock so two threads never load it twice, and the database and Gemini clients are
+thread-safe. Index readiness needs no lock: each remembered answer is one dictionary read or
+write, and the worst overlap is two threads both asking Atlas once.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -133,6 +138,7 @@ class QuestionAsker:
         self._answer_model = answer_model
         self._load_scorer = load_scorer
         self._scorer: PairScorer | None = None
+        self._scorer_lock = threading.Lock()
 
     def ask(
         self,
@@ -156,11 +162,10 @@ class QuestionAsker:
         scorer = None
         if route.route == QueryRoute.HYBRID or expand:
             scorer = self._scorer_timed_into(timings)
-        hits_before = self._embedder.hit_count
-        misses_before = self._embedder.miss_count
+        request_embedder = self._embedder.for_one_request()
         found = find_sources(
             chunks_collection,
-            self._embedder,
+            request_embedder,
             scorer,
             question,
             repository,
@@ -168,7 +173,7 @@ class QuestionAsker:
             route,
             exclude_tests=exclude_tests,
         )
-        embedding_use = self._embedding_use_since(hits_before, misses_before)
+        embedding_use = _embedding_use(request_embedder.hit_count, request_embedder.miss_count)
         if not found.sources:
             for index_name in index_names:
                 self._index_readiness.recheck(index_name)
@@ -210,10 +215,9 @@ class QuestionAsker:
         self._index_readiness.require_queryable(VECTOR_INDEX_NAME)
         checks_milliseconds = _milliseconds_since(checks_started)
         chunks_collection = self._database[CHUNKS_COLLECTION]
-        hits_before = self._embedder.hit_count
-        misses_before = self._embedder.miss_count
+        request_embedder = self._embedder.for_one_request()
         results, search_timings = find_vector_results(
-            chunks_collection, self._embedder, query, repository, version, options
+            chunks_collection, request_embedder, query, repository, version, options
         )
         if not results:
             recheck_started = time.perf_counter()
@@ -222,7 +226,7 @@ class QuestionAsker:
         return SearchRun(
             results=results,
             timings={"checks": checks_milliseconds, **search_timings},
-            embedding_use=self._embedding_use_since(hits_before, misses_before),
+            embedding_use=_embedding_use(request_embedder.hit_count, request_embedder.miss_count),
             repository_record=repository_record,
         )
 
@@ -236,25 +240,32 @@ class QuestionAsker:
         require_searchable_version(repository_record, repository, version, self._embedder)
         return repository_record
 
-    def _embedding_use_since(self, hits_before: int, misses_before: int) -> EmbeddingUse:
-        return _embedding_use(
-            self._embedder.hit_count - hits_before, self._embedder.miss_count - misses_before
-        )
-
     def _scorer_timed_into(self, timings: dict[str, float]) -> PairScorer:
         """Load the reranker the first time it is needed and keep it; time only that first load."""
-        if self._scorer is None:
-            stage_started = time.perf_counter()
-            self._scorer = self._load_scorer()
-            timings["load reranker"] = _milliseconds_since(stage_started)
-        return self._scorer
+        with self._scorer_lock:
+            if self._scorer is None:
+                stage_started = time.perf_counter()
+                self._scorer = self._load_scorer()
+                timings["load reranker"] = _milliseconds_since(stage_started)
+            return self._scorer
 
 
-def build_question_asker(database: Database, gemini_client: genai.Client) -> QuestionAsker:
-    """Wire the real embedding cache and budget, Gemini answer model, and local reranker."""
-    embedder = build_query_embedder(database, gemini_client)
+def build_question_asker(
+    database: Database,
+    gemini_client: genai.Client,
+    max_rate_limit_wait_seconds: float | None = None,
+) -> QuestionAsker:
+    """Wire the real embedding cache and budget, Gemini answer model, and local reranker. With
+    `max_rate_limit_wait_seconds`, a question that would wait longer than that for a per-minute
+    slot is refused at once (the service); without it, it waits (the scripts)."""
+    embedder = build_query_embedder(database, gemini_client, max_rate_limit_wait_seconds)
     answer_model = GeminiAnswerModel(
-        gemini_client, RateLimiter(ANSWER_REQUESTS_PER_MINUTE, ANSWER_TOKENS_PER_MINUTE)
+        gemini_client,
+        RateLimiter(
+            ANSWER_REQUESTS_PER_MINUTE,
+            ANSWER_TOKENS_PER_MINUTE,
+            max_wait_seconds=max_rate_limit_wait_seconds,
+        ),
     )
     return QuestionAsker(database, embedder, answer_model, load_local_reranker)
 

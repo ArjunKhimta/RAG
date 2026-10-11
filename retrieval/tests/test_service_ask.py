@@ -17,9 +17,11 @@ from retrieval.answer_generation import (
 from retrieval.asking import AskRun, EmbeddingUse, NoSourcesFoundError
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.query_router import vector_without_router
+from retrieval.rate_limiter import RateLimitWaitTooLongError
 from retrieval.redaction import clear_registered_secrets
 from retrieval.search_results import SearchRefusedError, SearchResult
 from retrieval.service.app import create_app
+from retrieval.service.question_turns import QuestionTurns
 
 SERVICE_TOKEN = "test-service-token-0123456789abcdef"
 
@@ -362,15 +364,86 @@ def test_a_passing_failure_says_to_retry_shortly_and_hides_details(failure):
 def test_questions_are_answered_one_at_a_time():
     asker = FakeAsker(delay_seconds=0.05)
     app = create_app(service_token=SERVICE_TOKEN, asker=asker, indexing_runner=UnusedRunner())
+    statuses = []
 
     def ask_once():
-        app.test_client().post("/ask", json=VALID_BODY, headers=AUTHORIZED)
+        response = app.test_client().post("/ask", json=VALID_BODY, headers=AUTHORIZED)
+        statuses.append(response.status_code)
 
-    threads = [threading.Thread(target=ask_once) for _ in range(4)]
+    threads = [threading.Thread(target=ask_once) for _ in range(3)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
 
-    assert len(asker.calls) == 4
+    assert statuses == [200, 200, 200]
+    assert len(asker.calls) == 3
     assert asker.most_active == 1
+
+
+class BlockingAsker(FakeAsker):
+    """Holds its first question until released, so a test can ask while it is being answered."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.answering = threading.Event()
+        self.release = threading.Event()
+
+    def ask(self, question, repository, version, exclude_tests=False):
+        self.answering.set()
+        self.release.wait(timeout=5)
+        return super().ask(question, repository, version, exclude_tests)
+
+
+def _answer_in_background(app) -> threading.Thread:
+    thread = threading.Thread(
+        target=lambda: app.test_client().post("/ask", json=VALID_BODY, headers=AUTHORIZED)
+    )
+    thread.start()
+    return thread
+
+
+@pytest.mark.parametrize(
+    "turns",
+    [
+        QuestionTurns(max_waiting=0, max_wait_seconds=5),
+        QuestionTurns(max_waiting=2, max_wait_seconds=0.05),
+    ],
+    ids=["the queue is full", "the turn did not come in time"],
+)
+def test_a_question_that_cannot_get_its_turn_is_refused_with_a_retry_time(turns):
+    asker = BlockingAsker()
+    app = create_app(
+        service_token=SERVICE_TOKEN,
+        asker=asker,
+        indexing_runner=UnusedRunner(),
+        question_turns=turns,
+    )
+    answering = _answer_in_background(app)
+    assert asker.answering.wait(timeout=2)
+
+    refused_from = time.monotonic()
+    response = app.test_client().post("/ask", json=VALID_BODY, headers=AUTHORIZED)
+    refusal_seconds = time.monotonic() - refused_from
+
+    asker.release.set()
+    answering.join()
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "10"
+    assert response.get_json() == {
+        "error": "The service is busy answering other questions; try again in a few seconds"
+    }
+    assert refusal_seconds < 1
+    assert len(asker.calls) == 1
+
+
+def test_a_question_gemini_would_hold_too_long_is_refused_with_the_exact_wait():
+    response = _client(FakeAsker(RateLimitWaitTooLongError(12.3, 5))).post(
+        "/ask", json=VALID_BODY, headers=AUTHORIZED
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "13"
+    assert response.get_json() == {
+        "error": "Gemini's per-minute limit is reached; try again in a few seconds"
+    }

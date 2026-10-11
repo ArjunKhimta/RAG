@@ -17,12 +17,20 @@ type, and when it was created; never the question itself, so nothing a user type
 TTL index deletes documents 30 days after creation, which bounds the collection's size without a
 write on every hit. A vector is returned at float32 precision on a miss as well as a hit, so search
 results do not depend on whether the cache was warm.
+
+One caching embedder is shared by every request in the service, and several requests run at once,
+so a request cannot tell whether its own question came from the cache by reading the shared hit
+count before and after: another request may change it in between. Each request takes its own
+`RequestQueryEmbedder` from `for_one_request()`, which counts only the questions that request
+embeds. The shared totals stay for scripts, which print them, and are updated under a lock.
 """
 
 from __future__ import annotations
 
+import threading
 from array import array
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -72,6 +80,12 @@ class MongoQueryEmbeddingStore:
         self._query_embeddings.replace_one({"_id": embedding_key}, document, upsert=True)
 
 
+@dataclass(frozen=True)
+class EmbeddedQuestion:
+    vector: list[float]
+    from_cache: bool
+
+
 class CachingQueryEmbedder:
     def __init__(self, embedder: QueryEmbedder, store: QueryEmbeddingStore) -> None:
         self._embedder = embedder
@@ -81,18 +95,49 @@ class CachingQueryEmbedder:
         self.task_type = embedder.task_type
         self.hit_count = 0
         self.miss_count = 0
+        self._count_lock = threading.Lock()
 
     def embed_query(self, question: str) -> list[float]:
+        return self.embed_question(question).vector
+
+    def embed_question(self, question: str) -> EmbeddedQuestion:
+        """The question's vector, and whether it came from the cache."""
         cleaned_question = normalize_question(question)
         embedding_key = compute_embedding_key(self._embedder, cleaned_question)
         cached_vector = self._store.find_embedding(embedding_key)
         if cached_vector is not None:
-            self.hit_count += 1
-            return cached_vector
+            with self._count_lock:
+                self.hit_count += 1
+            return EmbeddedQuestion(vector=cached_vector, from_cache=True)
         vector = round_to_float32(self._embedder.embed_query(cleaned_question))
         self._store.save_embedding(embedding_key, self._embedder, vector)
-        self.miss_count += 1
-        return vector
+        with self._count_lock:
+            self.miss_count += 1
+        return EmbeddedQuestion(vector=vector, from_cache=False)
+
+    def for_one_request(self) -> RequestQueryEmbedder:
+        return RequestQueryEmbedder(self)
+
+
+class RequestQueryEmbedder:
+    """The shared caching embedder as seen by one request, counting only that request's
+    questions. Used by one thread at a time, so its counts need no lock."""
+
+    def __init__(self, shared: CachingQueryEmbedder) -> None:
+        self._shared = shared
+        self.model_id = shared.model_id
+        self.dimensions = shared.dimensions
+        self.task_type = shared.task_type
+        self.hit_count = 0
+        self.miss_count = 0
+
+    def embed_query(self, question: str) -> list[float]:
+        embedded = self._shared.embed_question(question)
+        if embedded.from_cache:
+            self.hit_count += 1
+        else:
+            self.miss_count += 1
+        return embedded.vector
 
 
 def query_embedding_document(

@@ -43,6 +43,12 @@ SOURCE = SearchResult(
 class FakeEmbedder:
     hit_count: int = 0
     miss_count: int = 0
+    requests: list[FakeEmbedder] = field(default_factory=list)
+
+    def for_one_request(self) -> FakeEmbedder:
+        request_embedder = FakeEmbedder()
+        self.requests.append(request_embedder)
+        return request_embedder
 
 
 @dataclass

@@ -199,17 +199,27 @@ class MeteredQueryEmbedder:
         self.task_type = embedder.task_type
 
     def embed_query(self, question: str) -> list[float]:
-        self._budget.reserve(EmbeddingLane.QUESTIONS, 1)
+        """Take a per-minute slot first, then book the day's seat, so a question the per-minute
+        limit refuses never uses a seat it did not spend."""
         self._rate_limiter.acquire(1, estimate_tokens(question))
+        self._budget.reserve(EmbeddingLane.QUESTIONS, 1)
         return self._embedder.embed_query(question)
 
 
-def build_query_embedder(database: Database, gemini_client: genai.Client) -> CachingQueryEmbedder:
-    """The question embedder every caller uses: the cache first, then the metered Gemini call."""
+def build_query_embedder(
+    database: Database,
+    gemini_client: genai.Client,
+    max_rate_limit_wait_seconds: float | None = None,
+) -> CachingQueryEmbedder:
+    """The question embedder every caller uses: the cache first, then the metered Gemini call.
+    With `max_rate_limit_wait_seconds`, a question that would wait longer than that for a
+    per-minute slot is refused at once instead."""
     query_embedding_store = MongoQueryEmbeddingStore(database)
     query_embedding_store.ensure_indexes()
     question_rate_limiter = RateLimiter(
-        QUESTION_EMBEDDINGS_PER_MINUTE, QUESTION_EMBEDDING_TOKENS_PER_MINUTE
+        QUESTION_EMBEDDINGS_PER_MINUTE,
+        QUESTION_EMBEDDING_TOKENS_PER_MINUTE,
+        max_wait_seconds=max_rate_limit_wait_seconds,
     )
     metered_embedder = MeteredQueryEmbedder(
         GeminiQueryEmbedder(gemini_client), _budget_for(database), question_rate_limiter

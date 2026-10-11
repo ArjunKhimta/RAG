@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -172,3 +173,53 @@ def test_documents_expire_thirty_days_after_creation():
     assert keys == [("created_at", 1)]
     assert options == {"expireAfterSeconds": QUERY_EMBEDDING_TTL_SECONDS}
     assert QUERY_EMBEDDING_TTL_SECONDS == 30 * 24 * 60 * 60
+
+
+def test_each_request_counts_only_its_own_questions():
+    caching_embedder = CachingQueryEmbedder(FakeQueryEmbedder(), FakeQueryEmbeddingStore())
+    caching_embedder.embed_query("How are routes registered?")
+    first_request = caching_embedder.for_one_request()
+    second_request = caching_embedder.for_one_request()
+
+    first_request.embed_query("How are routes registered?")
+    second_request.embed_query("How is the cookie signed?")
+
+    assert (first_request.hit_count, first_request.miss_count) == (1, 0)
+    assert (second_request.hit_count, second_request.miss_count) == (0, 1)
+    assert (caching_embedder.hit_count, caching_embedder.miss_count) == (1, 2)
+
+
+def test_a_request_embedder_reports_the_shared_embedders_identity():
+    caching_embedder = CachingQueryEmbedder(
+        FakeQueryEmbedder(model_id="model", dimensions=3), FakeQueryEmbeddingStore()
+    )
+
+    request_embedder = caching_embedder.for_one_request()
+
+    assert (request_embedder.model_id, request_embedder.dimensions) == ("model", 3)
+    assert request_embedder.task_type == "CODE_RETRIEVAL_QUERY"
+
+
+def test_requests_on_many_threads_each_see_their_own_cache_use():
+    store = FakeQueryEmbeddingStore()
+    caching_embedder = CachingQueryEmbedder(FakeQueryEmbedder(), store)
+    caching_embedder.embed_query("cached question")
+    seen: dict[str, tuple[int, int]] = {}
+    start_together = threading.Barrier(20)
+
+    def one_request(number):
+        request_embedder = caching_embedder.for_one_request()
+        start_together.wait()
+        question = "cached question" if number % 2 == 0 else f"new question {number}"
+        request_embedder.embed_query(question)
+        seen[question] = (request_embedder.hit_count, request_embedder.miss_count)
+
+    threads = [threading.Thread(target=one_request, args=(number,)) for number in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert seen["cached question"] == (1, 0)
+    assert all(seen[f"new question {number}"] == (0, 1) for number in range(1, 20, 2))
+    assert (caching_embedder.hit_count, caching_embedder.miss_count) == (10, 11)

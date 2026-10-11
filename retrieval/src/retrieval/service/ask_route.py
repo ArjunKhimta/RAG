@@ -1,41 +1,46 @@
 """`POST /ask`: answer one question about an indexed repository version.
 
-Requests are handled one at a time per process, behind a lock shared with `POST /search`. The
-question asker's rate limiter and the embedding cache's counters are not safe to share between
-threads, and the lock costs little in practice: the free answer model allows 15 answers a minute,
-while one process answers about 30, so Gemini, not the lock, sets the pace. When the per-minute
-limit is reached, the request waits inside the rate limiter until a slot frees, at most about a
-minute.
+Questions take turns (see `question_turns`): one is answered at a time, at most two wait, and a
+waiting question gives up after 5 seconds. Searches do not take turns with questions. When
+Gemini's per-minute limit would make a question wait more than 5 seconds for a slot, the shared
+error replies refuse it at once. Together these bound a question's time in the service: at most
+5 s for its turn, about 1 s of checks and search, and at most 80 s answering (the 75 s answer
+budget plus one capped wait on a retry), 86 s in all, under the Node API's 90 s limit, so the
+service never keeps working on an answer the caller has stopped waiting for.
 
-Besides the shared error replies in `errors`, two failures belong to answering:
+Besides the shared error replies in `errors`, three failures belong to answering:
 - 400: the question is too long for the reranker (only when it is used)
 - 502: the answer model's reply failed the citation check; the reply itself is never shown
+- 503 with `Retry-After: 10`: the service is busy with other questions (the queue is full, or the
+  turn did not come in time)
 """
 
 from __future__ import annotations
-
-import threading
 
 from flask import Flask, Response, jsonify, request
 
 from retrieval.answer_generation import AnswerRejectedError
 from retrieval.asking import NoSourcesFoundError, QuestionAsker
+from retrieval.config import SERVICE_BUSY_RETRY_SECONDS
 from retrieval.redaction import redact
 from retrieval.reranking import QuestionTooLongError
 from retrieval.service.ask_request import parse_ask_request
 from retrieval.service.ask_response import ask_response, no_sources_response
-from retrieval.service.errors import BAD_REQUEST_STATUS, error_reply
+from retrieval.service.errors import BAD_REQUEST_STATUS, UNAVAILABLE_STATUS, error_reply
+from retrieval.service.question_turns import QuestionsBusyError, QuestionTurns
 
 BAD_GATEWAY_STATUS = 502
 
 REJECTED_ANSWER_MESSAGE = "The answer model's reply failed the citation check and was not shown"
 
+QUESTIONS_BUSY_MESSAGE = "The service is busy answering other questions; try again in a few seconds"
 
-def register_ask_route(app: Flask, asker: QuestionAsker, request_lock: threading.Lock) -> None:
+
+def register_ask_route(app: Flask, asker: QuestionAsker, question_turns: QuestionTurns) -> None:
     def ask() -> Response:
         ask_request = parse_ask_request(request.get_json(silent=True))
         try:
-            with request_lock:
+            with question_turns.turn():
                 ask_run = asker.ask(
                     ask_request.question,
                     ask_request.repository,
@@ -57,6 +62,13 @@ def register_ask_route(app: Flask, asker: QuestionAsker, request_lock: threading
         app.logger.warning("Answer rejected: %s", redact("; ".join(error.problems)))
         return error_reply(REJECTED_ANSWER_MESSAGE, BAD_GATEWAY_STATUS)
 
+    def questions_busy(error: QuestionsBusyError):
+        app.logger.warning("Question refused: %s", redact(str(error)))
+        return error_reply(
+            QUESTIONS_BUSY_MESSAGE, UNAVAILABLE_STATUS, retry_after=SERVICE_BUSY_RETRY_SECONDS
+        )
+
     app.add_url_rule("/ask", "ask", ask, methods=["POST"])
     app.register_error_handler(QuestionTooLongError, question_too_long)
     app.register_error_handler(AnswerRejectedError, rejected_answer)
+    app.register_error_handler(QuestionsBusyError, questions_busy)

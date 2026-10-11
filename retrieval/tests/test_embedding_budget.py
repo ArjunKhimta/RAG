@@ -18,6 +18,7 @@ from retrieval.embedding_budget import (
     MongoEmbeddingBudget,
 )
 from retrieval.query_cache import CachingQueryEmbedder
+from retrieval.rate_limiter import RateLimitWaitTooLongError
 
 NOON_PACIFIC = datetime(2026, 10, 5, 19, 0, tzinfo=UTC)
 
@@ -267,3 +268,19 @@ def test_a_cached_question_is_free():
 
     assert budget.reservations == [(EmbeddingLane.QUESTIONS, 1)]
     assert (caching_embedder.miss_count, caching_embedder.hit_count) == (1, 1)
+
+
+class RefusingRateLimiter:
+    def acquire(self, request_count: int, token_count: int) -> float:
+        raise RateLimitWaitTooLongError(12.0, 5.0)
+
+
+def test_a_question_the_per_minute_limit_refuses_books_no_seat():
+    budget = RecordingBudget()
+    embedder = FakeEmbedder()
+
+    with pytest.raises(RateLimitWaitTooLongError):
+        MeteredQueryEmbedder(embedder, budget, RefusingRateLimiter()).embed_query("question")
+
+    assert budget.reservations == []
+    assert embedder.calls == []

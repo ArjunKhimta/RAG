@@ -10,6 +10,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 from retrieval.asking import EmbeddingUse, SearchRun
 from retrieval.embedders import EmbeddingRequestError
 from retrieval.embedding_budget import EmbeddingBudgetExhaustedError
+from retrieval.rate_limiter import RateLimitWaitTooLongError
 from retrieval.redaction import clear_registered_secrets
 from retrieval.search_results import SearchRefusedError, SearchResult
 from retrieval.service.app import create_app
@@ -342,25 +343,41 @@ def test_a_passing_failure_says_to_retry_shortly_and_hides_details(failure):
     assert "password1234" not in response.get_data(as_text=True)
 
 
-def test_searches_and_questions_share_one_lock():
-    asker = FakeAsker(delay_seconds=0.05)
+def test_a_search_is_answered_while_a_question_is_being_answered():
+    asker = FakeAsker()
+    answering = threading.Event()
+    release = threading.Event()
+
+    def slow_ask(question, repository, version, exclude_tests=False):
+        answering.set()
+        release.wait(timeout=5)
+        raise SearchRefusedError("not needed for this test")
+
+    asker.ask = slow_ask
     app = create_app(service_token=SERVICE_TOKEN, asker=asker, indexing_runner=UnusedRunner())
+    ask_body = {"repository": "pallets/flask", "version": "3.1.3", "question": "hello"}
+    question = threading.Thread(
+        target=lambda: app.test_client().post("/ask", json=ask_body, headers=AUTHORIZED)
+    )
+    question.start()
+    assert answering.wait(timeout=2)
 
-    def search_once():
-        app.test_client().post("/search", json=VALID_BODY, headers=AUTHORIZED)
+    response = app.test_client().post("/search", json=VALID_BODY, headers=AUTHORIZED)
+    question_still_answering = not release.is_set() and question.is_alive()
 
-    def ask_once():
-        ask_body = {"repository": "pallets/flask", "version": "3.1.3", "question": "hello"}
-        app.test_client().post("/ask", json=ask_body, headers=AUTHORIZED)
+    release.set()
+    question.join()
+    assert response.status_code == 200
+    assert question_still_answering
 
-    threads = [threading.Thread(target=target) for target in (search_once, ask_once) * 2]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
 
-    assert sorted(call["method"] for call in asker.calls) == ["ask", "ask", "search", "search"]
-    assert asker.most_active == 1
+def test_a_search_gemini_would_hold_too_long_is_refused_with_the_exact_wait():
+    response = _client(FakeAsker(RateLimitWaitTooLongError(4.2, 0))).post(
+        "/search", json=VALID_BODY, headers=AUTHORIZED
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
 
 
 def test_a_used_up_embedding_budget_says_to_wait_until_midnight_pacific():

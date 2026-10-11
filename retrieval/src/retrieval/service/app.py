@@ -11,8 +11,10 @@ including ones that do not exist, and learns nothing about which routes the serv
 are compared in constant time (`hmac.compare_digest`), so the time a wrong guess takes does not
 reveal how much of it was right.
 
-`POST /ask` and `POST /search` share one lock, so the process handles one of them at a time: both
-use the question asker's embedding cache, whose counters are not safe to share between threads.
+Questions take turns: one is answered at a time, at most two wait, and none waits more than 5
+seconds (see `question_turns`). Searches do not take turns with questions; the question asker is
+safe to share between threads. The asker built here refuses, rather than waits, when Gemini's
+per-minute limit would hold a request for more than 5 seconds.
 
 Every error is JSON, `{"error": "..."}`, with the HTTP status. An unexpected exception becomes a
 generic 500: its details, which could hold a database address or an API key, are written to the
@@ -32,7 +34,6 @@ in, so tests of the other routes need not supply one.
 from __future__ import annotations
 
 import hmac
-import threading
 import traceback
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -46,6 +47,9 @@ from retrieval.config import (
     MINIMUM_SERVICE_TOKEN_LENGTH,
     MONGODB_DATABASE,
     SERVICE_MAX_REQUEST_BYTES,
+    SERVICE_MAX_WAITING_QUESTIONS,
+    SERVICE_QUESTION_TURN_WAIT_SECONDS,
+    SERVICE_RATE_LIMIT_MAX_WAIT_SECONDS,
     SERVICE_TOKEN_VARIABLE,
     get_required_env,
     load_environment,
@@ -57,6 +61,7 @@ from retrieval.service.ask_route import register_ask_route
 from retrieval.service.errors import register_error_replies
 from retrieval.service.index_routes import register_index_routes
 from retrieval.service.overview_route import register_overview_route
+from retrieval.service.question_turns import QuestionTurns
 from retrieval.service.search_route import register_search_route
 
 BEARER_PREFIX = "Bearer "
@@ -82,11 +87,13 @@ def create_app(
     indexing_runner: IndexingJobRunner | None = None,
     now: Callable[[], datetime] | None = None,
     overview_builder: RepositoryOverviewBuilder | None = None,
+    question_turns: QuestionTurns | None = None,
 ) -> Flask:
     """Build the service. Tests pass a token, an asker, a runner, and a clock; otherwise the token
     comes from the environment, the asker and runner are wired to Atlas and Gemini, and the clock
     is real. The asker and runner are passed together or not at all; the overview builder is
-    built with them, or passed in by tests that need the overview route."""
+    built with them, or passed in by tests that need the overview route. Tests may pass their own
+    question turns with shorter waits."""
     token = service_token if service_token is not None else _token_from_environment()
     _require_strong_token(token)
     register_secret(token)
@@ -100,9 +107,12 @@ def create_app(
     app.config["MAX_CONTENT_LENGTH"] = SERVICE_MAX_REQUEST_BYTES
     app.json.sort_keys = False
     app.add_url_rule("/health", HEALTH_ENDPOINT, _health, methods=["GET"])
-    request_lock = threading.Lock()
-    register_ask_route(app, asker, request_lock)
-    register_search_route(app, asker, request_lock)
+    turns = question_turns or QuestionTurns(
+        max_waiting=SERVICE_MAX_WAITING_QUESTIONS,
+        max_wait_seconds=SERVICE_QUESTION_TURN_WAIT_SECONDS,
+    )
+    register_ask_route(app, asker, turns)
+    register_search_route(app, asker)
     register_index_routes(app, indexing_runner, clock)
     if overview_builder is not None:
         register_overview_route(app, overview_builder)
@@ -123,7 +133,11 @@ def _build_services() -> tuple[QuestionAsker, IndexingJobRunner, RepositoryOverv
     database = build_mongo_client()[MONGODB_DATABASE]
     gemini_client = build_gemini_client()
     return (
-        build_question_asker(database, gemini_client),
+        build_question_asker(
+            database,
+            gemini_client,
+            max_rate_limit_wait_seconds=SERVICE_RATE_LIMIT_MAX_WAIT_SECONDS,
+        ),
         build_indexing_job_runner(database, gemini_client),
         RepositoryOverviewBuilder(database),
     )
