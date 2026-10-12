@@ -1,0 +1,362 @@
+{
+  "dataset": "princeton-nlp/SWE-bench_Lite",
+  "split": "test",
+  "revision": "6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2",
+  "tasks_file": "data/swe_bench/tasks.json",
+  "tasks_file_sha256": "901d62f8ee09a23bee7aa2462a21cf4b75ff88993189ce160d0330942ca10266",
+  "written_on": "2026-10-12",
+  "notes": "A subset of SWE-bench Lite for scoring search: each task's issue is the query, and the expected definitions are the chunks at the base commit holding the lines the merged fix removes or rewrites, or, for lines it only adds, the line just before them (the line after when that line belongs to no definition). Each line goes to the smallest chunk holding it; a split definition is expected whole. Module-level code the fix also changed (import lines) is listed under also_changed_at_module_level and not expected, unless it is all the fix changed. Line numbers are 1-indexed and inclusive. The issue text and the patch are not stored here, since the dataset states no license; they are read from the tasks file named below, checked by its SHA-256.",
+  "tasks": [
+    {
+      "id": "pallets__flask-4045",
+      "repository": "pallets/flask",
+      "base_commit": "d8c37f43724cd9fb0870f77877b7c4c7e38a19e0",
+      "dataset_version": "2.0",
+      "issue_created_at": "2021-05-13T21:32:41Z",
+      "patch_files": [
+        "src/flask/blueprints.py"
+      ],
+      "expected": [
+        {
+          "file_path": "src/flask/blueprints.py",
+          "qualified_name": "Blueprint.__init__",
+          "kind": "method",
+          "start_line": 171,
+          "end_line": 201,
+          "reasons": [
+            "insertion point"
+          ],
+          "lines": [
+            190
+          ]
+        },
+        {
+          "file_path": "src/flask/blueprints.py",
+          "qualified_name": "Blueprint.add_url_rule",
+          "kind": "method",
+          "start_line": 353,
+          "end_line": 369,
+          "reasons": [
+            "changed lines"
+          ],
+          "lines": [
+            363,
+            364,
+            365,
+            366,
+            367,
+            368
+          ]
+        }
+      ],
+      "also_changed_at_module_level": []
+    },
+    {
+      "id": "pallets__flask-4992",
+      "repository": "pallets/flask",
+      "base_commit": "4c288bc97ea371817199908d0d9b12de9dae327e",
+      "dataset_version": "2.3",
+      "issue_created_at": "2023-02-22T14:00:17Z",
+      "patch_files": [
+        "src/flask/config.py"
+      ],
+      "expected": [
+        {
+          "file_path": "src/flask/config.py",
+          "qualified_name": "Config.from_file",
+          "kind": "method",
+          "start_line": 232,
+          "end_line": 273,
+          "reasons": [
+            "changed lines",
+            "insertion point"
+          ],
+          "lines": [
+            236,
+            247,
+            248,
+            256,
+            258,
+            264
+          ]
+        }
+      ],
+      "also_changed_at_module_level": []
+    },
+    {
+      "id": "pallets__flask-5063",
+      "repository": "pallets/flask",
+      "base_commit": "182ce3dd15dfa3537391c3efaf9c3ff407d134d4",
+      "dataset_version": "2.3",
+      "issue_created_at": "2023-04-14T16:36:54Z",
+      "patch_files": [
+        "src/flask/cli.py"
+      ],
+      "expected": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "routes_command",
+          "kind": "function",
+          "start_line": 988,
+          "end_line": 1034,
+          "reasons": [
+            "changed lines",
+            "insertion point"
+          ],
+          "lines": [
+            992,
+            995,
+            996,
+            1003,
+            1004,
+            1009,
+            1011,
+            1012,
+            1013,
+            1014,
+            1016,
+            1017,
+            1018,
+            1019,
+            1021,
+            1022,
+            1023,
+            1024,
+            1025,
+            1026,
+            1027,
+            1028,
+            1030,
+            1031,
+            1033,
+            1034
+          ]
+        }
+      ],
+      "also_changed_at_module_level": [
+        {
+          "file_path": "src/flask/cli.py",
+          "qualified_name": "<module>",
+          "kind": "module",
+          "start_line": 1,
+          "end_line": 25,
+          "reasons": [
+            "changed lines"
+          ],
+          "lines": [
+            12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "psf__requests-863",
+      "repository": "psf/requests",
+      "base_commit": "a0df2cbb10419037d11d04352b3175405ab52941",
+      "dataset_version": "0.14",
+      "issue_created_at": "2012-09-20T15:48:00Z",
+      "patch_files": [
+        "requests/models.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/models.py",
+          "qualified_name": "Request.register_hook",
+          "kind": "method",
+          "start_line": 463,
+          "end_line": 466,
+          "reasons": [
+            "changed lines"
+          ],
+          "lines": [
+            465,
+            466
+          ]
+        }
+      ],
+      "also_changed_at_module_level": []
+    },
+    {
+      "id": "psf__requests-1963",
+      "repository": "psf/requests",
+      "base_commit": "110048f9837f8441ea536804115e80b69f400277",
+      "dataset_version": "2.3",
+      "issue_created_at": "2014-03-15T17:42:11Z",
+      "patch_files": [
+        "requests/sessions.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/sessions.py",
+          "qualified_name": "SessionRedirectMixin.resolve_redirects",
+          "kind": "method",
+          "start_line": 84,
+          "end_line": 184,
+          "reasons": [
+            "changed lines",
+            "insertion point"
+          ],
+          "lines": [
+            170,
+            172
+          ]
+        }
+      ],
+      "also_changed_at_module_level": []
+    },
+    {
+      "id": "psf__requests-2148",
+      "repository": "psf/requests",
+      "base_commit": "fe693c492242ae532211e0c173324f09ca8cf227",
+      "dataset_version": "2.3",
+      "issue_created_at": "2014-07-24T21:03:03Z",
+      "patch_files": [
+        "requests/models.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/models.py",
+          "qualified_name": "Response.iter_content",
+          "kind": "method",
+          "start_line": 623,
+          "end_line": 663,
+          "reasons": [
+            "insertion point"
+          ],
+          "lines": [
+            642
+          ]
+        }
+      ],
+      "also_changed_at_module_level": [
+        {
+          "file_path": "requests/models.py",
+          "qualified_name": "<module>",
+          "kind": "module",
+          "start_line": 1,
+          "end_line": 46,
+          "reasons": [
+            "changed lines",
+            "insertion point"
+          ],
+          "lines": [
+            11,
+            25
+          ]
+        }
+      ]
+    },
+    {
+      "id": "psf__requests-2317",
+      "repository": "psf/requests",
+      "base_commit": "091991be0da19de9108dbe5e3752917fea3d7fdc",
+      "dataset_version": "2.4",
+      "issue_created_at": "2014-11-01T02:20:16Z",
+      "patch_files": [
+        "requests/sessions.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/sessions.py",
+          "qualified_name": "Session.request",
+          "kind": "method",
+          "start_line": 378,
+          "end_line": 459,
+          "reasons": [
+            "changed lines"
+          ],
+          "lines": [
+            428
+          ]
+        }
+      ],
+      "also_changed_at_module_level": [
+        {
+          "file_path": "requests/sessions.py",
+          "qualified_name": "<module>",
+          "kind": "module",
+          "start_line": 1,
+          "end_line": 36,
+          "reasons": [
+            "changed lines"
+          ],
+          "lines": [
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "id": "psf__requests-2674",
+      "repository": "psf/requests",
+      "base_commit": "0be38a0c37c59c4b66ce908731da15b401655113",
+      "dataset_version": "2.7",
+      "issue_created_at": "2015-07-17T08:33:52Z",
+      "patch_files": [
+        "requests/adapters.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/adapters.py",
+          "qualified_name": "HTTPAdapter.send",
+          "kind": "method",
+          "start_line": 324,
+          "end_line": 435,
+          "reasons": [
+            "insertion point"
+          ],
+          "lines": [
+            423
+          ]
+        }
+      ],
+      "also_changed_at_module_level": [
+        {
+          "file_path": "requests/adapters.py",
+          "qualified_name": "<module>",
+          "kind": "module",
+          "start_line": 1,
+          "end_line": 38,
+          "reasons": [
+            "insertion point"
+          ],
+          "lines": [
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "psf__requests-3362",
+      "repository": "psf/requests",
+      "base_commit": "36453b95b13079296776d11b09cab2567ea3e703",
+      "dataset_version": "2.10",
+      "issue_created_at": "2016-06-24T13:31:31Z",
+      "patch_files": [
+        "requests/utils.py"
+      ],
+      "expected": [
+        {
+          "file_path": "requests/utils.py",
+          "qualified_name": "stream_decode_response_unicode",
+          "kind": "function",
+          "start_line": 359,
+          "end_line": 374,
+          "reasons": [
+            "changed lines",
+            "insertion point"
+          ],
+          "lines": [
+            360,
+            362,
+            363,
+            364,
+            365,
+            367
+          ]
+        }
+      ],
+      "also_changed_at_module_level": []
+    }
+  ]
+}

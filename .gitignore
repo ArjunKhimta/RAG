@@ -10,4 +10,5 @@ data/models/
 .ruff_cache/
 *.egg-info/
 data/hand_checks/
+data/swe_bench/
 web/dist/
