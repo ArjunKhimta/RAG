@@ -15,12 +15,12 @@ from google import genai
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import KEYWORD_INDEX_NAME, MONGODB_DATABASE, VECTOR_INDEX_NAME
+from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.embedding_budget import build_query_embedder
 from retrieval.graph_expansion import require_call_graph
 from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.question_set import QuestionSet, load_question_set
 from retrieval.reranker_model import verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, require_indexed_version
 from retrieval.vector_search import require_searchable_version

@@ -146,6 +146,17 @@ def test_each_lock_holds_every_pinned_requirement_at_its_pinned_version(target):
         assert locked.get(name) == version, f"{name}: regenerate {target.lock_name}"
 
 
+def test_the_reranker_is_locked_for_development_but_left_out_of_the_image():
+    reranker_pins = _pinned_requirements(RETRIEVAL_ROOT / "requirements-reranker.txt")
+    image_lock = locked_versions((RETRIEVAL_ROOT / "requirements.lock").read_text())
+    development_lock = locked_versions((RETRIEVAL_ROOT / "requirements-dev.lock").read_text())
+
+    assert set(reranker_pins) == {"numpy", "onnxruntime", "tokenizers"}
+    for name, version in reranker_pins.items():
+        assert development_lock.get(name) == version, f"{name}: regenerate requirements-dev.lock"
+        assert name not in image_lock, f"{name} would be installed in the service's image"
+
+
 def test_the_development_lock_holds_everything_the_image_lock_holds():
     image_lock = locked_versions((RETRIEVAL_ROOT / "requirements.lock").read_text())
     development_lock = locked_versions((RETRIEVAL_ROOT / "requirements-dev.lock").read_text())

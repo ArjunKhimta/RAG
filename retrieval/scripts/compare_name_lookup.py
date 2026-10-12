@@ -46,6 +46,7 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
+from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.embedding_budget import build_query_embedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.github_urls import InvalidRepositoryUrlError, parse_github_url
@@ -56,7 +57,7 @@ from retrieval.redaction import redact
 from retrieval.repository_cloner import RepositoryError, clone_repository
 from retrieval.repository_walker import chunk_source_files, find_python_files
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, PairScorer, rerank
+from retrieval.reranking import PairScorer, rerank
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
 from retrieval.vector_search import require_searchable_version

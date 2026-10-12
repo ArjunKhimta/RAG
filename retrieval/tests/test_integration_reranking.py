@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.reranker_model import verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError
+from retrieval.reranking import QuestionTooLongError
 
 pytestmark = pytest.mark.integration
 

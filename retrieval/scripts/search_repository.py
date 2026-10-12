@@ -54,6 +54,7 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
+from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.embedders import EmbeddingRequestError
 from retrieval.embedding_budget import build_query_embedder
 from retrieval.hybrid_search import HybridSearchOptions, hybrid_search
@@ -63,7 +64,7 @@ from retrieval.query_router import QueryRoute, route_query
 from retrieval.rank_fusion import FusedResult
 from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError, RerankedResult, rerank
+from retrieval.reranking import QuestionTooLongError, RerankedResult, rerank
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
 from retrieval.vector_search import SearchOptions, require_searchable_version, search_chunks

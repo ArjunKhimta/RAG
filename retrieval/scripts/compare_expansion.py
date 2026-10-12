@@ -49,6 +49,7 @@ from retrieval.config import (
     MissingConfigError,
     load_environment,
 )
+from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.embedding_budget import build_query_embedder
 from retrieval.gemini_errors import GeminiRequestError
 from retrieval.graph_expansion import require_call_graph
@@ -63,7 +64,7 @@ from retrieval.question_set import (
 from retrieval.rate_limiter import RateLimiter
 from retrieval.redaction import redact
 from retrieval.reranker_model import RerankerModelError, verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, QuestionTooLongError
+from retrieval.reranking import QuestionTooLongError
 from retrieval.search_indexes import require_queryable_index
 from retrieval.search_results import SearchRefusedError, SearchResult, require_indexed_version
 from retrieval.vector_search import require_searchable_version

@@ -72,8 +72,8 @@ from retrieval.query_router import (
     vector_without_router,
 )
 from retrieval.rate_limiter import RateLimiter
-from retrieval.reranker_model import verified_reranker_files
-from retrieval.reranking import CrossEncoderScorer, PairScorer
+from retrieval.reranker_model import RerankerLibrariesMissingError, verified_reranker_files
+from retrieval.reranking import PairScorer
 from retrieval.search_indexes import IndexReadiness
 from retrieval.search_results import SearchResult, require_indexed_version
 from retrieval.vector_search import SearchOptions, require_searchable_version
@@ -271,6 +271,18 @@ def build_question_asker(
 
 
 def load_local_reranker() -> PairScorer:
+    """Build the cross-encoder, importing its libraries only now.
+
+    The service's image leaves out ONNX Runtime, tokenizers, and numpy because the service never
+    reranks, so `retrieval.cross_encoder` must not be imported when this module is.
+    """
+    try:
+        from retrieval.cross_encoder import CrossEncoderScorer
+    except ImportError as error:
+        raise RerankerLibrariesMissingError(
+            "The reranker needs ONNX Runtime, tokenizers, and numpy; install "
+            "retrieval/requirements-reranker.txt"
+        ) from error
     return CrossEncoderScorer(verified_reranker_files())
 
 

@@ -136,6 +136,7 @@ Every number here comes from a real run, saved in [`eval/results/`](eval/results
 | | Waking from sleep (free hosting) | page usable after 13 s | [deployment](eval/results/2026-10-12-deployment.md) |
 | **Re-indexing** (Flask, 83 files) | Whole run when nothing changed / 7 files changed / full | **3.5 s** / 7.4 s / 15.2 s | [incremental](eval/results/2026-10-12-incremental-indexing.md) |
 | **Memory** | Retrieval service peak, Linux container, during indexing | 196 MB of Render's 512 MB | [deployment](eval/results/2026-10-12-deployment.md) |
+| **Image size** | Retrieval service image for Render, compressed, after leaving out the unused reranker | **95 MB** (was 150 MB); memory at start 84 MB (was 99 to 104 MB) | [service image](eval/results/2026-10-13-service-image.md) |
 
 <details>
 <summary>How to read these numbers</summary>
@@ -164,7 +165,7 @@ The original plan was a sophisticated pipeline: keyword search (BM25) plus vecto
 
 Source: [`2026-10-03-0914-retrieval.md`](eval/results/2026-10-03-0914-retrieval.md).
 
-- **Plain vector search won.** Adding keyword search, or reranking, made it worse on these questions. The reranker (`ms-marco-MiniLM-L6-v2`) was trained on web search, not code, and it pushed definitions below their tests. It also costs memory: a question's peak fell from about 320 MB to 112 MB without it, against Render's 512 MB limit.
+- **Plain vector search won.** Adding keyword search, or reranking, made it worse on these questions. The reranker (`ms-marco-MiniLM-L6-v2`) was trained on web search, not code, and it pushed definitions below their tests. It also costs memory: a question's peak fell from about 320 MB to 112 MB without it, against Render's 512 MB limit. The service's image now leaves the reranker's libraries out entirely, cutting it from 150 MB to 95 MB compressed.
 - **Expansion found more but did not answer better.** Adding each result's callers and callees raised recall to 78.9%, but in answers it tied plain vector search (28 and 27 complete answers in two runs either way) for 840 more prompt tokens per question. It stays in the code behind a flag (`--expand`) and is off by default.
 - **Keyword search is excellent for exact names, but not needed here.** For a question that is just an identifier, it ranked the definition first for 260 of 264 Flask names (98.5%). Plain vector search already found all 12 name questions in the test set, so the router, which sent every other question through hybrid search and the reranker, was dropped.
 

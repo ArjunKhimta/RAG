@@ -2,7 +2,9 @@
 
 Two locks are made the same way: `requirements.lock` from `requirements.txt`, which the container
 image installs, and `requirements-dev.lock` from `requirements-dev.txt` (the same packages plus
-the test and lint tools), which CI installs.
+the reranker's from `requirements-reranker.txt` and the test and lint tools), which CI installs.
+The service never reranks, so its image leaves out the reranker's ONNX Runtime, tokenizers, and
+numpy, and every package only they need; the scripts and the evaluation use the development set.
 
 `requirements.txt` pins only the packages the code imports; the packages those need are left to
 pip. The image must install exactly what the tests ran against, so the lock lists every package,

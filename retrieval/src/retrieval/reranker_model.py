@@ -69,6 +69,10 @@ class RerankerModelError(RuntimeError):
     """Raised when a model file is missing, cannot be downloaded, or fails its check."""
 
 
+class RerankerLibrariesMissingError(RerankerModelError):
+    """Raised when ONNX Runtime, tokenizers, or numpy is missing, as in the service's image."""
+
+
 @dataclass(frozen=True)
 class RerankerFiles:
     model_path: Path
