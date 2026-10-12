@@ -95,9 +95,10 @@ async function main() {
 }
 
 /**
- * On the free tier the retrieval service sleeps after 15 idle minutes and takes about a minute to
- * wake. Asking for its health check as soon as the API starts lets it wake while the first visitor
- * is still loading the page, rather than on their first question. The result is only logged.
+ * On the free tier the retrieval service sleeps after 15 idle minutes. Render refuses a request
+ * from another server to a sleeping service (502, `x-render-routing: no-deploy`) instead of waking
+ * it, so this call cannot wake it; the site's direct call does (`web/src/api/wakeServer.js`). It
+ * is kept because it logs whether the service is up when the API starts. The result is only logged.
  */
 function wakeRetrievalService(retrievalService) {
   retrievalService.checkHealth().then(({ healthy, milliseconds }) => {

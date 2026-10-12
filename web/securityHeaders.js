@@ -1,6 +1,6 @@
-import { API_ORIGIN } from "./apiOrigin.js";
+import { API_ORIGIN, RETRIEVAL_SERVICE_ORIGIN } from "./apiOrigin.js";
 
-export { API_ORIGIN };
+export { API_ORIGIN, RETRIEVAL_SERVICE_ORIGIN };
 
 export const API_PROXY_TARGET = "http://127.0.0.1:3000";
 
@@ -11,7 +11,7 @@ export const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' blob: ${GITHUB_AVATAR_ORIGIN}`,
-  `connect-src 'self' ${API_ORIGIN}`,
+  `connect-src 'self' ${API_ORIGIN} ${RETRIEVAL_SERVICE_ORIGIN}`,
   "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",

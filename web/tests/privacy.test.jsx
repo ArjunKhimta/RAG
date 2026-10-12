@@ -98,7 +98,7 @@ describe("privacy page", () => {
     expect(vercel.textContent).toContain("for 1 hour");
     expect(render.textContent).toContain("in Singapore");
     expect(render.textContent).toContain("for 7 days");
-    expect(render.textContent).toContain("your browser also contacts Render directly, once");
+    expect(render.textContent).toContain("your browser also contacts the two servers on Render directly");
     expect(atlas.textContent).toContain("Mumbai, India");
   });
 });

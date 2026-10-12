@@ -1,8 +1,12 @@
+import { wakeServers } from "./wakeServer.js";
+
 const JSON_CONTENT_TYPE = "application/json";
 
 const NO_CONTENT_STATUS = 204;
 
 const UNREACHABLE_STATUS = 0;
+
+const SERVER_ASLEEP_STATUSES = new Set([UNREACHABLE_STATUS, 502, 503, 504]);
 
 export const UNREACHABLE_MESSAGE =
   "Could not reach the server. Check your connection and try again.";
@@ -22,7 +26,7 @@ export class ApiRequestError extends Error {
 export async function apiRequest(path, { method = "GET", body } = {}) {
   const response = await send(path, method, body);
   if (!response.ok) {
-    throw await errorFrom(response);
+    throw await failureFrom(response);
   }
   if (response.status === NO_CONTENT_STATUS) {
     return null;
@@ -44,8 +48,16 @@ async function send(path, method, body) {
   try {
     return await fetch(path, options);
   } catch {
+    wakeServers();
     throw new ApiRequestError(UNREACHABLE_STATUS, UNREACHABLE_MESSAGE, null);
   }
+}
+
+async function failureFrom(response) {
+  if (SERVER_ASLEEP_STATUSES.has(response.status)) {
+    wakeServers();
+  }
+  return errorFrom(response);
 }
 
 async function errorFrom(response) {

@@ -4,6 +4,7 @@ import {
   API_PROXY_TARGET,
   BUILT_SITE_HEADERS,
   CONTENT_SECURITY_POLICY,
+  RETRIEVAL_SERVICE_ORIGIN,
   SHARED_SECURITY_HEADERS,
 } from "../securityHeaders.js";
 
@@ -43,9 +44,14 @@ describe("content security policy", () => {
     ]);
   });
 
-  it("sends requests only to the site itself, and to the API's own address to wake it", () => {
-    expect(policy["connect-src"]).toEqual(["'self'", "https://repositorycite-api.onrender.com"]);
+  it("sends requests only to the site itself, and to the two servers' own addresses to wake them", () => {
+    expect(policy["connect-src"]).toEqual([
+      "'self'",
+      "https://repositorycite-api.onrender.com",
+      "https://repositorycite-retrieval.onrender.com",
+    ]);
     expect(policy["connect-src"][1]).toBe(API_ORIGIN);
+    expect(policy["connect-src"][2]).toBe(RETRIEVAL_SERVICE_ORIGIN);
   });
 
   it("refuses plugins, base changes, and framing", () => {

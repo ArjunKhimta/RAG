@@ -3,6 +3,7 @@ const http = require("node:http");
 const {
   NOT_SEARCHABLE_MESSAGE,
   REJECTED_ANSWER_MESSAGE,
+  STARTING_UP_MESSAGE,
   TIMEOUT_MILLISECONDS,
   UNAVAILABLE_MESSAGE,
   UNEXPECTED_REPLY_MESSAGE,
@@ -10,6 +11,7 @@ const {
   VERSION_GONE_MESSAGE,
   RetrievalServiceError,
   createRetrievalService,
+  refusedBeforeGemini,
 } = require("../src/retrievalService");
 
 const TOKEN = "service-token-for-tests-0123456789abcdef";
@@ -482,6 +484,49 @@ describe("refusals passed on", () => {
     expect(error.message).toBe(REJECTED_ANSWER_MESSAGE);
   });
 
+  test("the service's own 502 stays a rejected answer, which used Gemini", async () => {
+    service.reply({ status: 502, body: { error: REJECTED_ANSWER_MESSAGE } });
+
+    const error = await caught(client().ask({ repository: "a/b", version: "1", question: "q" }));
+
+    expect(error.status).toBe(502);
+    expect(refusedBeforeGemini(error)).toBe(false);
+  });
+
+  test.each([
+    ["Render's 502 for a sleeping service", { status: 502, headers: { "x-render-routing": "no-deploy" }, rawBody: "" }],
+    ["Render's header even with a JSON error", { status: 502, headers: { "x-render-routing": "no-deploy" }, body: { error: "x" } }],
+    ["a 502 page that is not the service's JSON", { status: 502, rawBody: "<html>Bad Gateway</html>" }],
+    ["a 503 page that is not the service's JSON", { status: 503, rawBody: "Service Unavailable" }],
+    ["a 504 from the host", { status: 504, rawBody: "Gateway Timeout" }],
+  ])("%s means the service is starting up: 503, try again in 30 s", async (description, reply) => {
+    service.reply(reply);
+
+    const error = await caught(client().ask({ repository: "a/b", version: "1", question: "q" }));
+
+    expect(error.status).toBe(503);
+    expect(error.message).toBe(STARTING_UP_MESSAGE);
+    expect(error.retryAfterSeconds).toBe(30);
+    expect(refusedBeforeGemini(error)).toBe(true);
+    expect(loggedText()).toContain("/ask was not running");
+  });
+
+  test("a sleeping service refuses searches, overviews, and indexing the same way", async () => {
+    const sleeping = { status: 502, headers: { "x-render-routing": "no-deploy" }, rawBody: "" };
+    const calls = [
+      () => client().search({ repository: "a/b", version: "1", query: "q" }),
+      () => client().overview({ repository: "a/b", version: "1" }),
+      () => client().startIndexing({ repository: "a/b", version: "1" }),
+      () => client().indexJob(JOB_ID),
+    ];
+    for (const makeCall of calls) {
+      service.reply(sleeping);
+      const error = await caught(makeCall());
+      expect(error.status).toBe(503);
+      expect(error.message).toBe(STARTING_UP_MESSAGE);
+    }
+  });
+
   test("an unknown job is a 404 with a fixed message", async () => {
     service.reply({ status: 404, body: { error: "No such indexing job" } });
 
@@ -542,7 +587,7 @@ describe("unexpected replies", () => {
   });
 
   test("an error reply without a message is a 502", async () => {
-    service.reply({ status: 503, rawBody: "Service Unavailable" });
+    service.reply({ status: 400, rawBody: "Bad Request" });
 
     const error = await caught(client().ask({ repository: "a/b", version: "1", question: "q" }));
 

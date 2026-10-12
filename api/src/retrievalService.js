@@ -15,6 +15,10 @@
  *   developer at a terminal (it names the indexing script); the service's message is logged. For a
  *   refresh, 409 means the tag or branch no longer exists on GitHub, and has its own fixed message
  * - 502 from the service (the answer failed the citation check): a fixed message
+ * - 502, 503, or 504 from Render rather than the service (no JSON error message, or Render's
+ *   `x-render-routing` header): the service is asleep or starting, so 503 "starting up" with
+ *   `Retry-After: 30`. Render refuses a sleeping service's requests from other servers instead of
+ *   waking it; the site wakes it with a direct call (`web/src/api/wakeServer.js`)
  * - 404 for an unknown indexing job: a fixed message; a malformed job ID is refused without a call
  * - a timeout or a connection failure: 503 with `Retry-After: 30`
  * - anything else (the service refusing our token, a status it never sends, a reply that is not
@@ -46,6 +50,12 @@ const BAD_GATEWAY_STATUS = 502;
 
 const UNAVAILABLE_STATUS = 503;
 
+const GATEWAY_TIMEOUT_STATUS = 504;
+
+const HOST_FAILURE_STATUSES = new Set([BAD_GATEWAY_STATUS, UNAVAILABLE_STATUS, GATEWAY_TIMEOUT_STATUS]);
+
+const RENDER_ROUTING_HEADER = "x-render-routing";
+
 const PASSED_ON_STATUSES = new Set([BAD_REQUEST_STATUS, UNAVAILABLE_STATUS]);
 
 const INDEX_JOBS_PATH = "/index-jobs/";
@@ -57,6 +67,8 @@ const RETRY_AFTER_PATTERN = /^\d+$/;
 const UNAVAILABLE_MESSAGE = "The retrieval service is unavailable for now; try again shortly";
 
 const UNEXPECTED_REPLY_MESSAGE = "The retrieval service gave an unexpected reply";
+
+const STARTING_UP_MESSAGE = "The search service is starting up; try again in about 30 seconds";
 
 const REJECTED_ANSWER_MESSAGE = "The answer failed its citation check and was not shown";
 
@@ -275,6 +287,17 @@ function unavailable() {
 }
 
 function failure(reply, path, conflictMessage) {
+  if (cameFromHost(reply)) {
+    logError(
+      `Retrieval service ${path} was not running: its host answered ${reply.status}` +
+        ` (${RENDER_ROUTING_HEADER}: ${redact(String(reply.headers.get(RENDER_ROUTING_HEADER)))})`,
+    );
+    return new RetrievalServiceError(
+      UNAVAILABLE_STATUS,
+      STARTING_UP_MESSAGE,
+      UNAVAILABLE_RETRY_SECONDS,
+    );
+  }
   if (reply.status === BAD_GATEWAY_STATUS) {
     return new RetrievalServiceError(BAD_GATEWAY_STATUS, REJECTED_ANSWER_MESSAGE);
   }
@@ -295,6 +318,22 @@ function failure(reply, path, conflictMessage) {
   const retryAfterSeconds =
     reply.status === UNAVAILABLE_STATUS ? readRetryAfter(reply.headers.get("Retry-After")) : null;
   return new RetrievalServiceError(reply.status, message, retryAfterSeconds);
+}
+
+/**
+ * Whether a 502, 503, or 504 came from the host in front of the service rather than the service:
+ * the service always replies with JSON holding an `error` message, and Render's own router marks
+ * its replies with `x-render-routing`.
+ */
+function cameFromHost(reply) {
+  if (!HOST_FAILURE_STATUSES.has(reply.status)) {
+    return false;
+  }
+  if (reply.headers.get(RENDER_ROUTING_HEADER) !== null) {
+    return true;
+  }
+  const message = errorMessage(reply);
+  return typeof message !== "string" || message.length === 0;
 }
 
 function errorMessage(reply) {
@@ -560,6 +599,7 @@ function isObject(value) {
 module.exports = {
   NOT_SEARCHABLE_MESSAGE,
   REJECTED_ANSWER_MESSAGE,
+  STARTING_UP_MESSAGE,
   TIMEOUT_MILLISECONDS,
   UNAVAILABLE_MESSAGE,
   UNAVAILABLE_RETRY_SECONDS,

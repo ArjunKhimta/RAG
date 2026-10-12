@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { deleteAccount, fetchCurrentUser, signOutEverywhere } from "../api/account.js";
 import { ApiRequestError } from "../api/client.js";
-import { wakeServer } from "../api/wakeServer.js";
+import { wakeServers } from "../api/wakeServer.js";
 
 export const SessionStatus = Object.freeze({
   LOADING: "loading",
@@ -47,7 +47,6 @@ function startLoadingSession(onSession) {
   const startedAt = Date.now();
   let active = true;
   let retryTimer = null;
-  let wakeSent = false;
 
   async function attempt() {
     const session = await askForSession();
@@ -63,14 +62,11 @@ function startLoadingSession(onSession) {
       onSession(UNAVAILABLE_SESSION);
       return;
     }
-    if (!wakeSent) {
-      wakeSent = true;
-      wakeServer();
-    }
     onSession(WAKING_SESSION);
     retryTimer = setTimeout(attempt, WAKE_RETRY_MILLISECONDS);
   }
 
+  wakeServers();
   attempt();
   return () => {
     active = false;

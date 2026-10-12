@@ -1,7 +1,7 @@
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { wakeServer } from "../src/api/wakeServer.js";
+import { wakeServers } from "../src/api/wakeServer.js";
 import {
   WAKE_RETRY_MILLISECONDS,
   WAKE_WAIT_MILLISECONDS,
@@ -10,7 +10,7 @@ import { SIGNED_IN, SIGNED_OUT } from "./support/accounts.js";
 import { installFakeApi, jsonReply } from "./support/fakeApi.js";
 import { renderApp } from "./support/renderApp.jsx";
 
-vi.mock("../src/api/wakeServer.js", () => ({ wakeServer: vi.fn() }));
+vi.mock("../src/api/wakeServer.js", () => ({ wakeServers: vi.fn() }));
 
 const STARTING_UP = /Starting up/;
 
@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.mocked(wakeServer).mockClear();
+  vi.mocked(wakeServers).mockClear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -62,15 +62,15 @@ describe("a server waking from sleep", () => {
     expect(await screen.findAllByRole("link", { name: "Sign in with GitHub" })).not.toHaveLength(0);
     expect(screen.queryByText(STARTING_UP)).toBeNull();
     expect(sessionChecks(calls)).toBe(3);
-    expect(wakeServer).toHaveBeenCalledTimes(1);
+    expect(wakeServers).toHaveBeenCalled();
   });
 
-  it("does not try to wake a server that answers", async () => {
+  it("wakes the servers once as the page loads, even when the API answers", async () => {
     installFakeApi({ "GET /api/me": SIGNED_OUT });
     renderApp("/");
 
     expect(await screen.findAllByRole("link", { name: "Sign in with GitHub" })).not.toHaveLength(0);
-    expect(wakeServer).not.toHaveBeenCalled();
+    expect(wakeServers).toHaveBeenCalledTimes(1);
   });
 
   it("treats a page that is not the API's JSON as still waking", async () => {
@@ -111,7 +111,7 @@ describe("a server waking from sleep", () => {
 
     expect((await screen.findByRole("alert")).textContent).toMatch(CANNOT_BE_REACHED);
     const checksWhenGivingUp = sessionChecks(calls);
-    expect(wakeServer).toHaveBeenCalledTimes(1);
+    expect(wakeServers).toHaveBeenCalled();
     expect(checksWhenGivingUp).toBe(WAKE_WAIT_MILLISECONDS / WAKE_RETRY_MILLISECONDS + 1);
 
     await act(() => vi.advanceTimersByTimeAsync(WAKE_WAIT_MILLISECONDS));
@@ -135,7 +135,7 @@ describe("a server waking from sleep", () => {
 
     await waitOneRetry();
     expect(sessionChecks(calls)).toBe(1);
-    expect(wakeServer).not.toHaveBeenCalled();
+    expect(wakeServers).toHaveBeenCalledTimes(1);
   });
 
   it("stops asking once the page is closed", async () => {

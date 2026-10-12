@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { API_ORIGIN, BUILT_SITE_HEADERS } from "../securityHeaders.js";
+import { API_ORIGIN, BUILT_SITE_HEADERS, RETRIEVAL_SERVICE_ORIGIN } from "../securityHeaders.js";
 import {
   API_PATH_PATTERN,
   API_ROUTE_SOURCE,
@@ -27,6 +27,14 @@ describe("the committed vercel.json", () => {
 
   it("forwards /api to the same API address the page may wake directly", () => {
     expect(apiOriginOf(committed)).toBe(API_ORIGIN);
+  });
+
+  it("wakes the retrieval service at the address render.yaml gives the API", () => {
+    const blueprint = readFileSync(new URL("../../render.yaml", import.meta.url), "utf8");
+
+    expect(blueprint).toContain(
+      `- key: RETRIEVAL_SERVICE_URL\n        value: ${RETRIEVAL_SERVICE_ORIGIN}\n`,
+    );
   });
 
   it("forwards /api to an https address, keeping the rest of the path", () => {
