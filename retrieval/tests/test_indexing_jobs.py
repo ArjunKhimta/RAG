@@ -27,9 +27,11 @@ from retrieval.indexing_jobs import (
 )
 from retrieval.refresh_planning import FullIndexReason, RefreshPlan
 from retrieval.repository_cloner import (
+    GITHUB_RATE_LIMITED_MESSAGE,
     ClonedRepository,
     CloneFailedError,
     CloneMetadata,
+    GitHubRateLimitedError,
     MissingLicenseFileError,
     RepositoryNotFoundError,
     RepositoryNotPublicError,
@@ -313,6 +315,20 @@ def test_a_failed_clone_hides_git_output(tmp_path):
     job = runner.find_job("job-1")
     assert job["error_code"] == JobErrorCode.CLONE_FAILED
     assert job["error_message"] == CLONE_FAILED_MESSAGE
+
+
+def test_githubs_rate_limit_fails_with_a_code_that_may_be_tried_again(tmp_path):
+    threads = DeferredThreads()
+    refusal = GitHubRateLimitedError(GITHUB_RATE_LIMITED_MESSAGE)
+    runner = _runner(tmp_path, indexing=FakeIndexing(refusal), threads=threads)
+
+    runner.start("pallets/flask", "3.1.3")
+    threads.run_all()
+
+    job = runner.find_job("job-1")
+    assert job["status"] == JobStatus.FAILED
+    assert job["error_code"] == JobErrorCode.GITHUB_RATE_LIMITED
+    assert job["error_message"] == GITHUB_RATE_LIMITED_MESSAGE
 
 
 def test_an_unexpected_error_is_logged_redacted_and_never_shown(tmp_path, caplog):

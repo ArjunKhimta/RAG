@@ -108,7 +108,7 @@ describe("whether indexing may start again", () => {
     expect(resumeDecision(state(status), NOW)).toEqual({ allowed: false, reason: "not_needed" });
   });
 
-  test.each(["clone_failed", "unexpected"])("a failure %p may be tried again", (code) => {
+  test.each(["clone_failed", "github_rate_limited", "unexpected"])("a failure %p may be tried again", (code) => {
     const failed = state(LinkStatus.FAILED, { error: { code, message: "m" } });
 
     expect(resumeDecision(failed, NOW)).toEqual({ allowed: true });

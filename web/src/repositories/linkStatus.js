@@ -28,7 +28,7 @@ const STAGE_DESCRIPTIONS = Object.freeze({
   embedding: "Turning the code into searchable vectors",
 });
 
-const RETRYABLE_ERROR_CODES = new Set(["clone_failed", "unexpected"]);
+const RETRYABLE_ERROR_CODES = new Set(["clone_failed", "github_rate_limited", "unexpected"]);
 
 const GITHUB_ADDRESS_PATTERN = /^(?:https?:\/\/)?(?:www\.)?github\.com\//i;
 

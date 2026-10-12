@@ -12,8 +12,8 @@ pin a release tag today and SWE-bench commit IDs later without a second clone pa
 
 The steps, in order:
 1. Reuse the version folder if it already exists. Only complete clones ever reach that name.
-2. Ask GitHub's API about the repository, without a token, and refuse before downloading if it
-   is private, lacks an allowed open-source license, or is too large.
+2. Ask GitHub's API about the repository and refuse before downloading if it is private, lacks
+   an allowed open-source license, or is too large.
 3. Build `source/` and `metadata.json` inside a `.partial-*` folder next to the final one, measure
    the checkout as a size backstop, find the license file, then rename the whole folder into
    place in one step. An interrupted clone is deleted, or at worst left under a name no version
@@ -32,6 +32,16 @@ the one a clone would get. A commit ID never moves, so it is never looked up. A 
 the commit it expects, and a saved clone at any other commit is deleted and cloned again rather
 than reused.
 
+GitHub's API allows 60 calls an hour per address without a token, and a host's servers share a
+few outbound addresses with every other customer there (on Render, that limit was found used up
+before our first call, 2026-10-12). So the API call, and only that call, sends `GITHUB_API_TOKEN`
+when it is set: a fine-grained token, which the service insists on (a classic token can carry
+broad powers), meant to have read-only access to public repositories and no permissions, which
+gives 5,000 calls an hour. Git never receives it, so cloning stays anonymous, and the private
+check above still refuses a private repository. The token is dropped from any redirect that leaves
+GitHub's API. If GitHub refuses the token (expired or revoked), the call is made again without it.
+A call refused for GitHub's rate limit raises `GitHubRateLimitedError`, which passes with time.
+
 Git runs isolated from personal and system settings, with no stored credentials and only a short
 list of environment variables, so nothing on this machine can grant access to a private
 repository or rewrite the URL. Cloning runs none of the repository's code: hooks are not
@@ -42,23 +52,49 @@ deletion first confirms the folder is inside the repositories directory.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
+from typing import Any
 
-from retrieval.config import MAX_REPOSITORY_BYTES, REPOSITORIES_DIRECTORY
+from retrieval.config import (
+    GITHUB_API_TOKEN_VARIABLE,
+    GITHUB_FINE_GRAINED_TOKEN_PREFIX,
+    MAX_REPOSITORY_BYTES,
+    REPOSITORIES_DIRECTORY,
+)
 from retrieval.github_urls import RepositoryReference
 from retrieval.licenses import is_allowed_license
+from retrieval.redaction import register_secret
+
+logger = logging.getLogger(__name__)
+
+GITHUB_API_HOST = "api.github.com"
 
 GITHUB_API_REPOSITORY_URL = "https://api.github.com/repos/{full_name}"
+
+AUTHORIZATION_HEADER = "Authorization"
+
+RATE_LIMIT_REMAINING_HEADER = "x-ratelimit-remaining"
+
+RETRY_AFTER_HEADER = "retry-after"
+
+RATE_LIMIT_REASON_TEXT = "rate limit"
+
+GITHUB_RATE_LIMITED_MESSAGE = (
+    "GitHub's limit for looking up repositories is used up for now; it resets within the hour"
+)
 
 GITHUB_API_ACCEPT_HEADER = "application/vnd.github+json"
 
@@ -67,6 +103,10 @@ GITHUB_API_USER_AGENT = "retrieval-code-search"
 GITHUB_API_TIMEOUT_SECONDS = 10
 
 HTTP_NOT_FOUND = 404
+
+HTTP_UNAUTHORIZED = 401
+
+RATE_LIMIT_STATUSES = (403, 429)
 
 BYTES_PER_KILOBYTE = 1024
 
@@ -118,6 +158,14 @@ class RepositoryNotFoundError(RepositoryError):
 
 class RepositoryNotPublicError(RepositoryError):
     """Raised when GitHub reports the repository as private."""
+
+
+class GitHubRateLimitedError(RepositoryError):
+    """Raised when GitHub's API refuses a call for its rate limit; trying later may work."""
+
+
+class InvalidGitHubTokenError(ValueError):
+    """Raised when `GITHUB_API_TOKEN` is not a fine-grained token; never includes the token."""
 
 
 class UnacceptableLicenseError(RepositoryError):
@@ -203,7 +251,9 @@ def clone_repository(
             metadata=_metadata_with_license_path(version_directory),
             was_reused=True,
         )
-    details_fetcher = fetch_repository_details or fetch_github_repository_details
+    details_fetcher = fetch_repository_details or partial(
+        fetch_github_repository_details, api_token=read_github_api_token()
+    )
     details = details_fetcher(reference)
     _require_public(reference, details)
     _require_allowed_license(reference, details)
@@ -257,28 +307,105 @@ def find_remote_commit(reference: RepositoryReference, version: str) -> str:
     raise VersionNotFoundError(f"{version} is not a tag or branch of {reference.full_name}")
 
 
-def fetch_github_repository_details(reference: RepositoryReference) -> RepositoryDetails:
-    """Ask GitHub's API, without a token, whether the repository is private, its license, and size.
+def read_github_api_token() -> str | None:
+    """Return `GITHUB_API_TOKEN`, or None when it is unset or empty.
 
-    The reported size includes history, so it errs high for a shallow clone.
+    Anything but a fine-grained token raises `InvalidGitHubTokenError`; a token is registered for
+    redaction before it is returned.
     """
-    api_url = GITHUB_API_REPOSITORY_URL.format(full_name=reference.full_name)
-    request = urllib.request.Request(
-        api_url,
-        headers={"Accept": GITHUB_API_ACCEPT_HEADER, "User-Agent": GITHUB_API_USER_AGENT},
-    )
+    token = os.environ.get(GITHUB_API_TOKEN_VARIABLE, "")
+    if not token:
+        return None
+    if not token.startswith(GITHUB_FINE_GRAINED_TOKEN_PREFIX):
+        raise InvalidGitHubTokenError(
+            f"{GITHUB_API_TOKEN_VARIABLE} must be a fine-grained token "
+            f"(starting with {GITHUB_FINE_GRAINED_TOKEN_PREFIX}) with read-only access to public "
+            "repositories and no permissions"
+        )
+    register_secret(token)
+    return token
+
+
+def fetch_github_repository_details(
+    reference: RepositoryReference,
+    api_token: str | None = None,
+    open_url: Callable[..., Any] | None = None,
+) -> RepositoryDetails:
+    """Ask GitHub's API whether the repository is private, its license, and size.
+
+    The reported size includes history, so it errs high for a shallow clone. `open_url` defaults
+    to an opener that drops the token from redirects leaving GitHub's API; tests pass a stand-in.
+    """
+    opener = open_url or GITHUB_API_OPENER.open
     try:
-        with urllib.request.urlopen(request, timeout=GITHUB_API_TIMEOUT_SECONDS) as response:
-            repository_json = json.load(response)
+        repository_json = _request_repository_json(reference, api_token, opener)
     except urllib.error.HTTPError as error:
+        if error.code == HTTP_UNAUTHORIZED and api_token is not None:
+            logger.warning(
+                "GitHub refused %s (expired or revoked?); asking without it",
+                GITHUB_API_TOKEN_VARIABLE,
+            )
+            return fetch_github_repository_details(reference, open_url=open_url)
         if error.code == HTTP_NOT_FOUND:
             message = f"{reference.full_name} was not found on GitHub, or it is private"
             raise RepositoryNotFoundError(message) from error
+        if is_rate_limit_refusal(error):
+            raise GitHubRateLimitedError(GITHUB_RATE_LIMITED_MESSAGE) from error
         message = f"GitHub API returned HTTP {error.code} for {reference.full_name}"
         raise RepositoryError(message) from error
     except urllib.error.URLError as error:
         raise RepositoryError(f"GitHub API could not be reached: {error.reason}") from error
     return _repository_details_from_json(repository_json)
+
+
+def is_rate_limit_refusal(error: urllib.error.HTTPError) -> bool:
+    """Tell GitHub's rate-limit refusals (primary or secondary) from other 403s, such as a block."""
+    if error.code not in RATE_LIMIT_STATUSES:
+        return False
+    headers = error.headers or {}
+    no_calls_left = headers.get(RATE_LIMIT_REMAINING_HEADER) == "0"
+    asked_to_wait = headers.get(RETRY_AFTER_HEADER) is not None
+    reason_says_so = RATE_LIMIT_REASON_TEXT in str(error.reason).lower()
+    return no_calls_left or asked_to_wait or reason_says_so
+
+
+class TokenDroppingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects (GitHub's API redirects renamed repositories), keeping the token only
+    while the redirect stays on GitHub's API over https."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and not _is_github_api_url(newurl):
+            redirected.remove_header(AUTHORIZATION_HEADER)
+        return redirected
+
+
+GITHUB_API_OPENER = urllib.request.build_opener(TokenDroppingRedirectHandler())
+
+
+def _is_github_api_url(url: str) -> bool:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme == "https" and parts.hostname == GITHUB_API_HOST
+
+
+def _request_repository_json(
+    reference: RepositoryReference, api_token: str | None, opener: Callable[..., Any]
+) -> dict:
+    headers = {"Accept": GITHUB_API_ACCEPT_HEADER, "User-Agent": GITHUB_API_USER_AGENT}
+    if api_token is not None:
+        headers[AUTHORIZATION_HEADER] = f"Bearer {api_token}"
+    api_url = GITHUB_API_REPOSITORY_URL.format(full_name=reference.full_name)
+    request = urllib.request.Request(api_url, headers=headers)
+    with opener(request, timeout=GITHUB_API_TIMEOUT_SECONDS) as response:
+        return json.load(response)
 
 
 def find_license_file(source_directory: Path) -> str:

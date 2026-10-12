@@ -162,6 +162,25 @@ describe("repositories page", () => {
     expect(within(card).queryByRole("button", { name: "Resume indexing" })).toBeNull();
   });
 
+  it("ends the service's message with a full stop before saying a retry may work", async () => {
+    repositoriesApi([
+      failedLink(
+        "github_rate_limited",
+        "GitHub's limit for looking up repositories is used up for now; it resets within the hour",
+      ),
+    ]);
+
+    renderApp("/repositories");
+
+    const card = await cardFor("someone/missing");
+    expect(
+      within(card).getByText(
+        "GitHub's limit for looking up repositories is used up for now; it resets within the hour. This may work if you try again.",
+      ),
+    ).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Resume indexing" })).toBeTruthy();
+  });
+
   it("shows a permanent failure without a resume button", async () => {
     repositoriesApi([failedLink("not_found", "This repository does not exist on GitHub")]);
 

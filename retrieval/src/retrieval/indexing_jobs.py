@@ -20,7 +20,8 @@ The job record carries the stage, the embedding progress ("300 of 1,009"), and t
 - `waiting_for_quota`, with `resume_after`, the next midnight Pacific: the day's indexing budget
   ran out, everything embedded so far is stored, and starting the same version again resumes it
 - `failed`, with an error code: `not_found`, `not_public`, `license_not_allowed`, `too_large`,
-  `too_many_chunks`, `no_python_code`, `clone_failed` (often a version that does not exist), or
+  `too_many_chunks`, `no_python_code`, `clone_failed` (often a version that does not exist),
+  `github_rate_limited` (GitHub's API limit is used up for now; trying later works), or
   `unexpected`, whose details go only to the log, redacted
 - `interrupted`: the process stopped mid-job; at start-up every job still `running` is marked so
 
@@ -60,6 +61,7 @@ from retrieval.redaction import redact, redact_exception
 from retrieval.repository_cloner import (
     ClonedRepository,
     CloneFailedError,
+    GitHubRateLimitedError,
     RepositoryNotFoundError,
     RepositoryNotPublicError,
     RepositoryTooLargeError,
@@ -68,6 +70,7 @@ from retrieval.repository_cloner import (
     clone_repository,
     find_remote_commit,
     is_commit_id,
+    read_github_api_token,
     remove_directory_inside,
 )
 from retrieval.repository_indexing import (
@@ -114,6 +117,7 @@ class JobErrorCode(StrEnum):
     TOO_MANY_CHUNKS = "too_many_chunks"
     NO_PYTHON_CODE = "no_python_code"
     CLONE_FAILED = "clone_failed"
+    GITHUB_RATE_LIMITED = "github_rate_limited"
     UNEXPECTED = "unexpected"
 
 
@@ -359,6 +363,9 @@ class IndexingJobRunner:
         if isinstance(error, CloneFailedError):
             logger.warning("Clone failed: %s", redact_exception(error))
             return failed_fields(JobErrorCode.CLONE_FAILED, CLONE_FAILED_MESSAGE)
+        if isinstance(error, GitHubRateLimitedError):
+            logger.warning("GitHub's API rate limit refused a job: %s", redact_exception(error))
+            return failed_fields(JobErrorCode.GITHUB_RATE_LIMITED, str(error))
         details = "".join(traceback.format_exception(error))
         logger.error("Indexing job failed: %s", redact(details))
         return failed_fields(JobErrorCode.UNEXPECTED, UNEXPECTED_MESSAGE)
@@ -430,7 +437,15 @@ def start_daemon_thread(work: Callable[[], None]) -> None:
 
 
 def build_indexing_job_runner(database: Database, gemini_client: genai.Client) -> IndexingJobRunner:
-    """Wire the real job store, metered embedder, and indexing lane; mark interrupted jobs."""
+    """Wire the real job store, metered embedder, and indexing lane; mark interrupted jobs.
+
+    `GITHUB_API_TOKEN` is checked here so a wrong kind of token stops start-up rather than the
+    first job; each clone reads it again.
+    """
+    if read_github_api_token() is None:
+        logger.warning(
+            "GITHUB_API_TOKEN is not set; GitHub's API allows 60 calls an hour without it"
+        )
     job_store = MongoJobStore(database)
     job_store.ensure_indexes()
     interrupted_count = job_store.mark_interrupted(datetime.now(UTC))

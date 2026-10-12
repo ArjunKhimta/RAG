@@ -12,7 +12,7 @@
  * routes ask the service for the version once more (an `already_indexed` reply).
  *
  * Indexing may start again (resume) after the quota resets, after an interruption, or after a
- * failure that may pass (`clone_failed`, `unexpected`). A failure that will recur (the repository
+ * failure that may pass (`clone_failed`, `github_rate_limited`, `unexpected`). A failure that will recur (the repository
  * does not exist, is private, has a license not allowed, or is too large) cannot be resumed; the
  * person removes the link instead.
  *
@@ -34,7 +34,7 @@ const JobStatus = Object.freeze({
   INTERRUPTED: "interrupted",
 });
 
-const RETRYABLE_ERROR_CODES = new Set(["clone_failed", "unexpected"]);
+const RETRYABLE_ERROR_CODES = new Set(["clone_failed", "github_rate_limited", "unexpected"]);
 
 const EMPTY_STATE = Object.freeze({
   jobId: null,

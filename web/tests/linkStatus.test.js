@@ -18,7 +18,7 @@ describe("resumeAvailability", () => {
     expect(resumeAvailability(readyLink({ status: "interrupted" }), NOW).canResume).toBe(true);
   });
 
-  it.each(["clone_failed", "unexpected"])("allows retrying a failure coded %s", (code) => {
+  it.each(["clone_failed", "github_rate_limited", "unexpected"])("allows retrying a failure coded %s", (code) => {
     expect(resumeAvailability(failedLink(code, "x"), NOW).canResume).toBe(true);
   });
 

@@ -313,8 +313,12 @@ function WaitingDetails({ link, resumeAfter }) {
   );
 }
 
+function asSentence(text) {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 function FailedDetails({ link, canResume }) {
-  const message = link.error?.message ?? "Indexing failed.";
+  const message = asSentence(link.error?.message ?? "Indexing failed");
 
   return (
     <p>

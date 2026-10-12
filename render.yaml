@@ -28,6 +28,8 @@ services:
         sync: false
       - key: MONGODB_URI
         sync: false
+      - key: GITHUB_API_TOKEN
+        sync: false
       - key: RETRIEVAL_SERVICE_TOKEN
         generateValue: true
 
