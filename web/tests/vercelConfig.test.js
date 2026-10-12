@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BUILT_SITE_HEADERS } from "../securityHeaders.js";
+import { API_ORIGIN, BUILT_SITE_HEADERS } from "../securityHeaders.js";
 import {
   API_PATH_PATTERN,
   API_ROUTE_SOURCE,
@@ -23,6 +23,10 @@ function pathPattern(source) {
 describe("the committed vercel.json", () => {
   it("is exactly what the generator makes for its API address, headers included", () => {
     expect(committed).toEqual(vercelConfig(apiOriginOf(committed)));
+  });
+
+  it("forwards /api to the same API address the page may wake directly", () => {
+    expect(apiOriginOf(committed)).toBe(API_ORIGIN);
   });
 
   it("forwards /api to an https address, keeping the rest of the path", () => {

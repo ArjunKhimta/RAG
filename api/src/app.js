@@ -15,6 +15,11 @@
  * Everything the site calls lives under `/api`, so the same paths work through Vite's proxy in
  * development and Vercel's rewrite in production; `/health` stays at the root for the host's
  * health check. Under `/api`, any request that changes something must come from `APP_ORIGIN`.
+ *
+ * The site's page also calls `/health` directly, once, to wake the API when the host has put it
+ * to sleep. Helmet tells browsers that only this API's own pages may load its replies
+ * (`Cross-Origin-Resource-Policy: same-origin`), which would make that call show an error in the
+ * console, so `/health` alone says any site may load it: its reply holds nothing but "ok".
  */
 
 const express = require("express");
@@ -173,6 +178,7 @@ function neverCache(request, response, next) {
 }
 
 function reportHealth(request, response) {
+  response.set("Cross-Origin-Resource-Policy", "cross-origin");
   response.json({ status: "ok" });
 }
 

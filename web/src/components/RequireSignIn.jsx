@@ -1,5 +1,6 @@
 import { SessionStatus, useSession } from "../session/SessionProvider.jsx";
 import ServerUnavailable from "./ServerUnavailable.jsx";
+import ServerWaking from "./ServerWaking.jsx";
 import SignInButton from "./SignInButton.jsx";
 
 export default function RequireSignIn({ title, prompt, children }) {
@@ -7,6 +8,9 @@ export default function RequireSignIn({ title, prompt, children }) {
 
   if (session.status === SessionStatus.LOADING) {
     return <p>Loading…</p>;
+  }
+  if (session.status === SessionStatus.WAKING) {
+    return <ServerWaking />;
   }
   if (session.status === SessionStatus.UNAVAILABLE) {
     return <ServerUnavailable />;

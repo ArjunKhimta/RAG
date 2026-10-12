@@ -107,5 +107,18 @@ describe("apiRequest", () => {
 
     expect(error.status).toBe(0);
     expect(error.message).toBe(UNREACHABLE_MESSAGE);
+    expect(error.isApiReply).toBe(false);
+  });
+
+  it("tells the API's own error replies apart from anything else", async () => {
+    installFakeApi({
+      "GET /api/own": jsonReply(503, { error: "Busy" }),
+      "GET /api/gateway": jsonReply(503, "<html>Service Unavailable</html>"),
+      "GET /api/page": jsonReply(200, "<html>Waking up</html>"),
+    });
+
+    expect((await caughtError(apiRequest("/api/own"))).isApiReply).toBe(true);
+    expect((await caughtError(apiRequest("/api/gateway"))).isApiReply).toBe(false);
+    expect((await caughtError(apiRequest("/api/page"))).isApiReply).toBe(false);
   });
 });

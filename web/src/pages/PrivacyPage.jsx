@@ -150,7 +150,9 @@ export default function PrivacyPage() {
           <strong>Render</strong> runs the servers that answer questions, in {SERVER_LOCATION}, and
           keeps their logs for {RENDER_LOG_RETENTION}; those logs follow the rule above and leave out
           your questions, GitHub details, and address, though Render&apos;s own systems also see where
-          each request came from.{" "}
+          each request came from. When the servers have been asleep, your browser also contacts
+          Render directly, once, to wake them; that request carries no cookies, so Render sees only
+          your internet address.{" "}
           <a href={RENDER_PRIVACY_URL} target="_blank" rel="noreferrer">
             Render&apos;s privacy policy
           </a>

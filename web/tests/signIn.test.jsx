@@ -49,7 +49,7 @@ describe("signing in", () => {
   });
 
   it("says the server cannot be reached instead of offering sign-in", async () => {
-    installFakeApi({ "GET /api/me": jsonReply(502, { error: "Bad gateway" }) });
+    installFakeApi({ "GET /api/me": jsonReply(500, { error: "Something went wrong" }) });
 
     renderApp("/");
 

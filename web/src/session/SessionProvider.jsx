@@ -1,47 +1,92 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { deleteAccount, fetchCurrentUser, signOutEverywhere } from "../api/account.js";
+import { ApiRequestError } from "../api/client.js";
+import { wakeServer } from "../api/wakeServer.js";
 
 export const SessionStatus = Object.freeze({
   LOADING: "loading",
   SIGNED_IN: "signed_in",
   SIGNED_OUT: "signed_out",
+  WAKING: "waking",
   UNAVAILABLE: "unavailable",
 });
+
+export const WAKE_RETRY_MILLISECONDS = 3_000;
+
+export const WAKE_WAIT_MILLISECONDS = 90_000;
+
+const WAKING_SERVER_STATUSES = new Set([0, 502, 503, 504]);
 
 const LOADING_SESSION = { status: SessionStatus.LOADING, user: null };
 
 const SIGNED_OUT_SESSION = { status: SessionStatus.SIGNED_OUT, user: null };
 
+const WAKING_SESSION = { status: SessionStatus.WAKING, user: null };
+
 const UNAVAILABLE_SESSION = { status: SessionStatus.UNAVAILABLE, user: null };
 
 const SessionContext = createContext(null);
 
-async function loadSession() {
+async function askForSession() {
   try {
     const user = await fetchCurrentUser();
     return user === null ? SIGNED_OUT_SESSION : { status: SessionStatus.SIGNED_IN, user };
-  } catch {
-    return UNAVAILABLE_SESSION;
+  } catch (error) {
+    return isServerWaking(error) ? WAKING_SESSION : UNAVAILABLE_SESSION;
   }
+}
+
+function isServerWaking(error) {
+  if (!(error instanceof ApiRequestError)) {
+    return false;
+  }
+  return !error.isApiReply || WAKING_SERVER_STATUSES.has(error.status);
+}
+
+function startLoadingSession(onSession) {
+  const startedAt = Date.now();
+  let active = true;
+  let retryTimer = null;
+  let wakeSent = false;
+
+  async function attempt() {
+    const session = await askForSession();
+    if (!active) {
+      return;
+    }
+    if (session.status !== SessionStatus.WAKING) {
+      onSession(session);
+      return;
+    }
+    const waitedMilliseconds = Date.now() - startedAt;
+    if (waitedMilliseconds + WAKE_RETRY_MILLISECONDS > WAKE_WAIT_MILLISECONDS) {
+      onSession(UNAVAILABLE_SESSION);
+      return;
+    }
+    if (!wakeSent) {
+      wakeSent = true;
+      wakeServer();
+    }
+    onSession(WAKING_SESSION);
+    retryTimer = setTimeout(attempt, WAKE_RETRY_MILLISECONDS);
+  }
+
+  attempt();
+  return () => {
+    active = false;
+    clearTimeout(retryTimer);
+  };
 }
 
 export function SessionProvider({ children }) {
   const [session, setSession] = useState(LOADING_SESSION);
+  const [loadCount, setLoadCount] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    loadSession().then((loaded) => {
-      if (active) {
-        setSession(loaded);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  useEffect(() => startLoadingSession(setSession), [loadCount]);
 
-  const refresh = useCallback(async () => {
-    setSession(await loadSession());
+  const refresh = useCallback(() => {
+    setSession(LOADING_SESSION);
+    setLoadCount((count) => count + 1);
   }, []);
 
   const markSignedOut = useCallback(() => {

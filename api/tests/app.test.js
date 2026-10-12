@@ -15,6 +15,18 @@ test("the health check answers ok", async () => {
   expect(response.body).toEqual({ status: "ok" });
 });
 
+test("any site may load the health check, so the site's page can wake a sleeping API", async () => {
+  const response = await request(createApp()).get("/health");
+
+  expect(response.headers["cross-origin-resource-policy"]).toBe("cross-origin");
+});
+
+test("the API's own routes keep replies to their own origin", async () => {
+  const response = await request(createApp()).get("/api/me");
+
+  expect(response.headers["cross-origin-resource-policy"]).toBe("same-origin");
+});
+
 test("replies carry security headers and do not announce Express", async () => {
   const response = await request(createApp()).get("/health");
 

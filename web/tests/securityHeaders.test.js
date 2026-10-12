@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  API_ORIGIN,
   API_PROXY_TARGET,
   BUILT_SITE_HEADERS,
   CONTENT_SECURITY_POLICY,
@@ -42,8 +43,9 @@ describe("content security policy", () => {
     ]);
   });
 
-  it("sends requests only to the site itself", () => {
-    expect(policy["connect-src"]).toEqual(["'self'"]);
+  it("sends requests only to the site itself, and to the API's own address to wake it", () => {
+    expect(policy["connect-src"]).toEqual(["'self'", "https://repositorycite-api.onrender.com"]);
+    expect(policy["connect-src"][1]).toBe(API_ORIGIN);
   });
 
   it("refuses plugins, base changes, and framing", () => {

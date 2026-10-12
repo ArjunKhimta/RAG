@@ -10,11 +10,12 @@ export const UNREACHABLE_MESSAGE =
 export const UNEXPECTED_MESSAGE = "Something went wrong. Please try again.";
 
 export class ApiRequestError extends Error {
-  constructor(status, message, retryAfterSeconds) {
+  constructor(status, message, retryAfterSeconds, isApiReply = false) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.isApiReply = isApiReply;
   }
 }
 
@@ -49,8 +50,9 @@ async function send(path, method, body) {
 
 async function errorFrom(response) {
   const reply = await readJson(response);
-  const message = typeof reply?.error === "string" ? reply.error : UNEXPECTED_MESSAGE;
-  return new ApiRequestError(response.status, message, retryAfterSeconds(response));
+  const isApiReply = typeof reply?.error === "string";
+  const message = isApiReply ? reply.error : UNEXPECTED_MESSAGE;
+  return new ApiRequestError(response.status, message, retryAfterSeconds(response), isApiReply);
 }
 
 async function readJson(response) {

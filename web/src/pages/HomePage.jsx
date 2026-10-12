@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import AccountNotice from "../components/AccountNotice.jsx";
 import ServerUnavailable from "../components/ServerUnavailable.jsx";
+import ServerWaking from "../components/ServerWaking.jsx";
 import SignInButton from "../components/SignInButton.jsx";
 import SignInNotice from "../components/SignInNotice.jsx";
 import AnswerPipeline from "../home/AnswerPipeline.jsx";
@@ -37,6 +38,7 @@ export default function HomePage() {
             </Link>
           </p>
         )}
+        {session.status === SessionStatus.WAKING && <ServerWaking />}
         {session.status === SessionStatus.UNAVAILABLE && <ServerUnavailable />}
       </section>
 

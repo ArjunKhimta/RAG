@@ -1,3 +1,7 @@
+import { API_ORIGIN } from "./apiOrigin.js";
+
+export { API_ORIGIN };
+
 export const API_PROXY_TARGET = "http://127.0.0.1:3000";
 
 export const GITHUB_AVATAR_ORIGIN = "https://avatars.githubusercontent.com";
@@ -7,7 +11,7 @@ export const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' blob: ${GITHUB_AVATAR_ORIGIN}`,
-  "connect-src 'self'",
+  `connect-src 'self' ${API_ORIGIN}`,
   "font-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
