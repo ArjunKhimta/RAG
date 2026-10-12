@@ -9,8 +9,9 @@
  * The API listens on 127.0.0.1 unless `HOST` says otherwise, so a local run is not reachable from
  * other machines on the network; the deployment sets `HOST` explicitly.
  *
- * `TRUST_PROXY_HOPS` says how many proxies stand between visitors and the API (0 locally; Vercel
- * and Render in production). Express then takes the visitor's address from that many entries of
+ * `TRUST_PROXY_HOPS` says how many proxies stand between visitors and the API (0 locally; 4 in
+ * production, measured on 2026-10-12: Vercel, Cloudflare in front of Render, Render's internal
+ * network, and a proxy inside Render's container). Express then takes the visitor's address from that many entries of
  * `X-Forwarded-For`, counted from the right, where the proxies add them. At 0 the header is
  * ignored, so nobody can claim another address; too high a number would let a visitor put any
  * address at the left of the header and have it believed. `FORWARDING_CHECK=on` turns on a route
@@ -54,11 +55,12 @@ const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const TRUST_PROXY_HOPS_VARIABLE = "TRUST_PROXY_HOPS";
 
-const MAX_TRUST_PROXY_HOPS = 3;
+const MAX_TRUST_PROXY_HOPS = 6;
 
 const FORWARDING_CHECK_VARIABLE = "FORWARDING_CHECK";
 
 const FORWARDING_CHECK_ON = "on";
+const FORWARDING_CHECK_OFF = "off";
 
 const ORIGIN_SECRET_VARIABLE = "ORIGIN_SECRET";
 
@@ -296,11 +298,14 @@ function readTrustProxyHops(environment) {
 /** @param {NodeJS.ProcessEnv} environment */
 function readForwardingCheck(environment) {
   const text = environment[FORWARDING_CHECK_VARIABLE];
-  if (!text) {
+  if (!text || text === FORWARDING_CHECK_OFF) {
     return false;
   }
   if (text !== FORWARDING_CHECK_ON) {
-    throw new InvalidConfigError(FORWARDING_CHECK_VARIABLE, `must be "${FORWARDING_CHECK_ON}" or unset`);
+    throw new InvalidConfigError(
+      FORWARDING_CHECK_VARIABLE,
+      `must be "${FORWARDING_CHECK_ON}", "${FORWARDING_CHECK_OFF}", or unset`,
+    );
   }
   return true;
 }

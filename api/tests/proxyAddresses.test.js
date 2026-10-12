@@ -21,15 +21,19 @@ describe("proxy settings", () => {
       trustProxyHops: 2,
       forwardingCheck: true,
     });
+    expect(readProxySettings({ TRUST_PROXY_HOPS: "6", FORWARDING_CHECK: "off" })).toEqual({
+      trustProxyHops: 6,
+      forwardingCheck: false,
+    });
   });
 
-  test.each(["4", "-1", "1.5", " 1", "two", "1e0"])("TRUST_PROXY_HOPS=%j stops start-up", (text) => {
+  test.each(["7", "-1", "1.5", " 1", "two", "1e0"])("TRUST_PROXY_HOPS=%j stops start-up", (text) => {
     expect(() => readProxySettings({ TRUST_PROXY_HOPS: text })).toThrow(
-      new InvalidConfigError("TRUST_PROXY_HOPS", "must be a whole number from 0 to 3"),
+      new InvalidConfigError("TRUST_PROXY_HOPS", "must be a whole number from 0 to 6"),
     );
   });
 
-  test.each(["yes", "true", "ON", "1"])("FORWARDING_CHECK=%j stops start-up", (text) => {
+  test.each(["yes", "true", "ON", "OFF", "1", "0"])("FORWARDING_CHECK=%j stops start-up", (text) => {
     expect(() => readProxySettings({ FORWARDING_CHECK: text })).toThrow(InvalidConfigError);
   });
 });
@@ -59,6 +63,14 @@ describe("the visitor's address", () => {
     const response = await checkForwarding(app, "10.9.9.9, 198.51.100.20, 192.0.2.1");
 
     expect(response.body.forwarded_for).toEqual(["10.9.9.9", "198.51.100.20", "192.0.2.1"]);
+    expect(response.body.address_used).toBe("198.51.100.20");
+  });
+
+  test("with the production chain of four proxies, the visitor is the address Vercel wrote", async () => {
+    const { app } = buildTestApp({ trustProxyHops: 4, forwardingCheck: true });
+
+    const response = await checkForwarding(app, "198.51.100.20, 203.0.113.50, 192.0.2.30, 10.27.0.1");
+
     expect(response.body.address_used).toBe("198.51.100.20");
   });
 

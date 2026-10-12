@@ -64,6 +64,6 @@ services:
       - key: APP_ORIGIN
         value: https://repositorycite.vercel.app
       - key: TRUST_PROXY_HOPS
-        value: "0"
+        value: "4"
       - key: FORWARDING_CHECK
-        value: "on"
+        value: "off"
