@@ -14,6 +14,7 @@ from collections.abc import Iterator
 import pytest
 from bson.binary import BinaryVectorDtype
 
+from atlas_test_databases import empty_database
 from retrieval.chunk_store import CHUNKS_COLLECTION, MongoChunkStore
 from retrieval.chunker import ChunkKind, CodeChunk
 from retrieval.clients import build_gemini_client, build_mongo_client
@@ -57,9 +58,9 @@ def configured_environment() -> None:
 @pytest.fixture
 def test_database() -> Iterator:
     mongo_client = build_mongo_client()
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     yield mongo_client[TEST_DATABASE]
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     mongo_client.close()
 
 

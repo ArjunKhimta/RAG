@@ -15,6 +15,7 @@ from collections.abc import Iterator
 
 import pytest
 
+from atlas_test_databases import empty_database
 from retrieval.clients import build_gemini_client, build_mongo_client
 from retrieval.config import (
     EMBEDDING_DIMENSIONS,
@@ -49,7 +50,7 @@ def test_database() -> Iterator:
     try:
         yield mongo_client[database_name]
     finally:
-        mongo_client.drop_database(database_name)
+        empty_database(mongo_client, database_name)
         mongo_client.close()
 
 

@@ -13,6 +13,7 @@ from dataclasses import replace
 
 import pytest
 
+from atlas_test_databases import empty_database
 from retrieval.clients import build_mongo_client
 from retrieval.config import MONGODB_URI_VARIABLE, load_environment
 from retrieval.fingerprint_store import FINGERPRINTS_COLLECTION, MongoFingerprintStore
@@ -46,9 +47,9 @@ def configured_environment() -> None:
 @pytest.fixture
 def test_database() -> Iterator:
     mongo_client = build_mongo_client()
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     yield mongo_client[TEST_DATABASE]
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     mongo_client.close()
 
 

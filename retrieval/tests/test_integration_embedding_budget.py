@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from atlas_test_databases import empty_database
 from retrieval.clients import build_mongo_client
 from retrieval.config import MONGODB_URI_VARIABLE, load_environment
 from retrieval.embedding_budget import (
@@ -42,11 +43,11 @@ def configured_environment() -> None:
 @pytest.fixture
 def budget() -> Iterator[MongoEmbeddingBudget]:
     mongo_client = build_mongo_client()
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     embedding_budget = MongoEmbeddingBudget(mongo_client[TEST_DATABASE], clock=lambda: NOON_PACIFIC)
     embedding_budget.ensure_indexes()
     yield embedding_budget
-    mongo_client.drop_database(TEST_DATABASE)
+    empty_database(mongo_client, TEST_DATABASE)
     mongo_client.close()
 
 

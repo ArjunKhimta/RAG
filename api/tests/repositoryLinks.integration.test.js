@@ -3,6 +3,7 @@ const crypto = require("node:crypto");
 const { loadEnvironmentFile, readDatabaseSettings } = require("../src/config");
 const { connectToDatabase } = require("../src/database");
 const { indexingState } = require("../src/linkStates");
+const { emptyDatabase } = require("./support/testDatabases");
 const {
   REPOSITORY_LINKS_COLLECTION,
   createMongoRepositoryLinkStore,
@@ -34,7 +35,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (database !== undefined) {
-    await database.dropDatabase();
+    await emptyDatabase(database);
   }
   if (client !== undefined) {
     await client.close();

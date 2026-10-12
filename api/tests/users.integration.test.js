@@ -9,6 +9,7 @@ const {
 } = require("../src/users");
 const { ObjectId } = require("mongodb");
 const { describeUserStoreContract } = require("./support/userStoreContract");
+const { emptyDatabase } = require("./support/testDatabases");
 
 const TEST_DATABASE_PREFIX = "code_search_app_test_";
 
@@ -32,7 +33,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (database !== undefined) {
-    await database.dropDatabase();
+    await emptyDatabase(database);
   }
   if (client !== undefined) {
     await client.close();
