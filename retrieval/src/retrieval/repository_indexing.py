@@ -9,6 +9,11 @@ The steps, in order, each timed:
 4. Refuse a version with more than 3,000 chunks before spending any embedding quota: at most 800
    texts a day may be embedded for indexing, so 3,000 new chunks is about four days.
 5. Make sure the chunk store's indexes and the Atlas vector and keyword search indexes exist.
+   This takes about 2 s of Atlas round trips (listing each search index takes about 0.85 s) and
+   depends on nothing the run finds, so it starts on its own thread as soon as the clone is ready
+   and runs alongside steps 2 to 4; the run waits for it just before comparing and storing, the
+   first steps that need the indexes. It still creates a missing index and updates one whose
+   definition changed on every run, and a failure stops the run before anything is stored.
 6. Compare with what is stored for the version (see `refresh_planning.py`): if it can be patched,
    keep the chunks of unchanged files and update only their call links and commit ID; otherwise
    index in full and report why.
@@ -28,6 +33,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -59,6 +65,13 @@ class IndexingStage(StrEnum):
 
 
 StageHook = Callable[[IndexingStage], None]
+
+
+@dataclass(frozen=True)
+class _IndexCheck:
+    vector_index_change: SearchIndexChange
+    keyword_index_change: SearchIndexChange
+    milliseconds: float
 
 
 class TooManyChunksError(ValueError):
@@ -105,6 +118,35 @@ def index_repository_version(
     stage_started = time.perf_counter()
     cloned = clone(reference, version)
     timings["clone or reuse"] = _milliseconds_since(stage_started)
+    index_check_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="index-check")
+    try:
+        index_check = index_check_runner.submit(_check_indexes, database, embedder.dimensions)
+        return _index_cloned_version(
+            cloned,
+            index_check,
+            database,
+            embedder,
+            rate_limiter,
+            max_chunk_count,
+            announce_stage,
+            on_progress,
+            timings,
+        )
+    finally:
+        index_check_runner.shutdown(wait=False)
+
+
+def _index_cloned_version(
+    cloned: ClonedRepository,
+    index_check: Future[_IndexCheck],
+    database: Database,
+    embedder: DocumentEmbedder,
+    rate_limiter: RateLimiter,
+    max_chunk_count: int,
+    announce_stage: StageHook,
+    on_progress: ProgressHook | None,
+    timings: dict[str, float],
+) -> RepositoryIndexingRun:
     announce_stage(IndexingStage.CHUNKING)
     stage_started = time.perf_counter()
     walk_result = find_python_files(cloned.source_path)
@@ -119,11 +161,11 @@ def index_repository_version(
     chunks = attach_calls(chunking.chunks, call_graph)
     timings["call graph"] = _milliseconds_since(stage_started)
     announce_stage(IndexingStage.EMBEDDING)
+    stage_started = time.perf_counter()
+    checked = index_check.result()
+    timings["check indexes, alongside chunking"] = checked.milliseconds
+    timings["wait for index check"] = _milliseconds_since(stage_started)
     store = MongoChunkStore(database)
-    store.ensure_indexes()
-    chunks_collection = database[CHUNKS_COLLECTION]
-    vector_index_change = ensure_vector_index(chunks_collection, embedder.dimensions)
-    keyword_index_change = ensure_keyword_index(chunks_collection)
     fingerprint_store = MongoFingerprintStore(database)
     stage_started = time.perf_counter()
     refresh = plan_refresh(
@@ -162,8 +204,8 @@ def index_repository_version(
         resolved_call_count=resolved_call_count,
         call_site_count=len(call_graph.resolved_calls),
         call_graph_edge_count=edge_count_of(chunks),
-        vector_index_change=vector_index_change,
-        keyword_index_change=keyword_index_change,
+        vector_index_change=checked.vector_index_change,
+        keyword_index_change=checked.keyword_index_change,
         report=report,
         collection_statistics=store.chunk_collection_statistics(),
         timings=timings,
@@ -193,6 +235,15 @@ def _require_chunk_count_within(
             f"{metadata.repository} at {metadata.version} has {chunk_count:,} chunks; "
             f"indexing allows at most {max_chunk_count:,}"
         )
+
+
+def _check_indexes(database: Database, dimensions: int) -> _IndexCheck:
+    started = time.perf_counter()
+    MongoChunkStore(database).ensure_indexes()
+    chunks_collection = database[CHUNKS_COLLECTION]
+    vector_index_change = ensure_vector_index(chunks_collection, dimensions)
+    keyword_index_change = ensure_keyword_index(chunks_collection)
+    return _IndexCheck(vector_index_change, keyword_index_change, _milliseconds_since(started))
 
 
 def _ignore_stage(stage: IndexingStage) -> None:

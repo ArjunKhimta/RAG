@@ -63,3 +63,16 @@ A full re-index spends its time moving vectors: reading back 1,009 cached vector
 | Reading a ready link, for comparison | 5 | 116 ms | 65 to 142 ms |
 
 No indexing slot was used by any of the 10 refreshes. Nearly all of the up-to-date reply is the GitHub check. A refresh that found a moved branch (6d, one sample, Flask `stable` from 3.1.3's commit to `81798b4`, 10 files changed, 16 embeddings) took 1,338 ms to answer 202 and 17 s until the link showed the new commit, including a fresh clone (2.4 s), 6.8 s of embedding and storing, and the site's 3-second polling.
+
+## Follow-up 2026-10-13: the index check alongside chunking (Phase 8, step 8d)
+
+The untimed index check above (about 1 to 2 s per run) now starts on its own thread as soon as the clone is ready and runs while the files are walked, scanned, and chunked; the run waits for it just before comparing with the stored index. It still creates a missing index and updates a changed definition on every run, and its failure still stops the run before anything is stored. It is now timed as two stages: the check itself, and the wait for it.
+
+Measured differently from the tables above: the whole `index_repository.py` process (`/usr/bin/time`, so Python start-up, the Atlas connection, and the closing statistics are included), re-indexing Flask 3.1.3 with nothing changed from its saved clone, 5 runs each, 0 embedding requests.
+
+| | Runs (s) | Median |
+| --- | --- | --- |
+| Before (commit `3341d00`) | 4.49, 4.57, 5.41, 5.52, 5.62 | 5.41 s |
+| After | 3.76, 3.81, 3.93, 4.04, 4.18 | **3.93 s** (−1.48 s, −27%) |
+
+After the change, the check itself took 1,431 to 2,237 ms and the run waited 0 to 415 ms for it, since chunking took 1,808 to 1,842 ms. On Render, where chunking Flask took 34.9 s (7f), the check is hidden entirely.

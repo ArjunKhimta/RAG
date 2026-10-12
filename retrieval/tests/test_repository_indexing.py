@@ -4,6 +4,7 @@ fake clone, a fake embedder, and an in-memory store, so nothing reaches the netw
 from __future__ import annotations
 
 import shutil
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -257,6 +258,8 @@ def test_a_version_is_cloned_chunked_graphed_embedded_and_recorded(
         "clone or reuse",
         "walk, scan, chunk",
         "call graph",
+        "check indexes, alongside chunking",
+        "wait for index check",
         "compare with stored index",
         "embed and store",
         "store fingerprints",
@@ -301,6 +304,64 @@ def test_store_and_search_indexes_are_ensured_before_embedding(tmp_path, ensured
         ("vector", "chunks collection", 5),
         ("keyword", "chunks collection"),
     ]
+
+
+def test_the_index_check_runs_alongside_chunking(tmp_path, ensured_search_indexes, monkeypatch):
+    """Chunking waits for a signal the index check sends; were the check to run after chunking,
+    as it once did, chunking would never get the signal."""
+    index_check_started = threading.Event()
+    chunked_while_checking: list[bool] = []
+    real_vector_check = repository_indexing.ensure_vector_index
+    real_chunking = repository_indexing.chunk_source_files
+
+    def signalling_vector_check(collection, dimensions):
+        index_check_started.set()
+        return real_vector_check(collection, dimensions)
+
+    def waiting_chunking(files):
+        chunked_while_checking.append(index_check_started.wait(timeout=5))
+        return real_chunking(files)
+
+    monkeypatch.setattr(repository_indexing, "ensure_vector_index", signalling_vector_check)
+    monkeypatch.setattr(repository_indexing, "chunk_source_files", waiting_chunking)
+
+    run = index_repository_version(
+        REFERENCE,
+        "1.0.0",
+        {CHUNKS_COLLECTION: "chunks collection"},
+        FakeEmbedder(),
+        RateLimiter(100, 30_000),
+        clone=_fake_clone(tmp_path, []),
+    )
+
+    assert chunked_while_checking == [True]
+    assert run.vector_index_change == SearchIndexChange.UNCHANGED
+
+
+def test_a_failed_index_check_stops_the_run_before_anything_is_stored(
+    tmp_path, ensured_search_indexes, monkeypatch
+):
+    embedder = FakeEmbedder()
+
+    def failing_keyword_check(collection):
+        raise RuntimeError("Atlas could not list the search indexes")
+
+    monkeypatch.setattr(repository_indexing, "ensure_keyword_index", failing_keyword_check)
+
+    with pytest.raises(RuntimeError, match="could not list the search indexes"):
+        index_repository_version(
+            REFERENCE,
+            "1.0.0",
+            {CHUNKS_COLLECTION: "chunks collection"},
+            embedder,
+            RateLimiter(100, 30_000),
+            clone=_fake_clone(tmp_path, []),
+        )
+
+    assert embedder.embedded_batches == []
+    assert RecordingChunkStore.chunks == {}
+    assert RecordingChunkStore.repositories == []
+    assert RecordingFingerprintStore.saved == []
 
 
 def test_a_refused_clone_stops_before_any_embedding(tmp_path, ensured_search_indexes):
@@ -363,7 +424,8 @@ def test_too_many_chunks_is_refused_before_any_embedding(tmp_path, ensured_searc
         )
 
     assert embedder.embedded_batches == []
-    assert RecordingChunkStore.instances == []
+    assert RecordingChunkStore.chunks == {}
+    assert RecordingChunkStore.repositories == []
     assert RecordingFingerprintStore.saved == []
 
 
@@ -393,7 +455,8 @@ def test_a_version_with_no_python_code_is_refused_before_any_embedding(
         "(it has 2 JavaScript files and 1 Shell file); only Python is supported for now"
     )
     assert embedder.embedded_batches == []
-    assert RecordingChunkStore.instances == []
+    assert RecordingChunkStore.chunks == {}
+    assert RecordingChunkStore.repositories == []
     assert RecordingFingerprintStore.saved == []
 
 
