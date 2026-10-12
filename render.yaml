@@ -5,8 +5,10 @@
 # Blueprint is created; `generateValue` makes Render create a random value nobody has to see or
 # paste; `fromService` copies the service token to the API, so both always hold the same one.
 #
-# Shutdown: Render sends SIGTERM and waits `maxShutdownDelaySeconds` before killing the process.
-# gunicorn gives requests in progress 30 s and the API 25 s, so 40 s lets both finish cleanly.
+# Shutdown: Render sends SIGTERM and kills the process after a wait. The free plan refuses
+# `maxShutdownDelaySeconds` ("max shutdown delay is not supported for free tier services"), so
+# Render's own wait applies (30 s by default on plans that allow changing it). gunicorn gives
+# requests in progress 30 s and the API 25 s.
 
 services:
   - type: web
@@ -18,7 +20,6 @@ services:
     dockerContext: ./retrieval
     healthCheckPath: /health
     autoDeployTrigger: checksPass
-    maxShutdownDelaySeconds: 40
     buildFilter:
       paths:
         - retrieval/**
@@ -39,7 +40,6 @@ services:
     dockerContext: ./api
     healthCheckPath: /health
     autoDeployTrigger: checksPass
-    maxShutdownDelaySeconds: 40
     buildFilter:
       paths:
         - api/**
