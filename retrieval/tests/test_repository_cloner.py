@@ -32,6 +32,7 @@ from retrieval.repository_cloner import (
     find_license_file,
     find_remote_commit,
     is_commit_id,
+    refreshing_clone,
     remove_directory_inside,
 )
 
@@ -654,3 +655,51 @@ def test_a_saved_clone_at_the_expected_commit_is_reused(reference, repositories_
     )
 
     assert second_clone.was_reused
+
+
+def _recording_clone(calls: list[tuple]):
+    def clone(reference, version, expected_commit=None):
+        calls.append((version, expected_commit))
+        return "cloned"
+
+    return clone
+
+
+def test_refreshing_a_tag_or_branch_asks_github_and_expects_that_commit(reference):
+    calls: list[tuple] = []
+    asked: list[str] = []
+
+    def find_commit(found_reference, version):
+        asked.append(version)
+        return "c" * 40
+
+    result = refreshing_clone(
+        reference, "main", find_commit=find_commit, clone=_recording_clone(calls)
+    )
+
+    assert result == "cloned"
+    assert asked == ["main"]
+    assert calls == [("main", "c" * 40)]
+
+
+def test_refreshing_a_commit_id_never_asks_github(reference):
+    calls: list[tuple] = []
+
+    def find_commit(found_reference, version):
+        raise AssertionError("a commit ID never moves, so GitHub must not be asked")
+
+    refreshing_clone(reference, "a" * 40, find_commit=find_commit, clone=_recording_clone(calls))
+
+    assert calls == [("a" * 40, None)]
+
+
+def test_refreshing_a_version_gone_from_github_is_refused_before_cloning(reference):
+    calls: list[tuple] = []
+
+    def find_commit(found_reference, version):
+        raise VersionNotFoundError(f"{version} is not a tag or branch of owner/project")
+
+    with pytest.raises(VersionNotFoundError):
+        refreshing_clone(reference, "gone", find_commit=find_commit, clone=_recording_clone(calls))
+
+    assert calls == []

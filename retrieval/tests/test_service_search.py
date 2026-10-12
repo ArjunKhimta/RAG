@@ -213,6 +213,16 @@ def test_snippets_show_the_opening_lines_and_never_more_than_twelve():
     assert "text" not in reply["results"][0]
 
 
+def test_a_repository_named_with_capitals_searches_the_lowercase_index():
+    asker = FakeAsker()
+
+    _client(asker).post(
+        "/search", json={**VALID_BODY, "repository": "Pallets/Flask"}, headers=AUTHORIZED
+    )
+
+    assert asker.calls[0]["repository"] == "pallets/flask"
+
+
 def test_limit_and_exclude_tests_are_passed_through():
     asker = FakeAsker()
 

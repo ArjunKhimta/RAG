@@ -46,7 +46,7 @@ def repository_field(value: Any) -> str:
     is_valid_name = REPOSITORY_NAME_PATTERN.fullmatch(name) is not None
     if not is_valid_owner or not is_valid_name or name in RESERVED_PATH_NAMES:
         raise InvalidRequestError(rule)
-    return value
+    return value.lower()
 
 
 def version_field(value: Any) -> str:

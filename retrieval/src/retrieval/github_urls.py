@@ -3,6 +3,9 @@
 Only `https://github.com/<owner>/<repo>` is accepted, optionally ending in `.git` or `/`. The owner
 and repository names later become folder names under `data/repos/`, so this strict check is also
 what stops a crafted URL such as `https://github.com/../../etc` from escaping that folder.
+
+GitHub ignores case in owner and repository names, so both are lowercased: `Pallets/Flask` and
+`pallets/flask` are one repository, indexed once, in one folder.
 """
 
 from __future__ import annotations
@@ -57,7 +60,7 @@ def parse_github_url(url: str) -> RepositoryReference:
     owner, name = path_names
     _require_valid_owner(owner)
     _require_valid_repository_name(name)
-    return RepositoryReference(owner=owner, name=name)
+    return RepositoryReference(owner=owner.lower(), name=name.lower())
 
 
 def _split_repository_path(path: str) -> list[str]:

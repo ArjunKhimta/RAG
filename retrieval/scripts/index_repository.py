@@ -4,6 +4,10 @@ Run from the repository root with the virtual environment active:
 
     python retrieval/scripts/index_repository.py https://github.com/pallets/flask --version 3.1.3
 
+A saved clone of the version is reused. With `--refresh`, a tag or branch is first looked up on
+GitHub (`git ls-remote`), and a saved clone at another commit is replaced, so a branch that has
+moved is indexed as it is now; a commit ID never moves and is reused as it is.
+
 Embeddings are cached by content hash in the chunks collection, so running it again for the same
 version makes no embedding requests. Indexing a version again patches what is stored when its
 fingerprints allow: chunks of unchanged files are kept, not rewritten. Each chunk is stored with
@@ -44,7 +48,7 @@ from retrieval.indexer import IndexingReport
 from retrieval.other_languages import describe_counts
 from retrieval.redaction import redact
 from retrieval.refresh_planning import RefreshPlan
-from retrieval.repository_cloner import RepositoryError
+from retrieval.repository_cloner import RepositoryError, clone_repository, refreshing_clone
 from retrieval.repository_indexing import (
     NoPythonCodeError,
     TooManyChunksError,
@@ -66,7 +70,12 @@ def main() -> int:
         database = build_mongo_client()[MONGODB_DATABASE]
         embedder = build_document_embedder(database, build_gemini_client())
         run = index_repository_version(
-            reference, arguments.version, database, embedder, build_indexing_rate_limiter()
+            reference,
+            arguments.version,
+            database,
+            embedder,
+            build_indexing_rate_limiter(),
+            clone=refreshing_clone if arguments.refresh else clone_repository,
         )
         usage = MongoEmbeddingBudget(database).usage_today()
     except EmbeddingRequestError as error:
@@ -129,6 +138,11 @@ def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("url", help="https://github.com/<owner>/<repo>")
     parser.add_argument("--version", required=True, help="tag, branch, or commit ID to index")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="ask GitHub where a tag or branch points now, and replace an out-of-date saved clone",
+    )
     return parser.parse_args()
 
 

@@ -59,6 +59,17 @@ def test_anything_else_is_rejected(url):
         parse_github_url(url)
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["https://github.com/Pallets/Flask", "https://github.com/PALLETS/flask.git"],
+)
+def test_names_are_lowercased_since_github_ignores_their_case(url):
+    reference = parse_github_url(url)
+
+    assert reference == FLASK_REFERENCE
+    assert reference.full_name == "pallets/flask"
+
+
 def test_the_clone_url_is_rebuilt_from_the_validated_parts():
     assert FLASK_REFERENCE.clone_url == "https://github.com/pallets/flask.git"
     assert FLASK_REFERENCE.full_name == "pallets/flask"

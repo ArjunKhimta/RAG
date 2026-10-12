@@ -271,6 +271,24 @@ def clone_repository(
     )
 
 
+def refreshing_clone(
+    reference: RepositoryReference,
+    version: str,
+    find_commit: Callable[[RepositoryReference, str], str] | None = None,
+    clone: Callable[..., ClonedRepository] = clone_repository,
+) -> ClonedRepository:
+    """Like `clone_repository`, but first asks GitHub where a tag or branch points now, so a saved
+    clone of a branch that has moved is replaced rather than indexed again as it was.
+
+    A commit ID never moves, so it is cloned or reused without asking GitHub. `find_commit`
+    defaults to `find_remote_commit`; tests pass a stand-in.
+    """
+    if is_commit_id(version):
+        return clone(reference, version)
+    commit_finder = find_commit or find_remote_commit
+    return clone(reference, version, expected_commit=commit_finder(reference, version))
+
+
 def is_commit_id(version: str) -> bool:
     return COMMIT_ID_PATTERN.fullmatch(version) is not None
 
