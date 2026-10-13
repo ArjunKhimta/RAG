@@ -211,7 +211,7 @@ def render_table(
         cells = [_task_cell(scores[(setup, deepest)][position]) for setup in setups]
         names = ", ".join(expected.qualified_name for expected in task.expected)
         lines.append(_row([task.task_id, names, *cells]))
-    lines += ["", *_measure_notes()]
+    lines += ["", *_measure_notes(tasks)]
     return "\n".join(lines) + "\n"
 
 
@@ -281,7 +281,14 @@ def _row(cells: list[str]) -> str:
     return "| " + " | ".join(cells) + " |"
 
 
-def _measure_notes() -> list[str]:
+def _task_count_text(tasks: list[SweBenchTask]) -> str:
+    repository_count = len({task.repository for task in tasks})
+    task_word = "task" if len(tasks) == 1 else "tasks"
+    repository_word = "repository" if repository_count == 1 else "repositories"
+    return f"{len(tasks)} {task_word} from {repository_count} {repository_word}"
+
+
+def _measure_notes(tasks: list[SweBenchTask]) -> list[str]:
     return [
         "File found: tasks with a result in a file the fix changed, among the top results. "
         "Definitions found: expected definitions (the functions or classes holding the fix's "
@@ -290,5 +297,5 @@ def _measure_notes() -> list[str]:
         "depth is its own search. Times are wall-clock per task for the whole search, with the "
         "issue's embedding from the cache after its first use. Each task's cell gives the rank of "
         "the first result in a changed file and of each expected definition; — is not found. "
-        "Nine tasks from two repositories: a small independent check, not a benchmark score.",
+        f"{_task_count_text(tasks)}: a small independent check, not a benchmark score.",
     ]

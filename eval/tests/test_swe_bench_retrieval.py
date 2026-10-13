@@ -134,6 +134,7 @@ class TestSummaries:
         assert "| vector | top 5 | 1/1 | 1/1 (100%) | 0.50 | 10 |" in table
         assert "| org__pkg-1 | Request.send | file #2, definition #2 |" in table
         assert "Something breaks" not in table
+        assert "1 task from 1 repository: a small independent check" in table
 
 
 class TestLoadingTasks:
