@@ -15,6 +15,7 @@ from retrieval.embedding_budget import (
     EmbeddingLane,
     MeteredDocumentEmbedder,
 )
+from retrieval.embedding_inputs import estimate_tokens
 from retrieval.indexer import IndexingSettings, KeptChunks, index_chunks
 from retrieval.rate_limiter import RateLimiter
 from retrieval.repository_cloner import CloneMetadata
@@ -40,6 +41,8 @@ class FakeEmbedder:
         self.embedded_batches: list[list[str]] = []
         self.counted_texts: list[str] = []
         self.token_count_result = 0
+        self.counted_batches: list[list[str]] = []
+        self.exact_tokens_per_text: int | None = None
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if self.failures:
@@ -50,6 +53,12 @@ class FakeEmbedder:
     def count_tokens(self, text: str) -> int:
         self.counted_texts.append(text)
         return self.token_count_result
+
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        self.counted_batches.append(list(texts))
+        if self.exact_tokens_per_text is None:
+            return sum(estimate_tokens(text) for text in texts)
+        return self.exact_tokens_per_text * len(texts)
 
 
 class InMemoryChunkStore:
@@ -245,6 +254,62 @@ def test_batches_respect_both_the_size_and_the_token_budget():
     assert size_limited_batches == [3, 3, 1]
     assert all(len(batch) < 7 for batch in token_embedder.embedded_batches)
     assert sum(len(batch) for batch in token_embedder.embedded_batches) == 7
+
+
+def test_a_batch_whose_exact_count_is_over_the_budget_is_halved_until_each_part_fits():
+    chunks = [_function_chunk(index) for index in range(8)]
+    embedder = FakeEmbedder()
+    embedder.exact_tokens_per_text = 200
+
+    report = _index(
+        chunks,
+        embedder,
+        InMemoryChunkStore(),
+        settings=IndexingSettings(batch_size=100, batch_token_budget=1000),
+    )
+
+    assert [len(batch) for batch in embedder.counted_batches] == [8, 4, 4]
+    assert [len(batch) for batch in embedder.embedded_batches] == [4, 4]
+    assert report.batch_token_count_request_count == 3
+    assert report.counted_tokens_sent == 1600
+    assert report.embedded_input_count == 8
+
+
+def test_the_rate_limiter_paces_batches_by_their_exact_token_count():
+    chunks = [_function_chunk(index) for index in range(8)]
+    embedder = FakeEmbedder()
+    embedder.exact_tokens_per_text = 200
+    clock = FakeClock()
+    rate_limiter = RateLimiter(1000, 1000, clock=clock.time, sleep=clock.sleep)
+
+    report = index_chunks(
+        METADATA,
+        chunks,
+        embedder,
+        InMemoryChunkStore(),
+        rate_limiter,
+        settings=IndexingSettings(batch_size=100, batch_token_budget=1000),
+        sleep=clock.sleep,
+    )
+
+    assert report.embedding_request_count == 2
+    assert report.rate_limit_wait_seconds == pytest.approx(60.0)
+
+
+def test_a_single_input_over_the_budget_is_counted_once_and_not_split_further():
+    embedder = FakeEmbedder()
+    embedder.exact_tokens_per_text = 5000
+
+    report = _index(
+        [_function_chunk(0)],
+        embedder,
+        InMemoryChunkStore(),
+        settings=IndexingSettings(batch_size=100, batch_token_budget=1000),
+    )
+
+    assert len(embedder.counted_batches) == 1
+    assert [len(batch) for batch in embedder.embedded_batches] == [1]
+    assert report.counted_tokens_sent == 5000
 
 
 def test_each_batch_is_stored_as_soon_as_it_is_embedded():
@@ -537,6 +602,24 @@ def test_each_embedding_retry_and_the_give_up_are_logged_with_their_reason(caplo
         "Gemini embedding attempt 1 of 2 for 1 texts failed (timed out after 30 s); "
         "retrying in 1.0 s",
         "Gemini embedding of 1 texts gave up after 2 attempts (timed out after 30 s)",
+    ]
+
+
+def test_a_retry_log_names_the_quotas_gemini_says_were_exceeded(caplog):
+    over_quota = EmbeddingRequestError(
+        "Gemini request failed",
+        status_code=429,
+        retry_after_seconds=None,
+        reason="HTTP 429 RESOURCE_EXHAUSTED",
+        exceeded_quota_ids=("ExampleTokensPerMinute",),
+    )
+    embedder = FakeEmbedder(failures=[over_quota])
+
+    _index([_function_chunk(0)], embedder, InMemoryChunkStore(), jitter=lambda: 0.0)
+
+    assert caplog.messages == [
+        "Gemini embedding attempt 1 of 6 for 1 texts failed "
+        "(HTTP 429 RESOURCE_EXHAUSTED; quota ExampleTokensPerMinute); retrying in 1.0 s",
     ]
 
 

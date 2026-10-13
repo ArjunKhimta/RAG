@@ -184,6 +184,9 @@ class MeteredDocumentEmbedder:
     def count_tokens(self, text: str) -> int:
         return self._embedder.count_tokens(text)
 
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        return self._embedder.count_batch_tokens(texts)
+
 
 class MeteredQueryEmbedder:
     """A query embedder that books each question in the questions lane and paces it per minute."""

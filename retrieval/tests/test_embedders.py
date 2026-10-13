@@ -22,6 +22,7 @@ class FakeModels:
         self.error = error
         self.total_tokens = total_tokens
         self.embed_calls = []
+        self.count_calls = []
 
     def embed_content(self, model, contents, config):
         self.embed_calls.append({"model": model, "contents": contents, "config": config})
@@ -31,6 +32,7 @@ class FakeModels:
         return SimpleNamespace(embeddings=embeddings)
 
     def count_tokens(self, model, contents):
+        self.count_calls.append({"model": model, "contents": contents})
         if self.error is not None:
             raise self.error
         return SimpleNamespace(total_tokens=self.total_tokens)
@@ -178,6 +180,13 @@ def test_tokens_are_counted_with_the_same_model():
     models = FakeModels(total_tokens=1234)
 
     assert _embedder(models).count_tokens("text") == 1234
+
+
+def test_a_batch_is_counted_in_one_call_with_every_text():
+    models = FakeModels(total_tokens=4321)
+
+    assert _embedder(models).count_batch_tokens(["first", "second"]) == 4321
+    assert models.count_calls == [{"model": "model-a", "contents": ["first", "second"]}]
 
 
 def test_normalized_vectors_have_length_one():

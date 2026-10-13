@@ -29,6 +29,8 @@ ASCII_CHARACTERS_PER_TOKEN = 3
 
 LAST_ASCII_CODE_POINT = 127
 
+ASCII_DIGITS = frozenset("0123456789")
+
 KIND_LABELS = {
     ChunkKind.FUNCTION: "Function",
     ChunkKind.METHOD: "Method",
@@ -73,14 +75,21 @@ def compute_embedding_key(embedder: EmbeddingIdentity, input_text: str) -> str:
 
 
 def estimate_tokens(text: str) -> int:
-    """Estimate tokens pessimistically: one per 3 ASCII characters, one per other character.
+    """Estimate tokens pessimistically: one per ASCII digit, one per 3 other ASCII characters, and
+    one per other character.
 
     Code measured 3.2 to 4.1 characters per token, and text in scripts such as Chinese can be
-    close to one character per token, so this errs high on both.
+    close to one character per token, so this errs high on both. Gemini's tokenizer splits numbers
+    into single digits, so number tables count one token per digit: on 2026-10-13 a batch of 62
+    chunks from chardet's frequency tables (vendored in requests) was 33,537 tokens by Gemini's
+    count against 22,698 by the rule without digits, over the free tier's 30,000 a minute, and
+    every attempt to embed it was refused; counting digits gave 33,581.
     """
     non_ascii_count = sum(1 for character in text if ord(character) > LAST_ASCII_CODE_POINT)
-    ascii_count = len(text) - non_ascii_count
-    return math.ceil(ascii_count / ASCII_CHARACTERS_PER_TOKEN) + non_ascii_count
+    digit_count = sum(1 for character in text if character in ASCII_DIGITS)
+    other_ascii_count = len(text) - non_ascii_count - digit_count
+    other_ascii_tokens = math.ceil(other_ascii_count / ASCII_CHARACTERS_PER_TOKEN)
+    return digit_count + other_ascii_tokens + non_ascii_count
 
 
 def _format_input(

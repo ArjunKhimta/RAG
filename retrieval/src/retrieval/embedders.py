@@ -70,6 +70,10 @@ class DocumentEmbedder(EmbeddingIdentity, Protocol):
         """Return the exact number of tokens the model sees for `text`."""
         ...
 
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        """Return the exact number of tokens the model sees for all of `texts` together."""
+        ...
+
 
 class QueryEmbedder(EmbeddingIdentity, Protocol):
     def embed_query(self, question: str) -> list[float]:
@@ -96,6 +100,13 @@ class GeminiDocumentEmbedder:
         response = _call_gemini(
             "token count",
             lambda: self._client.models.count_tokens(model=self.model_id, contents=text),
+        )
+        return response.total_tokens
+
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        response = _call_gemini(
+            "token count",
+            lambda: self._client.models.count_tokens(model=self.model_id, contents=texts),
         )
         return response.total_tokens
 

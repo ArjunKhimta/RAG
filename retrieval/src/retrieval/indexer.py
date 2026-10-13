@@ -7,8 +7,11 @@ The steps, in order:
    the stored vector, with no API call.
 3. Embed the remaining inputs in batches that fit both the batch size and the per-minute token
    limit of the indexing lane (80 texts and 24,000 tokens of Gemini's 100 and 30,000 a minute,
-   leaving the rest for questions), pausing as the rate limiter requires. Each batch is written
-   as soon as it returns, so an interrupted run resumes from the cache.
+   leaving the rest for questions), pausing as the rate limiter requires. Batches are formed by
+   the token estimate, then counted exactly with one token-count call each and halved until each
+   part fits, since a call over the per-minute token limit is refused however long it waits; the
+   exact count is what the rate limiter records. Each batch is written as soon as it returns, so
+   an interrupted run resumes from the cache.
 4. Delete chunks of this version that no longer exist, then record the version.
 
 A refresh passes the chunks it can keep: chunks already stored unchanged from the version's
@@ -77,7 +80,8 @@ class IndexingReport:
     embedding_request_count: int = 0
     retry_count: int = 0
     token_count_request_count: int = 0
-    estimated_tokens_sent: int = 0
+    batch_token_count_request_count: int = 0
+    counted_tokens_sent: int = 0
     truncated_chunk_count: int = 0
     written_chunk_count: int = 0
     kept_chunk_count: int = 0
@@ -92,6 +96,12 @@ class _PendingInput:
     embedding_key: str
     input_text: str
     estimated_tokens: int
+
+
+@dataclass(frozen=True)
+class _CountedBatch:
+    inputs: list[_PendingInput]
+    token_count: int
 
 
 @dataclass(frozen=True)
@@ -177,22 +187,34 @@ def index_chunks(
     ]
     if on_progress is not None:
         on_progress(0, len(pending_inputs))
-    for batch in _batches(pending_inputs, active_settings):
-        truncation_flags = [
-            _is_over_token_limit(embedder, pending, active_settings.input_token_limit, report)
-            for pending in batch
-        ]
-        vectors = _embed_with_retries(
-            embedder, batch, rate_limiter, active_settings, sleep, jitter_fraction, report
-        )
-        batch_embeddings = {
-            pending.embedding_key: CachedEmbedding(vector=vector, is_truncated=is_truncated)
-            for pending, vector, is_truncated in zip(batch, vectors, truncation_flags, strict=True)
-        }
-        report.embedded_input_count += len(batch)
-        store_chunks_for(batch_embeddings)
-        if on_progress is not None:
-            on_progress(report.embedded_input_count, len(pending_inputs))
+    for estimated_batch in _batches(pending_inputs, active_settings):
+        for counted_batch in _counted_batches(
+            embedder, estimated_batch, active_settings.batch_token_budget, report
+        ):
+            batch = counted_batch.inputs
+            truncation_flags = [
+                _is_over_token_limit(embedder, pending, active_settings.input_token_limit, report)
+                for pending in batch
+            ]
+            vectors = _embed_with_retries(
+                embedder,
+                counted_batch,
+                rate_limiter,
+                active_settings,
+                sleep,
+                jitter_fraction,
+                report,
+            )
+            batch_embeddings = {
+                pending.embedding_key: CachedEmbedding(vector=vector, is_truncated=is_truncated)
+                for pending, vector, is_truncated in zip(
+                    batch, vectors, truncation_flags, strict=True
+                )
+            }
+            report.embedded_input_count += len(batch)
+            store_chunks_for(batch_embeddings)
+            if on_progress is not None:
+                on_progress(report.embedded_input_count, len(pending_inputs))
     if kept is not None:
         store.update_chunk_calls(kept.calls_to_update)
         report.updated_calls_count = len(kept.calls_to_update)
@@ -233,6 +255,28 @@ def _batches(
         yield current_batch
 
 
+def _counted_batches(
+    embedder: DocumentEmbedder,
+    batch: list[_PendingInput],
+    token_budget: int,
+    report: IndexingReport,
+) -> Iterator[_CountedBatch]:
+    """Count a batch's tokens exactly and split it in halves until each part fits the budget.
+
+    The estimate can fall short on unusual text, and a call over the per-minute token limit is
+    refused however long it waits. A single input over the budget is yielded as it is, so the
+    rate limiter refuses it with its own error.
+    """
+    report.batch_token_count_request_count += 1
+    token_count = embedder.count_batch_tokens([pending.input_text for pending in batch])
+    if token_count <= token_budget or len(batch) == 1:
+        yield _CountedBatch(inputs=batch, token_count=token_count)
+        return
+    middle = len(batch) // 2
+    yield from _counted_batches(embedder, batch[:middle], token_budget, report)
+    yield from _counted_batches(embedder, batch[middle:], token_budget, report)
+
+
 def _is_over_token_limit(
     embedder: DocumentEmbedder, pending: _PendingInput, token_limit: int, report: IndexingReport
 ) -> bool:
@@ -245,15 +289,16 @@ def _is_over_token_limit(
 
 def _embed_with_retries(
     embedder: DocumentEmbedder,
-    batch: list[_PendingInput],
+    counted_batch: _CountedBatch,
     rate_limiter: RateLimiter,
     settings: IndexingSettings,
     sleep: Callable[[float], None],
     jitter_fraction: Callable[[], float],
     report: IndexingReport,
 ) -> list[list[float]]:
+    batch = counted_batch.inputs
     input_texts = [pending.input_text for pending in batch]
-    batch_tokens = sum(pending.estimated_tokens for pending in batch)
+    batch_tokens = counted_batch.token_count
     for attempt_number in range(1, settings.max_attempts + 1):
         report.rate_limit_wait_seconds += rate_limiter.acquire(len(batch), batch_tokens)
         report.embedding_request_count += 1
@@ -267,7 +312,7 @@ def _embed_with_retries(
                     "Gemini embedding of %d texts gave up after %d attempts (%s)",
                     len(batch),
                     attempt_number,
-                    redact(error.reason),
+                    _failure_description(error),
                 )
                 raise
             delay_seconds = retry_delay_seconds(error, attempt_number, jitter_fraction)
@@ -276,16 +321,24 @@ def _embed_with_retries(
                 attempt_number,
                 settings.max_attempts,
                 len(batch),
-                redact(error.reason),
+                _failure_description(error),
                 delay_seconds,
             )
             report.retry_count += 1
             report.retry_wait_seconds += delay_seconds
             sleep(delay_seconds)
             continue
-        report.estimated_tokens_sent += batch_tokens
+        report.counted_tokens_sent += batch_tokens
         return vectors
     raise AssertionError("unreachable: the last attempt either returns or raises")
+
+
+def _failure_description(error: EmbeddingRequestError) -> str:
+    """The failure's short reason, plus the quotas Gemini says were exceeded, if it names any."""
+    if not error.exceeded_quota_ids:
+        return redact(error.reason)
+    quota_ids = ", ".join(error.exceeded_quota_ids)
+    return redact(f"{error.reason}; quota {quota_ids}")
 
 
 def _require_unique(chunk_ids: list[str]) -> None:

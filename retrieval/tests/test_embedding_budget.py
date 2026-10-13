@@ -17,6 +17,7 @@ from retrieval.embedding_budget import (
     MeteredQueryEmbedder,
     MongoEmbeddingBudget,
 )
+from retrieval.embedding_inputs import estimate_tokens
 from retrieval.query_cache import CachingQueryEmbedder
 from retrieval.rate_limiter import RateLimitWaitTooLongError
 
@@ -196,6 +197,9 @@ class FakeEmbedder:
 
     def count_tokens(self, text: str) -> int:
         return 7
+
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        return sum(estimate_tokens(text) for text in texts)
 
     def embed_query(self, question: str) -> list[float]:
         self.calls.append(question)

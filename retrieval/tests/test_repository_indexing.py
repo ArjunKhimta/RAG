@@ -19,6 +19,7 @@ from retrieval.chunk_store import (
     repository_document,
 )
 from retrieval.config import INDEX_FORMAT_VERSION
+from retrieval.embedding_inputs import estimate_tokens
 from retrieval.fingerprint_store import StoredFingerprints
 from retrieval.fingerprints import PathFingerprint, build_version_fingerprints, fingerprint_bytes
 from retrieval.github_urls import RepositoryReference
@@ -72,6 +73,9 @@ class FakeEmbedder:
 
     def count_tokens(self, text: str) -> int:
         return 0
+
+    def count_batch_tokens(self, texts: list[str]) -> int:
+        return sum(estimate_tokens(text) for text in texts)
 
 
 class RecordingChunkStore:

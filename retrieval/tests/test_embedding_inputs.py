@@ -103,6 +103,20 @@ def test_token_estimates_are_pessimistic_for_ascii_and_other_scripts():
     assert estimate_tokens("abc日本") == 3
 
 
+def test_token_estimates_count_every_ascii_digit_as_one_token():
+    assert estimate_tokens("123") == 3
+    assert estimate_tokens("x = 10") == 4
+    assert estimate_tokens("٣٤") == 2
+
+
+def test_a_number_table_is_estimated_at_a_token_per_digit_and_a_third_per_separator():
+    frequency_table = "1,13,130,652,0,\n" * 100
+    digits_per_row = 10
+    separators_per_row = 6
+    expected_tokens = digits_per_row * 100 + separators_per_row * 100 // 3
+    assert estimate_tokens(frequency_table) == expected_tokens
+
+
 def _search_result_from(chunk: CodeChunk) -> SearchResult:
     return SearchResult(
         chunk_id="chunk",
