@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
-from retrieval.cross_encoder import CrossEncoderScorer
 from retrieval.reranker_model import verified_reranker_files
 from retrieval.reranking import QuestionTooLongError
+
+if TYPE_CHECKING:
+    from retrieval.cross_encoder import CrossEncoderScorer
 
 pytestmark = pytest.mark.integration
 
@@ -30,9 +34,17 @@ UNRELATED_PASSAGE = (
 LONG_PASSAGE = "# File: pkg/long.py\n# Function: long\n" + "value = compute(value)\n" * 400
 
 
+def _build_scorer(**options: int) -> CrossEncoderScorer:
+    """Import the cross-encoder only when a test runs, so collecting this file for a unit test
+    run never loads ONNX Runtime, which sometimes aborts the process at exit on macOS."""
+    from retrieval.cross_encoder import CrossEncoderScorer
+
+    return CrossEncoderScorer(verified_reranker_files(), **options)
+
+
 @pytest.fixture(scope="module")
 def scorer() -> CrossEncoderScorer:
-    return CrossEncoderScorer(verified_reranker_files())
+    return _build_scorer()
 
 
 def test_the_passage_that_answers_the_question_scores_higher(scorer):
@@ -50,7 +62,7 @@ def test_only_a_passage_longer_than_the_window_is_reported_as_cut(scorer):
 
 def test_scores_do_not_depend_on_the_batch_size(scorer):
     passages = [SIGNING_PASSAGE, UNRELATED_PASSAGE, LONG_PASSAGE]
-    batched = CrossEncoderScorer(verified_reranker_files(), batch_size=8)
+    batched = _build_scorer(batch_size=8)
 
     single_scores = scorer.score_pairs(QUESTION, passages).scores
     batched_scores = batched.score_pairs(QUESTION, passages).scores
