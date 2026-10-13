@@ -57,7 +57,8 @@ from retrieval.repository_indexing import (
 
 BYTES_PER_MEGABYTE = 1024 * 1024
 
-LABEL_WIDTH = 28
+LABEL_WIDTH = 36
+MINIMUM_LABEL_GAP = 2
 
 FINGERPRINT_PREFIX_LENGTH = 12
 
@@ -184,7 +185,8 @@ def _describe_refresh(refresh: RefreshPlan) -> str:
 
 
 def _row(label: str, value: object) -> str:
-    return f"  {label.ljust(LABEL_WIDTH)}{value}"
+    width = max(LABEL_WIDTH, len(label) + MINIMUM_LABEL_GAP)
+    return f"  {label.ljust(width)}{value}"
 
 
 def _megabytes(size_bytes: int) -> str:
