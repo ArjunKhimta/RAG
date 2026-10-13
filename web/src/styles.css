@@ -356,6 +356,13 @@ kbd {
   font-size: 1.15rem;
 }
 
+.hero-rag {
+  max-width: 640px;
+  margin: 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--accent);
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;

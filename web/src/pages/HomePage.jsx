@@ -22,6 +22,14 @@ export default function HomePage() {
           Answers cite the exact files and line numbers they come from, with a link to the code on
           GitHub. An answer whose citations point outside the code it was given is never shown.
         </p>
+        <p className="hero-rag">
+          RepositoryCite uses retrieval-augmented generation (RAG). A language model answering from
+          memory can make up functions that do not exist. Instead, the site first retrieves the
+          code most related to your question: the five closest functions or classes from the
+          version you indexed. Only that code is given to Gemini, which must cite the file and
+          lines each sentence rests on, and the citations are checked before an answer is shown.
+          The steps further down show each part, with measured figures.
+        </p>
         {session.status === SessionStatus.SIGNED_OUT && (
           <div className="hero-actions">
             <SignInButton prominent />

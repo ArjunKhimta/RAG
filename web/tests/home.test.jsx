@@ -126,6 +126,7 @@ describe("home page", () => {
     expect(await screen.findAllByRole("link", { name: "Sign in with GitHub" })).toHaveLength(2);
     expect(screen.getByRole("region", { name: "A saved answer, replayed" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "How an answer is made" })).toBeTruthy();
+    expect(screen.getByText(/uses retrieval-augmented generation \(RAG\)/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Measured, not claimed" })).toBeTruthy();
   });
 });
