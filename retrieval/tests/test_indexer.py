@@ -517,7 +517,7 @@ class SeatLimitedBudget:
     def reserve(self, lane: EmbeddingLane, count: int) -> None:
         if count > self.seats:
             self.refusals += 1
-            raise EmbeddingBudgetExhaustedError("No room today")
+            raise EmbeddingBudgetExhaustedError("No room today", seats_left=self.seats)
         self.seats -= count
 
 
@@ -548,6 +548,51 @@ def test_a_used_up_budget_stops_at_once_keeps_what_is_stored_and_resumes_next_da
     assert report.cache_hit_count == 4
     assert sum(len(batch) for batch in next_day_embedder.embedded_batches) == 2
     assert len(store.repositories) == 1
+
+
+def test_the_last_seats_of_the_day_go_to_the_first_inputs_of_a_refused_batch():
+    chunks = [_function_chunk(index) for index in range(6)]
+    store = InMemoryChunkStore()
+    budget = SeatLimitedBudget(seats=5)
+    embedder = FakeEmbedder()
+
+    with pytest.raises(EmbeddingBudgetExhaustedError):
+        _index(
+            chunks,
+            MeteredDocumentEmbedder(embedder, budget),
+            store,
+            settings=IndexingSettings(batch_size=4),
+        )
+
+    assert [len(batch) for batch in embedder.embedded_batches] == [4, 1]
+    assert budget.seats == 0
+    assert budget.refusals == 1
+    assert len(store.chunks) == 5
+    assert store.repositories == []
+    next_day_embedder = FakeEmbedder()
+    report = _index(
+        chunks,
+        MeteredDocumentEmbedder(next_day_embedder, SeatLimitedBudget(seats=800)),
+        store,
+        settings=IndexingSettings(batch_size=4),
+    )
+    assert report.cache_hit_count == 5
+    assert [len(batch) for batch in next_day_embedder.embedded_batches] == [1]
+    assert len(store.repositories) == 1
+
+
+def test_a_refusal_with_no_seats_left_embeds_nothing_more():
+    chunks = [_function_chunk(index) for index in range(3)]
+    store = InMemoryChunkStore()
+    budget = SeatLimitedBudget(seats=0)
+    embedder = FakeEmbedder()
+
+    with pytest.raises(EmbeddingBudgetExhaustedError):
+        _index(chunks, MeteredDocumentEmbedder(embedder, budget), store)
+
+    assert embedder.embedded_batches == []
+    assert budget.refusals == 1
+    assert store.chunks == {}
 
 
 def test_default_batches_fit_the_indexing_lane_per_minute():

@@ -123,6 +123,31 @@ def test_a_batch_is_booked_whole_or_not_at_all():
     assert budget.usage_today().indexing == 800
 
 
+def test_a_refusal_says_how_many_seats_the_lane_has_left():
+    budget, _ = _budget()
+    budget.reserve(EmbeddingLane.INDEXING, 760)
+
+    with pytest.raises(EmbeddingBudgetExhaustedError) as refusal:
+        budget.reserve(EmbeddingLane.INDEXING, 80)
+
+    assert refusal.value.seats_left == 40
+
+
+def test_indexing_seats_left_are_capped_by_what_questions_left_of_the_day():
+    budget, _ = _budget()
+    budget.reserve(EmbeddingLane.INDEXING, 700)
+    budget.reserve(EmbeddingLane.QUESTIONS, 290)
+
+    with pytest.raises(EmbeddingBudgetExhaustedError) as indexing_refusal:
+        budget.reserve(EmbeddingLane.INDEXING, 80)
+    budget.reserve(EmbeddingLane.QUESTIONS, 10)
+    with pytest.raises(EmbeddingBudgetExhaustedError) as question_refusal:
+        budget.reserve(EmbeddingLane.QUESTIONS, 1)
+
+    assert indexing_refusal.value.seats_left == 10
+    assert question_refusal.value.seats_left == 0
+
+
 def test_a_new_quota_day_starts_empty_at_midnight_pacific():
     clock = Clock(NOON_PACIFIC)
     budget, collection = _budget(clock)

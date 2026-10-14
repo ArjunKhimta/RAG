@@ -30,7 +30,10 @@ using the API's suggested delay when it gives one, and so are calls cut off by t
 30-second limit; each retry and the final give-up are logged with their reason (an HTTP status or
 "timed out after 30 s", never a reply body). After the last attempt the error propagates. An
 exhausted daily quota is raised at once: it will not free up until the daily reset, and the work
-done so far is already stored, so the next run resumes from the cache.
+done so far is already stored, so the next run resumes from the cache. When the day's embedding
+budget refuses a batch but still has a few seats, the first that many inputs of the batch are
+embedded and stored first, so the day's last seats are used rather than left over; the refused
+call already took its per-minute slot, so that smaller batch may wait up to a minute for its own.
 """
 
 from __future__ import annotations
@@ -57,6 +60,7 @@ from retrieval.config import (
     INDEXING_EMBEDDINGS_PER_MINUTE,
 )
 from retrieval.embedders import DocumentEmbedder, EmbeddingRequestError
+from retrieval.embedding_budget import EmbeddingBudgetExhaustedError
 from retrieval.embedding_inputs import build_embedding_input, compute_embedding_key, estimate_tokens
 from retrieval.gemini_errors import retry_delay_seconds
 from retrieval.other_languages import OtherLanguageCount
@@ -185,36 +189,53 @@ def index_chunks(
         for embedding_key, input_text in unique_inputs.items()
         if embedding_key not in cached_embeddings
     ]
+
+    def embed_and_store(counted_batch: _CountedBatch) -> None:
+        batch = counted_batch.inputs
+        truncation_flags = [
+            _is_over_token_limit(embedder, pending, active_settings.input_token_limit, report)
+            for pending in batch
+        ]
+        vectors = _embed_with_retries(
+            embedder,
+            counted_batch,
+            rate_limiter,
+            active_settings,
+            sleep,
+            jitter_fraction,
+            report,
+        )
+        batch_embeddings = {
+            pending.embedding_key: CachedEmbedding(vector=vector, is_truncated=is_truncated)
+            for pending, vector, is_truncated in zip(batch, vectors, truncation_flags, strict=True)
+        }
+        report.embedded_input_count += len(batch)
+        store_chunks_for(batch_embeddings)
+        if on_progress is not None:
+            on_progress(report.embedded_input_count, len(pending_inputs))
+
+    def embed_what_the_budget_allows(
+        counted_batch: _CountedBatch, error: EmbeddingBudgetExhaustedError
+    ) -> None:
+        fitting_inputs = counted_batch.inputs[: error.seats_left]
+        if not 0 < len(fitting_inputs) < len(counted_batch.inputs):
+            return
+        for fitting_batch in _counted_batches(
+            embedder, fitting_inputs, active_settings.batch_token_budget, report
+        ):
+            embed_and_store(fitting_batch)
+
     if on_progress is not None:
         on_progress(0, len(pending_inputs))
     for estimated_batch in _batches(pending_inputs, active_settings):
         for counted_batch in _counted_batches(
             embedder, estimated_batch, active_settings.batch_token_budget, report
         ):
-            batch = counted_batch.inputs
-            truncation_flags = [
-                _is_over_token_limit(embedder, pending, active_settings.input_token_limit, report)
-                for pending in batch
-            ]
-            vectors = _embed_with_retries(
-                embedder,
-                counted_batch,
-                rate_limiter,
-                active_settings,
-                sleep,
-                jitter_fraction,
-                report,
-            )
-            batch_embeddings = {
-                pending.embedding_key: CachedEmbedding(vector=vector, is_truncated=is_truncated)
-                for pending, vector, is_truncated in zip(
-                    batch, vectors, truncation_flags, strict=True
-                )
-            }
-            report.embedded_input_count += len(batch)
-            store_chunks_for(batch_embeddings)
-            if on_progress is not None:
-                on_progress(report.embedded_input_count, len(pending_inputs))
+            try:
+                embed_and_store(counted_batch)
+            except EmbeddingBudgetExhaustedError as error:
+                embed_what_the_budget_allows(counted_batch, error)
+                raise
     if kept is not None:
         store.update_chunk_calls(kept.calls_to_update)
         report.updated_calls_count = len(kept.calls_to_update)

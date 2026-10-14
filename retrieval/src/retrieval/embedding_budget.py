@@ -13,8 +13,9 @@ Seats are booked before each call to Gemini, never after, in two steps: make sur
 document exists, then one conditional update that adds the call's texts only if both limits still
 hold. MongoDB applies a single update to a single document atomically, so two callers can never
 both take the last seat. A call that fails, and each retry, still counts: over-counting stops
-early, which is the safe direction. A batch is booked whole or not at all, so up to one batch
-less than the lane's limit can go unused at the end of a day.
+early, which is the safe direction. A call is booked whole or not at all; a refusal says how
+many seats are left, so the indexer can send a smaller last batch that uses them instead of
+leaving up to one batch of the lane unused at the end of a day.
 
 The meters wrap the Gemini embedders, so callers see an ordinary embedder. A question's cached
 vector never reaches its meter, so cache hits stay free. The question meter also paces questions
@@ -73,10 +74,12 @@ class EmbeddingBudgetExhaustedError(EmbeddingRequestError):
 
     It counts as a used-up daily quota, so every caller already handles it: the indexer stops
     and keeps what it stored, and the service says to retry after midnight Pacific.
+    `seats_left` is how many embeddings the lane could still take today when the call was refused.
     """
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, seats_left: int = 0) -> None:
         super().__init__(message, status_code=None, retry_after_seconds=None)
+        self.seats_left = seats_left
 
     @property
     def is_daily_quota_exhausted(self) -> bool:
@@ -128,7 +131,9 @@ class MongoEmbeddingBudget:
             conditions, {"$inc": {lane.value: count, TOTAL_FIELD: count}}
         )
         if result.matched_count == 0:
-            raise EmbeddingBudgetExhaustedError(self._exhausted_message(lane, count))
+            raise EmbeddingBudgetExhaustedError(
+                self._exhausted_message(lane, count), seats_left=self._seats_left(lane, day)
+            )
 
     def usage_today(self) -> EmbeddingUsage:
         day = quota_day(self._clock())
@@ -148,6 +153,14 @@ class MongoEmbeddingBudget:
             CREATED_AT_FIELD: now,
         }
         self._usage.update_one({"_id": day}, {"$setOnInsert": empty_day}, upsert=True)
+
+    def _seats_left(self, lane: EmbeddingLane, day: str) -> int:
+        document = self._usage.find_one({"_id": day}) or {}
+        seats_left = self._daily_limit - document.get(TOTAL_FIELD, 0)
+        if lane == EmbeddingLane.INDEXING:
+            lane_seats_left = self._indexing_daily_limit - document.get(lane.value, 0)
+            seats_left = min(seats_left, lane_seats_left)
+        return max(seats_left, 0)
 
     def _lane_limit(self, lane: EmbeddingLane) -> int:
         if lane == EmbeddingLane.INDEXING:
